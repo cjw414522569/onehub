@@ -32,3 +32,19 @@
 Real Keychain / Secure Enclave calls require macOS/iOS (simulator or device)
 and are `blocked_environment` on this Windows CI host; the access-control and
 migration contract is verified deterministically.
+
+## T087: Android Keystore adapter
+
+`crates/secure-store/src/android.rs`:
+
+- `AndroidKeystoreStore` - targets the Android Keystore with
+  `KeystoreCapabilities` (StrongBox / TEE / Software hardware protection via
+  `select_hardware`).
+- `MemoryAndroidKeystore` - models key invalidation (e.g. a screen-lock
+  change): while invalidated, reads/writes fail with `StoreError::Invalidated`;
+  `recover()` regenerates keys so the store is usable again (recoverable on
+  invalidation).
+
+Real multi-API emulator / device tests are `blocked_environment` on this host;
+the hardware-protection and invalidation-recovery contract is verified
+deterministically.

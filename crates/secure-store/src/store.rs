@@ -18,6 +18,8 @@ pub enum StoreError {
     Unavailable,
     /// The operation is not supported on this platform/build.
     NotSupported,
+    /// The key was invalidated (Android Keystore) and must be recovered.
+    Invalidated,
 }
 
 /// The OS protection mechanism used by an adapter.

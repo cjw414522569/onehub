@@ -6,9 +6,14 @@
 //! Platform secure-storage adapter (T085): the SecureStore contract and the
 //! Windows adapter targeting Credential Manager / DPAPI.
 
+pub mod android;
 pub mod apple;
 pub mod store;
 
+pub use android::{
+    select_hardware, AndroidKeystoreStore, HardwareProtection, InvalidationState,
+    KeystoreCapabilities, MemoryAndroidKeystore,
+};
 pub use apple::{
     migrate_keychain, AccessControl, AccessPolicy, AppleKeychainStore, Biometrics,
     MemoryKeychainStore, MigrationOutcome,
