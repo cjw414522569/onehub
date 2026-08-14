@@ -25,6 +25,13 @@
 //! functions take and return plain values; the only pointer returned is the
 //! pinned codegen-version string).
 
+/// Module identity used by diagnostics and architecture tooling.
+pub const MODULE_ID: &str = "abi-c";
+
+pub mod handle;
+
+pub use handle::{HandleResource, HandleTable, INVALID_HANDLE};
+
 /// ABI schema version (1).
 pub const ABI_SCHEMA_VERSION: u32 = 1;
 

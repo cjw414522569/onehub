@@ -29,3 +29,22 @@
 Note: this crate intentionally does not `forbid(unsafe_code)` because the
 stable ABI needs `#[no_mangle]` export attributes (an unsafe attribute); the
 crate contains no unsafe blocks.
+
+## T098: opaque handle lifecycle and cross-ABI ownership
+
+`crates/abi-c/src/handle.rs`:
+
+- `HandleTable<T>` - opaque `u64` handles (never `0`); `insert` / `get` /
+  `get_mut` / `remove` / `contains` / `len`.
+- Idempotent release: a double release (or a managed runtime's GC/ARC
+  finalizer racing an explicit release) is a safe no-op, never a
+  use-after-free; stale handles are rejected, never dereferenced.
+- Dropping the table (process exit) drops every remaining resource, so
+  cancellation and exit leak nothing (verified with a drop counter).
+- Exported ABI: `ssh_abi_handle_create`, `ssh_abi_handle_release`,
+  `ssh_abi_handle_is_valid`, `ssh_abi_handle_count`, `ssh_abi_handle_cancel`,
+  `ssh_abi_handle_is_cancelled`.
+- Tests: idempotent release, drop-on-exit, cancellation, 10k create/release
+  stress with zero residual handles, stale-handle rejection, opaque unique
+  ids. Sanitizer runs are blocked (no MSan/ASan toolchain on this host);
+  leak/stress tests run in-crate.
