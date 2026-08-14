@@ -7,6 +7,7 @@
 //! concurrent in-flight chunks, backpressure, and cooperative yielding so
 //! interactive sessions are never starved.
 
+pub mod resume;
 pub mod streaming;
 
 pub use streaming::{

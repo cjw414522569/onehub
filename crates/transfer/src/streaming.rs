@@ -3,6 +3,7 @@
 //! interactive sessions are never starved by large file transfers.
 
 use std::future::Future;
+use std::pin::Pin;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
@@ -59,19 +60,19 @@ impl TransferStats {
 /// A chunked source (local file reader, SFTP read, or a generated stream).
 pub trait ChunkReader: Send {
     /// Reads up to `buffer.len()` bytes; returns `Ok(0)` at EOF.
-    fn read_chunk(
-        &mut self,
-        buffer: &mut [u8],
-    ) -> impl Future<Output = Result<usize, TransferError>> + Send;
+    fn read_chunk<'a>(
+        &'a mut self,
+        buffer: &'a mut [u8],
+    ) -> Pin<Box<dyn Future<Output = Result<usize, TransferError>> + Send + 'a>>;
 }
 
 /// A chunked sink (local file writer, SFTP write, or a counting sink).
 pub trait ChunkWriter: Send + 'static {
-    /// Writes one chunk.
-    fn write_chunk(
-        &mut self,
-        data: &[u8],
-    ) -> impl Future<Output = Result<(), TransferError>> + Send;
+    /// Writes one chunk (owned so wrappers can move it into async blocks).
+    fn write_chunk<'a>(
+        &'a mut self,
+        data: Vec<u8>,
+    ) -> Pin<Box<dyn Future<Output = Result<(), TransferError>> + Send + 'a>>;
 }
 
 /// Runs a bounded-memory chunked copy from `reader` to `writer`.
@@ -100,8 +101,9 @@ where
     let writer_task = tokio::spawn(async move {
         let mut chunks = 0u64;
         while let Some(chunk) = rx.recv().await {
-            writer.write_chunk(&chunk).await?;
-            counter.fetch_add(chunk.len() as u64, Ordering::SeqCst);
+            let chunk_len = chunk.len() as u64;
+            writer.write_chunk(chunk).await?;
+            counter.fetch_add(chunk_len, Ordering::SeqCst);
             chunks += 1;
         }
         Ok::<u64, TransferError>(chunks)
@@ -111,13 +113,24 @@ where
     let mut stats = TransferStats::default();
     loop {
         let mut buffer = vec![0u8; config.chunk_size];
-        let read = reader.read_chunk(&mut buffer).await?;
+        let read = match reader.read_chunk(&mut buffer).await {
+            Ok(n) => n,
+            Err(error) => {
+                // Always join the writer so resources (e.g. a temp file) are
+                // released deterministically before returning.
+                drop(tx);
+                let _ = writer_task.await;
+                return Err(error);
+            }
+        };
         if read == 0 {
             break;
         }
         buffer.truncate(read);
         sent += read as u64;
         if tx.send(buffer).await.is_err() {
+            drop(tx);
+            let _ = writer_task.await;
             return Err(TransferError::Cancelled);
         }
         let in_flight = sent - written_counter.load(Ordering::SeqCst);
@@ -134,6 +147,8 @@ where
 }
 #[cfg(test)]
 mod tests {
+    use std::future::Future;
+    use std::pin::Pin;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
     use std::time::Duration;
@@ -155,12 +170,17 @@ mod tests {
     }
 
     impl ChunkReader for BufReader {
-        async fn read_chunk(&mut self, buffer: &mut [u8]) -> Result<usize, TransferError> {
-            let remaining = self.data.len() - self.offset;
-            let take = remaining.min(buffer.len());
-            buffer[..take].copy_from_slice(&self.data[self.offset..self.offset + take]);
-            self.offset += take;
-            Ok(take)
+        fn read_chunk<'a>(
+            &'a mut self,
+            buffer: &'a mut [u8],
+        ) -> Pin<Box<dyn Future<Output = Result<usize, TransferError>> + Send + 'a>> {
+            Box::pin(async move {
+                let remaining = self.data.len() - self.offset;
+                let take = remaining.min(buffer.len());
+                buffer[..take].copy_from_slice(&self.data[self.offset..self.offset + take]);
+                self.offset += take;
+                Ok(take)
+            })
         }
     }
 
@@ -177,14 +197,19 @@ mod tests {
     }
 
     impl ChunkReader for ZeroSource {
-        async fn read_chunk(&mut self, buffer: &mut [u8]) -> Result<usize, TransferError> {
-            if self.remaining == 0 {
-                return Ok(0);
-            }
-            let take = (self.remaining as usize).min(buffer.len());
-            buffer[..take].fill(0);
-            self.remaining -= take as u64;
-            Ok(take)
+        fn read_chunk<'a>(
+            &'a mut self,
+            buffer: &'a mut [u8],
+        ) -> Pin<Box<dyn Future<Output = Result<usize, TransferError>> + Send + 'a>> {
+            Box::pin(async move {
+                if self.remaining == 0 {
+                    return Ok(0);
+                }
+                let take = (self.remaining as usize).min(buffer.len());
+                buffer[..take].fill(0);
+                self.remaining -= take as u64;
+                Ok(take)
+            })
         }
     }
 
@@ -196,9 +221,17 @@ mod tests {
     }
 
     impl ChunkWriter for SharedSink {
-        async fn write_chunk(&mut self, data: &[u8]) -> Result<(), TransferError> {
-            self.data.lock().expect("sink lock").extend_from_slice(data);
-            Ok(())
+        fn write_chunk<'a>(
+            &'a mut self,
+            data: Vec<u8>,
+        ) -> Pin<Box<dyn Future<Output = Result<(), TransferError>> + Send + 'a>> {
+            Box::pin(async move {
+                self.data
+                    .lock()
+                    .expect("sink lock")
+                    .extend_from_slice(&data);
+                Ok(())
+            })
         }
     }
 
@@ -212,13 +245,18 @@ mod tests {
     }
 
     impl ChunkWriter for CountingSink {
-        async fn write_chunk(&mut self, data: &[u8]) -> Result<(), TransferError> {
-            if let Some(delay) = self.delay {
-                tokio::time::sleep(delay).await;
-            }
-            self.bytes.fetch_add(data.len(), Ordering::SeqCst);
-            self.events.fetch_add(1, Ordering::SeqCst);
-            Ok(())
+        fn write_chunk<'a>(
+            &'a mut self,
+            data: Vec<u8>,
+        ) -> Pin<Box<dyn Future<Output = Result<(), TransferError>> + Send + 'a>> {
+            Box::pin(async move {
+                if let Some(delay) = self.delay {
+                    tokio::time::sleep(delay).await;
+                }
+                self.bytes.fetch_add(data.len(), Ordering::SeqCst);
+                self.events.fetch_add(1, Ordering::SeqCst);
+                Ok(())
+            })
         }
     }
 

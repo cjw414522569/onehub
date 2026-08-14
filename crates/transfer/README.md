@@ -20,3 +20,20 @@ same formula); a slow writer backpressures the reader and the pipeline fills
 (concurrent chunks); on a current-thread runtime an interactive task keeps
 making progress during a large transfer (no starvation); invalid configs are
 rejected.
+
+## T058: resume, temp files, atomic replace, checksum
+
+| Model | Purpose |
+|---|---|
+| `sha256_of` / `hex_digest` | SHA-256 checksum helpers. |
+| `HashingWriter` | Hashes every chunk while delegating to an inner writer. |
+| `AtomicWriteTarget` | Sibling temp file + atomic rename over the target; drop without commit removes the temp. |
+| `ResumeRecord` | offset + partial SHA-256 of the verified prefix. |
+| `run_atomic_transfer` | Full-file transfer with pre-commit checksum verification (target never exposed partial). |
+| `run_resumable_transfer` | Resumes from a `.part` file (the resume state) and renames over the target only after full verification. |
+
+Fault-injection test: a reader drops mid-transfer at 200 KB; the target is
+untouched, the `.part` file persists holding exactly the verified prefix, and
+a resumed run (source positioned past the prefix) completes with a full-file
+hash match. Also covered: checksum mismatch discards the `.part` and keeps the
+original target; commit cleans the temp; SHA-256 empty-string vector.

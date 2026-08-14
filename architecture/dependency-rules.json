@@ -158,7 +158,8 @@
         "core-protocol"
       ],
       "external_imports": [
-        "tokio"
+        "tokio",
+        "sha2"
       ]
     },
     {
