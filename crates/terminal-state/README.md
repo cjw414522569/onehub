@@ -186,6 +186,20 @@ semantics are verified deterministically by unit tests.
 DPI hot-switch and device-loss behavior are covered by unit tests; real GPU
 texture upload is the renderer's job.
 
+## T081: terminal escape-sequence safety limits
+
+`crates/terminal-state/src/limits.rs`:
+
+- `EscapeLimits` - per-kind caps for OSC / DCS / image / clipboard / hyperlink
+  payloads plus a nesting-depth cap; `check_payload` returns Allowed or
+  Exceeded.
+- `NestingDepth` - bounded nested-escape tracking (`enter` rejects beyond the
+  cap).
+- `scan_corpus` - a linear, bounded-memory malicious-terminal-corpus oracle
+  that classifies payloads (image `1337;`, clipboard `52;`, hyperlink `8;`)
+  and rejects anything over the limits (1,000,000-byte OSC rejected, benign
+  corpus accepted).
+
 ## Verification
 
 ```text

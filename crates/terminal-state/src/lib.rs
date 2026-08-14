@@ -14,6 +14,7 @@ pub mod delta;
 pub mod font;
 pub mod hyperlink;
 pub mod input;
+pub mod limits;
 pub mod osc;
 pub mod parser;
 pub mod screen;
@@ -31,6 +32,10 @@ pub use hyperlink::{effective_host, scheme_of, HyperlinkPolicy, HyperlinkReview}
 pub use input::{
     encode_focus, encode_key, encode_mouse, encode_paste, Key, KeyEvent, KeyboardProtocol,
     Modifiers, MouseAction, MouseButton, MouseEncoding, MouseEvent, MouseMode,
+};
+pub use limits::{
+    check_payload, scan_corpus, CorpusReport, EscapeLimits, LimitResult, NestingDepth, PayloadKind,
+    RejectedSequence,
 };
 pub use osc::{Notification, OscPolicy};
 pub use parser::{ParseBatch, ParseEvent, ParserDiagnostic, TerminalParser};
