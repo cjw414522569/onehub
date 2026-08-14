@@ -121,6 +121,24 @@ points to the new layout so semantic selections survive a resize.
 Random-resize property tests verify logical content is preserved, the cursor
 stays in bounds, and selection characters survive reflow.
 
+## T073: incremental merge and dirty-line tracking
+
+`crates/terminal-state/src/delta.rs`:
+
+- `DirtyTracker` ? accumulates dirty rows plus cursor / title / working-directory
+  flags between frames; `clear()` resets after each flush.
+- `DeltaBuilder` ? batches all dirty state into one core-protocol
+  `TerminalDelta` per frame (row `Fill` runs grouped by style, `Cursor`,
+  `Title`), for the FFI bridge.
+- `apply_delta` ? merges a delta into a receiver snapshot
+  (Fill/Copy/Clear/Cursor/Title/Image; grapheme-safe with wide-continuation
+  marking). `SequenceGap` / `MissingSnapshot` errors signal dropped frames so
+  the receiver can recover with a full snapshot.
+- `diff_rows(old, new)` ? marks changed rows/state for the receiver.
+
+Incremental/full equivalence and dropped-frame recovery are verified by
+property tests.
+
 ## Verification
 
 ```text

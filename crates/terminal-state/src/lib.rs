@@ -9,6 +9,7 @@
 //! segmentation used by the model (T064).
 
 pub mod color;
+pub mod delta;
 pub mod hyperlink;
 pub mod input;
 pub mod osc;
@@ -20,6 +21,7 @@ pub mod selection;
 pub mod unicode;
 
 pub use color::{Palette, Rgb};
+pub use delta::{apply_delta, blank_snapshot, diff_rows, DeltaBuilder, DeltaError, DirtyTracker};
 pub use hyperlink::{effective_host, scheme_of, HyperlinkPolicy, HyperlinkReview};
 pub use input::{
     encode_focus, encode_key, encode_mouse, encode_paste, Key, KeyEvent, KeyboardProtocol,
