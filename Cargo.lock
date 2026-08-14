@@ -728,6 +728,7 @@ dependencies = [
  "core-domain",
  "core-protocol",
  "forwarding",
+ "tokio",
 ]
 
 [[package]]
