@@ -12,7 +12,8 @@ path = "src/lib.rs"
 core-domain = { path = "../core-domain" }
 core-protocol = { path = "../core-protocol" }
 transfer = { path = "../transfer" }
-tokio = { version = "1", features = ["io-util", "time", "sync", "macros", "rt"] }
+tokio = { version = "1", features = ["io-util", "time", "sync", "macros", "rt", "fs"] }
+sha2 = "0.10"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "time", "test-util", "net", "sync", "io-util"] }

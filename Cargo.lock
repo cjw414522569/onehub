@@ -926,6 +926,7 @@ version = "0.1.0"
 dependencies = [
  "core-domain",
  "core-protocol",
+ "sha2",
  "tokio",
  "transfer",
 ]

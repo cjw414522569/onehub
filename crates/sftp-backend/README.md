@@ -19,3 +19,17 @@ mkdir/list/stat, write/read/fstat/truncate, rename/delete with status codes
 (NoSuchFile/Failure), posix-rename extension, permissions (drwxr-xr-x) and
 symlink lstat/stat/readlink semantics, realpath canonicalization, and
 unsupported-extension reporting.
+
+## T059: remote edit conflict detection and safe save
+
+| Model | Purpose |
+|---|---|
+| `RemoteFileVersion` | Version fingerprint: SHA-256 of content + size + mtime. |
+| `RemoteEditSession` | `begin` captures the baseline version; `save` refuses when the remote changed and preserves the edit as a recovery copy. |
+| `SaveOutcome` | `Saved` / `Conflict { remote, recovery_path }`. |
+| `read_entire_file` | Bounded per-chunk remote file read. |
+
+Integration tests over duplex: save without a concurrent change succeeds; a
+concurrent modification between `begin` and `save` is detected (the remote is
+never overwritten and the edited content is kept as a recovery copy); missing
+files report NoSuchFile; fingerprints track content changes.

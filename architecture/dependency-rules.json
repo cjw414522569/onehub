@@ -219,7 +219,8 @@
         "transfer"
       ],
       "external_imports": [
-        "tokio"
+        "tokio",
+        "sha2"
       ]
     },
     {

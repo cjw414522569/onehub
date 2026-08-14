@@ -10,6 +10,7 @@
 
 pub mod attrs;
 pub mod client;
+pub mod edit;
 pub mod msg;
 pub mod server;
 
@@ -17,6 +18,9 @@ pub use attrs::{
     decode_attrs, encode_attrs, FileAttrs, S_IFCHR, S_IFDIR, S_IFLNK, S_IFREG, S_IFSOCK,
 };
 pub use client::{SftpCapabilities, SftpClient, SftpStatus};
+pub use edit::{
+    read_entire_file, RemoteEditSession, RemoteFileVersion, SaveOutcome, EDIT_READ_CHUNK,
+};
 pub use msg::{
     encode_close, encode_data, encode_extended, encode_fsetstat, encode_fstat, encode_init,
     encode_lstat, encode_mkdir, encode_open, encode_opendir, encode_read, encode_readdir,
