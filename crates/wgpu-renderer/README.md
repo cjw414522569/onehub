@@ -33,6 +33,22 @@
 Updating one overlay only marks that layer dirty - the base grid is never
 re-laid out for an overlay change.
 
+## T079: frame coalescing, refresh throttling, background throttling
+
+`crates/wgpu-renderer/src/throttle.rs`:
+
+- `FrameCoalescer` - folds many update notifications into one pending frame.
+- `RefreshThrottle` - caps the frame rate at a minimum interval.
+- `BoundedUpdateQueue` - a bounded update queue; over-cap updates are
+  coalesced/dropped and counted, so high throughput never explodes the event
+  queue.
+- `SessionThrottler` - per-priority throttling: foreground sessions render at
+  full rate (input prioritized), background sessions at a reduced rate; a
+  rendered frame drains all pending updates.
+
+The 100 MB/s synthetic output stress test runs deterministically as a unit
+test (1,000,000 updates, bounded queue, drops counted).
+
 ## Verification
 
 ```text
