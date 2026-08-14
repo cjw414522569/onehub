@@ -11,5 +11,6 @@ path = "src/lib.rs"
 [dependencies]
 core-domain = { path = "../core-domain" }
 core-protocol = { path = "../core-protocol" }
+regex = "1"
 unicode-width = "0.2"
 unicode-segmentation = "1"

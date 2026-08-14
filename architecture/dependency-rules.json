@@ -147,7 +147,8 @@
       ],
       "external_imports": [
         "unicode-width",
-        "unicode-segmentation"
+        "unicode-segmentation",
+        "regex"
       ]
     },
     {

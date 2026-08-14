@@ -95,6 +95,20 @@ and reports `scrollback_start` in the snapshot.
   and emits spaces for empty cells so grid gaps are preserved; rows join with
   newlines.
 
+## T071: search, regex search, and result navigation
+
+`crates/terminal-state/src/search.rs`:
+
+- `SearchQuery` ? literal or regex pattern with case sensitivity.
+- `SearchSession` ? searches a `SearchBuffer` (scrollback + visible screen)
+  in bounded chunks, checking an `AtomicBool` cancellation token between
+  lines; `step()` is incremental so a worker thread can drive a million-line
+  search without blocking input, and `cancel()` stops it early.
+- `SearchNavigation` ? cycles through results (`next_result` / `prev_result`
+  with wraparound).
+- Results carry absolute line index + char column + length. Regex support uses
+  the `regex` crate (`RegexBuilder`, case-insensitive option).
+
 ## Verification
 
 ```text
