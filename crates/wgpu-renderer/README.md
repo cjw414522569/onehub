@@ -49,6 +49,21 @@ re-laid out for an overlay change.
 The 100 MB/s synthetic output stress test runs deterministically as a unit
 test (1,000,000 updates, bounded queue, drops counted).
 
+## T080: device-loss, foreground/background, window-rebuild recovery
+
+`crates/wgpu-renderer/src/recovery.rs`:
+
+- `RecoveryCoordinator` - retains the terminal content snapshot across GPU
+  device loss, backgrounding, and window recreation, and restores it on
+  recovery (phase machine Healthy -> DeviceLost -> Rebuilding -> Recovered).
+- The SSH session is never touched: `session_alive()` stays `true` and there
+  is no API to disconnect a session.
+- `on_app_background` / `on_app_foreground` / `on_window_recreated` handle
+  platform lifecycle events while keeping content consistent.
+
+Platform lifecycle fault injection runs as deterministic unit tests (real GPU
+fault injection is `blocked_environment` on CI hosts without a GPU).
+
 ## Verification
 
 ```text

@@ -6,6 +6,7 @@
 //! Batched GPU terminal drawing on a single native wgpu surface (T077).
 
 pub mod composite;
+pub mod recovery;
 pub mod render;
 pub mod throttle;
 
@@ -13,6 +14,7 @@ pub use composite::{
     selected_text, CompositeState, DecorationRect, FramePlan, FrameTimeline, Layer, LinkRect,
     SearchMatchRect,
 };
+pub use recovery::{LifecyclePhase, RecoveryCoordinator};
 pub use render::{
     build_plan, frame_stats, merge_to_budget, DrawBudget, DrawCall, FrameStats, RenderPlan,
     RenderSurface,
