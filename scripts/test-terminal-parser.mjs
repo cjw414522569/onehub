@@ -8,11 +8,16 @@ const ROOT = resolve(process.argv[2] ?? process.cwd());
 const CRATE = join(ROOT, 'crates/terminal-parser');
 const errors = [];
 
+// T062 keeps its fragmentation/memory-bound contract. The event vocabulary
+// (ParseEvent/ParserDiagnostic/ParseBatch/TerminalParser) is owned by
+// terminal-state (T063) and re-exported here, so the contract asserts the
+// re-export plus the new SetScrollRegion event.
 const REQUIRED_TOKENS = [
-  'pub struct BoundedByteStreamParser', 'pub enum ParseEvent', 'pub struct ParserDiagnostic',
-  'pub struct ParseBatch', 'pub trait TerminalParser', 'fn feed(&mut self', 'fn finish(&mut self',
+  'pub struct BoundedByteStreamParser',
+  'pub use terminal_state::parser::{ParseBatch, ParseEvent, ParserDiagnostic, TerminalParser}',
+  'fn feed(&mut self', 'fn finish(&mut self',
   'pub fn with_caps', 'pub fn pending_len', 'MAX_UTF8_LEN', 'DEFAULT_MAX_SEQUENCE_LEN',
-  'DEFAULT_MAX_TEXT_LEN',
+  'DEFAULT_MAX_TEXT_LEN', 'SetScrollRegion',
   'whole_equals_fragmented', 'fragmented_utf8_across_chunks', 'fragmented_csi_across_chunks',
   'fragmented_osc_across_chunks', 'basic_event_sequence', 'invalid_utf8_is_diagnosed_and_replaced',
   'malicious_input_memory_is_bounded', 'oversized_sequence_is_diagnosed_and_bounded',
@@ -59,4 +64,4 @@ if (errors.length > 0) {
   for (const error of errors) console.error(`- ${error}`);
   process.exit(1);
 }
-console.log('terminal-parser contract valid: bounded fragmentation-safe UTF-8/CSI/OSC pipeline, whole==fragmented property, malicious-input memory bound, oversized-sequence diagnostics, cargo check/test --locked passed.');
+console.log('terminal-parser contract valid: bounded fragmentation-safe UTF-8/CSI/OSC pipeline, whole==fragmented property, malicious-input memory bound, oversized-sequence diagnostics, vocabulary re-exported from terminal-state incl. SetScrollRegion, cargo check/test --locked passed.');

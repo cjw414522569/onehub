@@ -16,79 +16,7 @@ pub const DEFAULT_MAX_SEQUENCE_LEN: usize = 4096;
 /// Default cap for the coalesced text buffer.
 pub const DEFAULT_MAX_TEXT_LEN: usize = 4096;
 
-/// A structured terminal event produced by the parser.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ParseEvent {
-    /// Printable text (already UTF-8 reassembled and coalesced).
-    Text(String),
-    /// CR.
-    CarriageReturn,
-    /// LF.
-    LineFeed,
-    /// BS.
-    Backspace,
-    /// `CSI Ps J` — erase display.
-    EraseDisplay { mode: u16 },
-    /// `CSI Ps K` — erase line.
-    EraseLine { mode: u16 },
-    /// `CSI Ps ; Ps H` (or f).
-    CursorPosition { row: u16, col: u16 },
-    /// `CSI Ps A/B/C/D`.
-    CursorMove { row_delta: i16, col_delta: i16 },
-    /// `CSI Ps m`.
-    Sgr { params: Vec<u16> },
-    /// `CSI ? Ps h/l`.
-    SetMode {
-        private_mode: bool,
-        code: u16,
-        enabled: bool,
-    },
-    /// `OSC 0;title BEL/ST`.
-    Title(String),
-}
-
-/// A structured parser diagnostic (stable code, no secret context).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ParserDiagnostic {
-    /// Stable code, e.g. `invalid_utf8`, `sequence_too_long`.
-    pub code: String,
-    /// i18n message key.
-    pub message_key: String,
-    /// Byte offset within the fed chunk (best effort).
-    pub byte_offset: usize,
-    /// Whether the condition is retryable after more input.
-    pub retryable: bool,
-}
-
-impl ParserDiagnostic {
-    fn new(code: &str, message_key: &str, byte_offset: usize, retryable: bool) -> Self {
-        Self {
-            code: code.to_owned(),
-            message_key: message_key.to_owned(),
-            byte_offset,
-            retryable,
-        }
-    }
-}
-
-/// One feed batch: events plus any diagnostics.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct ParseBatch {
-    /// Monotonic feed sequence.
-    pub sequence: u64,
-    /// Parsed events.
-    pub events: Vec<ParseEvent>,
-    /// Diagnostics (never secrets).
-    pub diagnostics: Vec<ParserDiagnostic>,
-}
-
-/// The injectable terminal parser contract.
-pub trait TerminalParser {
-    /// Feeds a byte chunk and returns the parsed batch.
-    fn feed(&mut self, bytes: &[u8]) -> ParseBatch;
-    /// Flushes incomplete state at end-of-stream and returns any final events.
-    fn finish(&mut self) -> ParseBatch;
-}
+use terminal_state::parser::{ParseBatch, ParseEvent, ParserDiagnostic, TerminalParser};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum State {
@@ -98,7 +26,6 @@ enum State {
     Osc,
     DiscardUntilSt,
 }
-
 /// A bounded, fragmentation-safe byte-stream terminal parser.
 pub struct BoundedByteStreamParser {
     /// Incomplete UTF-8 or in-progress ESC/CSI bytes.
@@ -436,6 +363,10 @@ fn parse_csi(sequence: &[u8]) -> Option<ParseEvent> {
             col_delta: -(params.first().copied().unwrap_or(1) as i16),
         },
         b'm' => ParseEvent::Sgr { params },
+        b'r' => ParseEvent::SetScrollRegion {
+            top: params.first().copied().unwrap_or(1),
+            bottom: params.get(1).copied().unwrap_or(0),
+        },
         b'h' | b'l' => ParseEvent::SetMode {
             private_mode: private == Some(b'?'),
             code: params.first().copied().unwrap_or(0),

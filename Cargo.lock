@@ -1133,6 +1133,7 @@ version = "0.1.0"
 dependencies = [
  "core-domain",
  "core-protocol",
+ "serde_json",
  "terminal-state",
 ]
 
