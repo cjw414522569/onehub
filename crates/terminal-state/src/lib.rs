@@ -15,6 +15,7 @@ pub mod osc;
 pub mod parser;
 pub mod screen;
 pub mod scrollback;
+pub mod selection;
 pub mod unicode;
 
 pub use color::{Palette, Rgb};
@@ -27,6 +28,7 @@ pub use osc::{Notification, OscPolicy};
 pub use parser::{ParseBatch, ParseEvent, ParserDiagnostic, TerminalParser};
 pub use screen::{Modes, ScreenBuffer, ScreenModel};
 pub use scrollback::{Scrollback, ScrollbackConfig, ScrollbackDumpPolicy};
+pub use selection::{cell_selection_text, is_word_char, word_bounds, Selection, SelectionMode};
 pub use unicode::{grapheme_clusters, WidthPolicy, UNICODE_VERSION};
 
 /// Module identity used by diagnostics and architecture tooling.

@@ -81,6 +81,20 @@ screen has no scrollback), exposes `scrollback()`, `scrollback_len()`,
 `set_scrollback_config()`, `set_scrollback_dump_policy()`, `dump_scrollback()`,
 and reports `scrollback_start` in the snapshot.
 
+## T070: selection, copy, word/line/rectangle selection
+
+`crates/terminal-state/src/selection.rs`:
+
+- `Selection` ? anchor + focus `(row, col)` over a terminal snapshot (the
+  active buffer, so alternate-screen text selects correctly); normalized so
+  start <= end.
+- `SelectionMode` ? `Character` (exact range), `Word` (expand to word
+  boundaries via `word_bounds`), `Line` (whole lines, whitespace-trimmed),
+  `Rectangle` (column block).
+- `cell_selection_text` ? copies cell text, skips wide-continuation cells,
+  and emits spaces for empty cells so grid gaps are preserved; rows join with
+  newlines.
+
 ## Verification
 
 ```text

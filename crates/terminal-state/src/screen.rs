@@ -871,6 +871,7 @@ mod tests {
         Modes, MouseMode, OscPolicy, ScreenModel, ScrollbackDumpPolicy, UnderlineStyle, WidthPolicy,
     };
     use crate::parser::ParseEvent;
+    use crate::selection::{Selection, SelectionMode};
 
     fn model() -> ScreenModel {
         ScreenModel::new(7, 4, 6)
@@ -1300,6 +1301,22 @@ mod tests {
             max_bytes: 1024,
         });
         assert!(model.dump_scrollback(4).is_some());
+    }
+
+    #[test]
+    fn selection_over_alternate_screen_text() {
+        let mut model = ScreenModel::new(7, 4, 8);
+        model.apply_event(&set_mode(1049, true)); // enter alternate screen
+        model.apply_event(&text("alpha"));
+        model.apply_event(&ParseEvent::LineFeed);
+        model.apply_event(&ParseEvent::CarriageReturn);
+        model.apply_event(&text("beta"));
+        let snapshot = model.snapshot(); // reflects the active (alternate) buffer
+        let selection = Selection::new((0, 0), (1, 3));
+        assert_eq!(
+            selection.extract(&snapshot, SelectionMode::Line),
+            "alpha\nbeta"
+        );
     }
 
     #[test]
