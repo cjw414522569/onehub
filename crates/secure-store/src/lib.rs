@@ -8,6 +8,7 @@
 
 pub mod android;
 pub mod apple;
+pub mod linux;
 pub mod store;
 
 pub use android::{
@@ -17,6 +18,9 @@ pub use android::{
 pub use apple::{
     migrate_keychain, AccessControl, AccessPolicy, AppleKeychainStore, Biometrics,
     MemoryKeychainStore, MigrationOutcome,
+};
+pub use linux::{
+    detect_environment, FallbackPolicy, LinuxSecretStore, MemoryLinuxStore, SecretEnvironment,
 };
 pub use store::{
     MemorySecureStore, ProtectionMechanism, SecureStore, StoreError, SystemCredentialBackend,

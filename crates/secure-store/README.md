@@ -48,3 +48,16 @@ migration contract is verified deterministically.
 Real multi-API emulator / device tests are `blocked_environment` on this host;
 the hardware-protection and invalidation-recovery contract is verified
 deterministically.
+
+## T088: Linux Secret Service adapter and no-service fallback
+
+`crates/secure-store/src/linux.rs`:
+
+- `LinuxSecretStore` - targets the D-Bus Secret Service (GNOME keyring / KDE
+  Wallet) with explicit `SecretEnvironment` detection (gnome / kde / headless).
+- `FallbackPolicy` - `Refuse` (headless never stores, no plaintext on disk) or
+  `MemoryOnly` (secrets held in memory only; `persisted()` stays false).
+
+Real keyring containers (with/without a Secret Service) are
+`blocked_environment` on this host; the environment and no-plaintext contract
+is verified deterministically.
