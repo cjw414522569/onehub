@@ -146,7 +146,8 @@
         "core-protocol"
       ],
       "external_imports": [
-        "unicode-width"
+        "unicode-width",
+        "unicode-segmentation"
       ]
     },
     {

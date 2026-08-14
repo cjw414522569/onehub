@@ -13,7 +13,8 @@ use std::fs;
 use terminal_parser::BoundedByteStreamParser;
 use terminal_state::{ScreenModel, TerminalParser};
 
-/// A vttest-basic-style script.
+/// A vttest-basic-style script, plus T064 Unicode width/grapheme coverage:
+/// a CJK wide character, a combining sequence, and a ZWJ family emoji.
 fn script() -> Vec<u8> {
     let mut bytes = Vec::new();
     bytes.extend_from_slice(
@@ -22,6 +23,12 @@ fn script() -> Vec<u8> {
           \x1b[1;5r\x1b[?6h\x1b[1;1Ha\x1b[2;1Hb\x1b[3;1Hc\r\n\
           \x1b[?1049h\x1b[2Jalt-screen\x1b[?1049l\x1b]0;vttest-basic\x07",
     );
+    bytes.extend_from_slice("\x1b[5;1H".as_bytes());
+    bytes.extend_from_slice("\u{4e2d}".as_bytes()); // CJK wide char (width 2)
+    bytes.extend_from_slice("e\u{301}".as_bytes()); // e + combining acute
+    bytes.extend_from_slice(
+        "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}".as_bytes(), // family emoji
+    );
     bytes
 }
 
@@ -29,7 +36,12 @@ fn script() -> Vec<u8> {
 fn golden_vttest_basic_snapshot() {
     let mut parser = BoundedByteStreamParser::new();
     let mut model = ScreenModel::new(7, 8, 20);
-    let batch = parser.feed(&script());
+    let mut batch = parser.feed(&script());
+    // finish() flushes coalesced end-of-stream text (the golden script ends
+    // with a wide CJK char, a combining sequence, and a ZWJ emoji).
+    let tail = parser.finish();
+    batch.events.extend(tail.events);
+    batch.diagnostics.extend(tail.diagnostics);
     assert!(
         batch.diagnostics.is_empty(),
         "parser must not diagnose the golden script"

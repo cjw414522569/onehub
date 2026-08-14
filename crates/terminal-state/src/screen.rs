@@ -1,9 +1,13 @@
-//! Primary / alternate screen, cursor, scroll region, and mode state (T063).
+//! Primary / alternate screen, cursor, scroll region, and mode state (T063),
+//! with Unicode grapheme / wide-character handling (T064).
 //!
 //! [`ScreenModel`] consumes the [`ParseEvent`]s produced by the L2 byte-stream
 //! parser and maintains two buffers (primary and alternate), a cursor with a
-//! saved position, a scroll region, DEC/ANSI modes, and SGR attributes. The
-//! visible state is exposed as a [`TerminalSnapshot`] for the renderer.
+//! saved position, a scroll region, DEC/ANSI modes, SGR attributes, and a
+//! configurable [`WidthPolicy`]. Text is written grapheme-by-grapheme, so
+//! combining sequences and ZWJ emoji occupy a single cell with the width of
+//! their base, and wide clusters mark a continuation cell. The visible state
+//! is exposed as a [`TerminalSnapshot`] for the renderer.
 
 use core_protocol::terminal::{
     CursorState, TerminalCell, TerminalColor, TerminalRow, TerminalSnapshot, TerminalStyle,
@@ -11,6 +15,7 @@ use core_protocol::terminal::{
 };
 
 use crate::parser::{ParseBatch, ParseEvent, ParserDiagnostic};
+use crate::unicode::{grapheme_clusters, WidthPolicy};
 
 /// DEC/ANSI modes tracked by the model.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -113,10 +118,6 @@ impl ScreenBuffer {
         &self.style
     }
 
-    fn cell_mut(&mut self, row: usize, col: usize) -> &mut TerminalCell {
-        &mut self.cells[row][col]
-    }
-
     fn linefeed(&mut self) {
         if self.cursor_row == self.scroll_bottom {
             self.scroll_up(1);
@@ -152,33 +153,69 @@ impl ScreenBuffer {
         }
     }
 
-    /// Writes one character at the cursor with wrap / insert semantics.
-    fn put_char(&mut self, ch: char, modes: &Modes) {
+    /// Writes one grapheme cluster at the cursor with wrap / insert
+    /// semantics.
+    ///
+    /// A wide cluster (width 2 under the active [`WidthPolicy`]) occupies its
+    /// cell plus a marked continuation cell; a zero-width cluster (a combining
+    /// mark arriving on its own) merges into the cell before the cursor.
+    fn put_grapheme(&mut self, cluster: &str, modes: &Modes, policy: WidthPolicy) {
+        let width = policy.cluster_width(cluster);
+        if width == 0 {
+            if self.cursor_col > 0 {
+                if let Some(prev) = self.cells[self.cursor_row].get_mut(self.cursor_col - 1) {
+                    prev.text.get_or_insert_with(String::new).push_str(cluster);
+                }
+            }
+            return;
+        }
         if self.pending_wrap && modes.autowrap {
             self.linefeed();
             self.cursor_col = 0;
         }
-        if modes.insert {
-            let row = self.cursor_row;
-            let col = self.cursor_col;
-            if col < self.cols {
-                self.cells[row].insert(col, TerminalCell::empty());
+        let row = self.cursor_row;
+        let col = self.cursor_col;
+        if modes.insert && col < self.cols {
+            self.cells[row].insert(col, TerminalCell::empty());
+            self.cells[row].pop();
+            if width >= 2 && col + 1 < self.cols {
+                self.cells[row].insert(col + 1, TerminalCell::empty());
                 self.cells[row].pop();
             }
         }
-        if self.cursor_row < self.rows && self.cursor_col < self.cols {
-            let mut cell = TerminalCell::char(ch);
+        self.break_wide_at(row, col);
+        if row < self.rows && col < self.cols {
+            let mut cell = TerminalCell::cluster(cluster);
             cell.style = self.style.clone();
-            *self.cell_mut(self.cursor_row, self.cursor_col) = cell;
+            self.cells[row][col] = cell;
+            if width >= 2 {
+                let end = (col + width).min(self.cols);
+                for cont in (col + 1)..end {
+                    self.cells[row][cont] = TerminalCell::wide_continuation(self.style.clone());
+                }
+            }
         }
-        if self.cursor_col + 1 >= self.cols {
+        if col + width >= self.cols {
             self.cursor_col = self.cols.saturating_sub(1);
             if modes.autowrap {
                 self.pending_wrap = true;
             }
         } else {
-            self.cursor_col += 1;
+            self.cursor_col = col + width;
         }
+    }
+
+    /// Clears the cell at `(row, col)`; if it was the continuation half of a
+    /// wide cluster, the base cell at `col - 1` is cleared as well so no
+    /// orphaned wide pair survives an overwrite or partial erase.
+    fn break_wide_at(&mut self, row: usize, col: usize) {
+        if row >= self.rows || col >= self.cols {
+            return;
+        }
+        if self.cells[row][col].wide_continuation && col > 0 {
+            self.cells[row][col - 1] = TerminalCell::empty();
+        }
+        self.cells[row][col] = TerminalCell::empty();
     }
 
     /// Erase display: 0 cursor->end, 1 start->cursor, 2 all, 3 all (+scrollback
@@ -187,7 +224,7 @@ impl ScreenBuffer {
         match mode {
             0 => {
                 for col in self.cursor_col..self.cols {
-                    *self.cell_mut(self.cursor_row, col) = TerminalCell::empty();
+                    self.break_wide_at(self.cursor_row, col);
                 }
                 for row in (self.cursor_row + 1)..self.rows {
                     self.cells[row] = vec![TerminalCell::empty(); self.cols];
@@ -195,7 +232,7 @@ impl ScreenBuffer {
             }
             1 => {
                 for col in 0..=self.cursor_col {
-                    *self.cell_mut(self.cursor_row, col) = TerminalCell::empty();
+                    self.break_wide_at(self.cursor_row, col);
                 }
                 for row in 0..self.cursor_row {
                     self.cells[row] = vec![TerminalCell::empty(); self.cols];
@@ -214,12 +251,12 @@ impl ScreenBuffer {
         match mode {
             0 => {
                 for col in self.cursor_col..self.cols {
-                    *self.cell_mut(self.cursor_row, col) = TerminalCell::empty();
+                    self.break_wide_at(self.cursor_row, col);
                 }
             }
             1 => {
                 for col in 0..=self.cursor_col {
-                    *self.cell_mut(self.cursor_row, col) = TerminalCell::empty();
+                    self.break_wide_at(self.cursor_row, col);
                 }
             }
             _ => {
@@ -360,6 +397,7 @@ pub struct ScreenModel {
     title: Option<String>,
     stream_id: u64,
     sequence: u64,
+    width_policy: WidthPolicy,
 }
 
 impl ScreenModel {
@@ -372,12 +410,23 @@ impl ScreenModel {
             title: None,
             stream_id,
             sequence: 0,
+            width_policy: WidthPolicy::default(),
         }
     }
 
     /// The current modes.
     pub fn modes(&self) -> &Modes {
         &self.modes
+    }
+
+    /// The configured Unicode width policy.
+    pub fn width_policy(&self) -> WidthPolicy {
+        self.width_policy
+    }
+
+    /// Sets the width policy (Unicode / East Asian / Legacy).
+    pub fn set_width_policy(&mut self, policy: WidthPolicy) {
+        self.width_policy = policy;
     }
 
     /// Whether the alternate screen is active.
@@ -433,8 +482,8 @@ impl ScreenModel {
         };
         match event {
             ParseEvent::Text(text) => {
-                for ch in text.chars() {
-                    buffer.put_char(ch, &self.modes);
+                for cluster in grapheme_clusters(text) {
+                    buffer.put_grapheme(cluster, &self.modes, self.width_policy);
                 }
             }
             ParseEvent::CarriageReturn => buffer.carriage_return(),
@@ -570,7 +619,7 @@ impl ScreenBuffer {
 mod tests {
     use core_protocol::terminal::TerminalColor;
 
-    use super::{Modes, ScreenModel};
+    use super::{Modes, ScreenModel, WidthPolicy};
     use crate::parser::ParseEvent;
 
     fn model() -> ScreenModel {
@@ -747,5 +796,80 @@ mod tests {
         assert!(!modes.insert);
         assert!(!modes.origin);
         assert!(modes.cursor_visible);
+    }
+
+    #[test]
+    fn wide_char_occupies_two_columns() {
+        let mut model = model();
+        model.apply_event(&text("a\u{4e2d}b"));
+        // "a" at col 0; "\u{4e2d}" (width 2) at col 1-2; "b" at col 3.
+        assert_eq!(char_at(&model, 0, 0), "a");
+        assert_eq!(char_at(&model, 0, 1), "\u{4e2d}");
+        assert!(model.snapshot().rows[0].cells[2].wide_continuation);
+        assert!(model.snapshot().rows[0].cells[2].text.is_none());
+        assert_eq!(char_at(&model, 0, 3), "b");
+        assert_eq!(model.snapshot().cursor.col, 4);
+    }
+
+    #[test]
+    fn combining_sequence_is_one_cell() {
+        let mut model = model();
+        model.apply_event(&text("e\u{301}x"));
+        // e + combining acute is one grapheme cluster in one cell.
+        assert_eq!(char_at(&model, 0, 0), "e\u{301}");
+        assert_eq!(char_at(&model, 0, 1), "x");
+        assert_eq!(model.snapshot().cursor.col, 2);
+    }
+
+    #[test]
+    fn emoji_zwj_is_one_wide_cell() {
+        let mut model = model();
+        let family = "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}";
+        model.apply_event(&text(family));
+        assert_eq!(char_at(&model, 0, 0), family);
+        assert!(model.snapshot().rows[0].cells[1].wide_continuation);
+        assert_eq!(model.snapshot().cursor.col, 2);
+    }
+
+    #[test]
+    fn overwrite_breaks_wide_pair() {
+        let mut model = model();
+        model.apply_event(&text("\u{4e2d}"));
+        model.apply_event(&ParseEvent::CursorPosition { row: 1, col: 2 });
+        model.apply_event(&text("x"));
+        // The continuation cell was overwritten, so the base is cleared too.
+        assert_eq!(char_at(&model, 0, 0), "");
+        assert_eq!(char_at(&model, 0, 1), "x");
+        assert!(!model.snapshot().rows[0].cells[1].wide_continuation);
+    }
+
+    #[test]
+    fn erase_continuation_breaks_wide_pair() {
+        let mut model = model();
+        model.apply_event(&text("\u{4e2d}"));
+        model.apply_event(&ParseEvent::CursorPosition { row: 1, col: 2 });
+        model.apply_event(&ParseEvent::EraseLine { mode: 0 });
+        assert_eq!(char_at(&model, 0, 0), "");
+        assert!(!model.snapshot().rows[0].cells[1].wide_continuation);
+    }
+
+    #[test]
+    fn width_policy_is_configurable() {
+        // Default: Unicode (ambiguous = 1).
+        let mut unicode_model = model();
+        unicode_model.apply_event(&text("\u{00b7}"));
+        assert_eq!(unicode_model.snapshot().cursor.col, 1);
+        // East Asian: ambiguous = 2 with a marked continuation.
+        let mut ea_model = model();
+        ea_model.set_width_policy(WidthPolicy::EastAsian);
+        ea_model.apply_event(&text("\u{00b7}"));
+        assert_eq!(ea_model.snapshot().cursor.col, 2);
+        assert!(ea_model.snapshot().rows[0].cells[1].wide_continuation);
+        // Legacy: CJK is 1 column.
+        let mut legacy_model = model();
+        legacy_model.set_width_policy(WidthPolicy::Legacy);
+        legacy_model.apply_event(&text("\u{4e2d}"));
+        assert_eq!(legacy_model.snapshot().cursor.col, 1);
+        assert!(!legacy_model.snapshot().rows[0].cells[1].wide_continuation);
     }
 }

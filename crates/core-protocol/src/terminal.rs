@@ -107,6 +107,10 @@ pub struct TerminalCell {
     /// Optional image placeholder.
     #[serde(default)]
     pub image: Option<ImagePlaceholder>,
+    /// True when this cell is the right half of a wide (2-column) grapheme
+    /// cluster; the base cell at `col - 1` holds the text.
+    #[serde(default)]
+    pub wide_continuation: bool,
 }
 
 impl TerminalCell {
@@ -117,6 +121,7 @@ impl TerminalCell {
             style: TerminalStyle::default(),
             hyperlink: None,
             image: None,
+            wide_continuation: false,
         }
     }
 
@@ -127,6 +132,32 @@ impl TerminalCell {
             style: TerminalStyle::default(),
             hyperlink: None,
             image: None,
+            wide_continuation: false,
+        }
+    }
+
+    /// A cell holding a full grapheme cluster (e.g. a combining sequence or a
+    /// ZWJ emoji) with default style.
+    pub fn cluster(text: impl Into<String>) -> Self {
+        Self {
+            text: Some(text.into()),
+            style: TerminalStyle::default(),
+            hyperlink: None,
+            image: None,
+            wide_continuation: false,
+        }
+    }
+
+    /// The right-half continuation cell of a wide (2-column) grapheme cluster.
+    /// It carries the same style as its base cell so backgrounds render
+    /// continuously; `text` stays `None`.
+    pub fn wide_continuation(style: TerminalStyle) -> Self {
+        Self {
+            text: None,
+            style,
+            hyperlink: None,
+            image: None,
+            wide_continuation: true,
         }
     }
 }
@@ -369,6 +400,7 @@ mod tests {
                         columns: 4,
                         rows: 2,
                     }),
+                    wide_continuation: false,
                 },
             ],
         };
@@ -415,6 +447,25 @@ mod tests {
     }
 
     #[test]
+    fn wide_continuation_cell_round_trips() {
+        let base = TerminalCell::cluster("?");
+        assert_eq!(base.text.as_deref(), Some("?"));
+        assert!(!base.wide_continuation);
+        let cont = TerminalCell::wide_continuation(TerminalStyle::default());
+        assert!(cont.text.is_none());
+        assert!(cont.wide_continuation);
+        // Serialization includes the marker and old records without it parse
+        // with the default (false).
+        let json = serde_json::to_string(&cont).expect("serialize");
+        assert!(json.contains("\"wide_continuation\":true"));
+        let old: TerminalCell = serde_json::from_str(
+            r#"{"text":null,"style":{"fg":"Default","bg":"Default","bold":false,"italic":false,"underline":false,"inverse":false,"dim":false,"underline_style":"None"},"hyperlink":null,"image":null}"#,
+        )
+        .expect("old record parses");
+        assert!(!old.wide_continuation);
+    }
+
+    #[test]
     fn unknown_extensions_are_safely_ignorable() {
         let snapshot = sample_snapshot();
         let known = snapshot.known_extensions(&KNOWN_EXTENSIONS);
@@ -430,7 +481,7 @@ mod tests {
         // Golden: deterministic JSON for the sample snapshot.
         let snapshot = sample_snapshot();
         let json = serde_json::to_string(&snapshot).expect("serialize snapshot");
-        let expected = r#"{"stream_id":7,"sequence":42,"rows":[{"cells":[{"text":"h","style":{"fg":"Default","bg":"Default","bold":false,"italic":false,"underline":false,"inverse":false,"dim":false,"underline_style":"None"},"hyperlink":null,"image":null},{"text":"i","style":{"fg":"Default","bg":"Default","bold":false,"italic":false,"underline":false,"inverse":false,"dim":false,"underline_style":"None"},"hyperlink":null,"image":null},{"text":null,"style":{"fg":{"TrueColor":{"r":255,"g":128,"b":0}},"bg":"Default","bold":true,"italic":false,"underline":false,"inverse":false,"dim":false,"underline_style":"None"},"hyperlink":{"id":"link-1","url":"https://example.com"},"image":{"image_id":"img-1","columns":4,"rows":2}}]}],"cursor":{"row":0,"col":2,"visible":true},"title":"ssh: prod","working_directory":"/home/user","scrollback_start":0,"extensions":[{"name":"image.kitty.v1","payload":[1,2,3]},{"name":"future.unknown.v9","payload":[9]}]}"#;
+        let expected = r#"{"stream_id":7,"sequence":42,"rows":[{"cells":[{"text":"h","style":{"fg":"Default","bg":"Default","bold":false,"italic":false,"underline":false,"inverse":false,"dim":false,"underline_style":"None"},"hyperlink":null,"image":null,"wide_continuation":false},{"text":"i","style":{"fg":"Default","bg":"Default","bold":false,"italic":false,"underline":false,"inverse":false,"dim":false,"underline_style":"None"},"hyperlink":null,"image":null,"wide_continuation":false},{"text":null,"style":{"fg":{"TrueColor":{"r":255,"g":128,"b":0}},"bg":"Default","bold":true,"italic":false,"underline":false,"inverse":false,"dim":false,"underline_style":"None"},"hyperlink":{"id":"link-1","url":"https://example.com"},"image":{"image_id":"img-1","columns":4,"rows":2},"wide_continuation":false}]}],"cursor":{"row":0,"col":2,"visible":true},"title":"ssh: prod","working_directory":"/home/user","scrollback_start":0,"extensions":[{"name":"image.kitty.v1","payload":[1,2,3]},{"name":"future.unknown.v9","payload":[9]}]}"#;
         assert_eq!(json, expected, "golden JSON must be byte-for-byte stable");
         let decoded: TerminalSnapshot = serde_json::from_str(expected).expect("deserialize golden");
         assert_eq!(decoded, snapshot);
