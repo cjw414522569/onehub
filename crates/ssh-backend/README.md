@@ -147,3 +147,20 @@ the UI, channel-open codec round trips, wire confirmation (Enabled), wire
 rejection (Rejected), channel close (Disconnected), and an agent-frame
 round trip (REQUEST_IDENTITIES -> IDENTITIES_ANSWER) through the forwarded
 channel over a duplex stream.
+
+## T060: OpenSSH server version / OS / algorithm compatibility matrix
+
+| Model | Purpose |
+|---|---|
+| `ServerCombo` | Documented OpenSSH server combination: platform x OS x version x default kex/cipher/MAC/host-key offers. |
+| `check_combo` | Local, always-runnable check: T039 `negotiate_algorithm` against the server offers in every category. |
+| `ChosenAlgorithms` | Mutually acceptable kex/host-key/cipher/MAC by local preference. |
+| `run_compat_matrix` | Runs every combo; records live-server execution as `blocked_environment` on hosts without ssh/sshd/docker. |
+| `CompatMatrixReport` | Per-combo verdict + execution mode + platform coverage. |
+
+The matrix covers Linux (Ubuntu 24.04/9.6, Debian 12/9.2, RHEL 9/8.7), macOS
+14/9.4, Windows 10/11 in-box OpenSSH, FreeBSD 13.2/9.0 and OpenBSD 7.4/9.5,
+plus a legacy RHEL 6/5.3 SHA-1-only combo that is rejected under secure
+defaults and connects only with an explicit legacy policy. The full nightly
+live-server matrix (provisioned sshd across platforms) is `blocked_environment`
+on this host and is meant for CI.

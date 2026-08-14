@@ -13,6 +13,7 @@ pub mod agent_forwarding;
 pub mod algorithms;
 pub mod authentication;
 pub mod channel_qos;
+pub mod compat_matrix;
 pub mod connectivity;
 pub mod hardware_key;
 pub mod host_key_verify;
