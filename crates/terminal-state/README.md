@@ -64,6 +64,23 @@ surfaces the effective host for explicit open confirmation.
 `Modes` gained `mouse_mode`, `mouse_sgr`, `focus_events`, and
 `keyboard_protocol`; `set_mode` wires ?1000/?1002/?1003/?1004/?1006.
 
+## T069: configurable scrollback and disk dump policy
+
+`crates/terminal-state/src/scrollback.rs`:
+
+- `Scrollback` ? a bounded ring buffer (`VecDeque`) of rows scrolled off the
+  primary screen top. `max_lines` is explicit; the buffer never exceeds it
+  and `lines_dropped` counts evictions. A million-line benchmark stays within
+  the configured bound.
+- `ScrollbackConfig` ? configurable capacity (0 disables capture).
+- `ScrollbackDumpPolicy` ? disk dumps are **off by default**; `dump()` renders
+  a length-bounded text dump only when explicitly permitted.
+
+`ScreenModel` captures scrolled lines (primary screen only; the alternate
+screen has no scrollback), exposes `scrollback()`, `scrollback_len()`,
+`set_scrollback_config()`, `set_scrollback_dump_policy()`, `dump_scrollback()`,
+and reports `scrollback_start` in the snapshot.
+
 ## Verification
 
 ```text

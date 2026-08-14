@@ -18,6 +18,7 @@ use crate::hyperlink::HyperlinkPolicy;
 use crate::input::{KeyboardProtocol, MouseMode};
 use crate::osc::{Notification, OscPolicy};
 use crate::parser::{ParseBatch, ParseEvent, ParserDiagnostic};
+use crate::scrollback::{Scrollback, ScrollbackConfig, ScrollbackDumpPolicy};
 use crate::unicode::{grapheme_clusters, WidthPolicy};
 
 /// DEC/ANSI modes tracked by the model.
@@ -132,18 +133,32 @@ impl ScreenBuffer {
         &self.style
     }
 
-    fn linefeed(&mut self) {
+    fn linefeed(&mut self) -> Option<TerminalRow> {
         if self.cursor_row == self.scroll_bottom {
-            self.scroll_up(1);
-        } else if self.cursor_row + 1 < self.rows {
-            self.cursor_row += 1;
+            let scrolled = self.scroll_up(1);
+            self.pending_wrap = false;
+            scrolled
+        } else {
+            if self.cursor_row + 1 < self.rows {
+                self.cursor_row += 1;
+            }
+            self.pending_wrap = false;
+            None
         }
-        self.pending_wrap = false;
     }
 
     /// Scrolls the region up by `count` lines (text at the bottom clears).
-    fn scroll_up(&mut self, count: usize) {
+    /// Returns the row that scrolled off the screen top (when the region
+    /// starts at row 0) for scrollback capture.
+    fn scroll_up(&mut self, count: usize) -> Option<TerminalRow> {
         let count = count.min(self.scroll_bottom - self.scroll_top + 1);
+        let scrolled = if self.scroll_top == 0 {
+            Some(TerminalRow {
+                cells: std::mem::take(&mut self.cells[self.scroll_top]),
+            })
+        } else {
+            None
+        };
         for row in self.scroll_top..=self.scroll_bottom {
             let source = row + count;
             if source <= self.scroll_bottom {
@@ -153,6 +168,7 @@ impl ScreenBuffer {
             }
         }
         self.pending_wrap = false;
+        scrolled
     }
 
     /// Carriage return.
@@ -173,7 +189,12 @@ impl ScreenBuffer {
     /// A wide cluster (width 2 under the active [`WidthPolicy`]) occupies its
     /// cell plus a marked continuation cell; a zero-width cluster (a combining
     /// mark arriving on its own) merges into the cell before the cursor.
-    fn put_grapheme(&mut self, cluster: &str, modes: &Modes, policy: WidthPolicy) {
+    fn put_grapheme(
+        &mut self,
+        cluster: &str,
+        modes: &Modes,
+        policy: WidthPolicy,
+    ) -> Option<TerminalRow> {
         let width = policy.cluster_width(cluster);
         if width == 0 {
             if self.cursor_col > 0 {
@@ -181,10 +202,11 @@ impl ScreenBuffer {
                     prev.text.get_or_insert_with(String::new).push_str(cluster);
                 }
             }
-            return;
+            return None;
         }
+        let mut scrolled = None;
         if self.pending_wrap && modes.autowrap {
-            self.linefeed();
+            scrolled = self.linefeed();
             self.cursor_col = 0;
         }
         let row = self.cursor_row;
@@ -220,6 +242,7 @@ impl ScreenBuffer {
         } else {
             self.cursor_col = col + width;
         }
+        scrolled
     }
 
     /// Clears the cell at `(row, col)`; if it was the continuation half of a
@@ -293,19 +316,24 @@ impl ScreenBuffer {
     }
 
     /// Moves the cursor by a row/col delta, respecting the scroll region.
-    fn move_cursor(&mut self, row_delta: i16, col_delta: i16) {
+    /// Returns the row scrolled off the top (if any) for scrollback capture.
+    fn move_cursor(&mut self, row_delta: i16, col_delta: i16) -> Option<TerminalRow> {
         let row = self.cursor_row as i64 + row_delta as i64;
-        if row < 0 {
+        let scrolled = if row < 0 {
             self.cursor_row = 0;
+            None
         } else if row as usize > self.scroll_bottom {
             let overflow = row as usize - self.scroll_bottom;
-            self.scroll_up(overflow);
+            let scrolled = self.scroll_up(overflow);
             self.cursor_row = self.scroll_bottom;
+            scrolled
         } else {
             self.cursor_row = row as usize;
-        }
+            None
+        };
         let col = self.cursor_col as i64 + col_delta as i64;
         self.cursor_col = col.clamp(0, (self.cols as i64) - 1) as usize;
+        scrolled
     }
 
     /// Positions the cursor at 1-based `row`,`col` (origin mode maps to the
@@ -472,6 +500,9 @@ pub struct ScreenModel {
     notification: Option<Notification>,
     osc_policy: OscPolicy,
     hyperlink_policy: HyperlinkPolicy,
+    scrollback: Scrollback,
+    scrollback_config: ScrollbackConfig,
+    scrollback_dump_policy: ScrollbackDumpPolicy,
     stream_id: u64,
     sequence: u64,
     width_policy: WidthPolicy,
@@ -489,6 +520,9 @@ impl ScreenModel {
             notification: None,
             osc_policy: OscPolicy::default(),
             hyperlink_policy: HyperlinkPolicy::default(),
+            scrollback: Scrollback::new(ScrollbackConfig::default().max_lines),
+            scrollback_config: ScrollbackConfig::default(),
+            scrollback_dump_policy: ScrollbackDumpPolicy::default(),
             stream_id,
             sequence: 0,
             width_policy: WidthPolicy::default(),
@@ -574,6 +608,43 @@ impl ScreenModel {
         self.hyperlink_policy = policy;
     }
 
+    /// The scrollback ring buffer (primary screen only).
+    pub fn scrollback(&self) -> &Scrollback {
+        &self.scrollback
+    }
+
+    /// Number of retained scrollback lines.
+    pub fn scrollback_len(&self) -> usize {
+        self.scrollback.len()
+    }
+
+    /// The active scrollback configuration.
+    pub fn scrollback_config(&self) -> &ScrollbackConfig {
+        &self.scrollback_config
+    }
+
+    /// Sets the scrollback capacity; retained overflow is evicted.
+    pub fn set_scrollback_config(&mut self, config: ScrollbackConfig) {
+        self.scrollback_config = config;
+        self.scrollback.set_max_lines(config.max_lines);
+    }
+
+    /// The disk dump policy (off by default).
+    pub fn scrollback_dump_policy(&self) -> &ScrollbackDumpPolicy {
+        &self.scrollback_dump_policy
+    }
+
+    /// Sets the disk dump policy.
+    pub fn set_scrollback_dump_policy(&mut self, policy: ScrollbackDumpPolicy) {
+        self.scrollback_dump_policy = policy;
+    }
+
+    /// Renders a bounded text dump of the scrollback, or `None` when dumps
+    /// are not permitted.
+    pub fn dump_scrollback(&self, cols: usize) -> Option<String> {
+        self.scrollback_dump_policy.dump(&self.scrollback, cols)
+    }
+
     /// Resizes both buffers (preserving content where possible).
     pub fn resize(&mut self, rows: usize, cols: usize) {
         self.primary.resize(rows, cols);
@@ -599,11 +670,22 @@ impl ScreenModel {
         match event {
             ParseEvent::Text(text) => {
                 for cluster in grapheme_clusters(text) {
-                    buffer.put_grapheme(cluster, &self.modes, self.width_policy);
+                    if let Some(row) = buffer.put_grapheme(cluster, &self.modes, self.width_policy)
+                    {
+                        if !self.modes.alternate_screen {
+                            self.scrollback.push(row);
+                        }
+                    }
                 }
             }
             ParseEvent::CarriageReturn => buffer.carriage_return(),
-            ParseEvent::LineFeed => buffer.linefeed(),
+            ParseEvent::LineFeed => {
+                if let Some(row) = buffer.linefeed() {
+                    if !self.modes.alternate_screen {
+                        self.scrollback.push(row);
+                    }
+                }
+            }
             ParseEvent::Backspace => buffer.backspace(),
             ParseEvent::EraseDisplay { mode } => buffer.erase_display(*mode),
             ParseEvent::EraseLine { mode } => buffer.erase_line(*mode),
@@ -613,7 +695,13 @@ impl ScreenModel {
             ParseEvent::CursorMove {
                 row_delta,
                 col_delta,
-            } => buffer.move_cursor(*row_delta, *col_delta),
+            } => {
+                if let Some(row) = buffer.move_cursor(*row_delta, *col_delta) {
+                    if !self.modes.alternate_screen {
+                        self.scrollback.push(row);
+                    }
+                }
+            }
             ParseEvent::Sgr { params } => buffer.apply_sgr(params),
             ParseEvent::SetMode {
                 private_mode,
@@ -721,7 +809,7 @@ impl ScreenModel {
             },
             title: self.title.clone(),
             working_directory: self.working_directory.clone(),
-            scrollback_start: 0,
+            scrollback_start: self.scrollback.len() as u64,
             extensions: Vec::new(),
         }
     }
@@ -779,7 +867,9 @@ impl ScreenBuffer {
 mod tests {
     use core_protocol::terminal::TerminalColor;
 
-    use super::{Modes, MouseMode, OscPolicy, ScreenModel, UnderlineStyle, WidthPolicy};
+    use super::{
+        Modes, MouseMode, OscPolicy, ScreenModel, ScrollbackDumpPolicy, UnderlineStyle, WidthPolicy,
+    };
     use crate::parser::ParseEvent;
 
     fn model() -> ScreenModel {
@@ -1154,6 +1244,62 @@ mod tests {
         assert_eq!(model.modes().mouse_mode, MouseMode::Motion);
         model.apply_event(&set_mode(1003, false));
         assert_eq!(model.modes().mouse_mode, MouseMode::Off);
+    }
+
+    #[test]
+    fn scrollback_captures_scrolled_lines() {
+        let mut model = ScreenModel::new(7, 3, 4);
+        for i in 0..6u32 {
+            model.apply_event(&ParseEvent::CarriageReturn);
+            model.apply_event(&text(&format!("L{i}")));
+            model.apply_event(&ParseEvent::LineFeed);
+        }
+        // LFs at the bottom scroll 4 lines into the ring buffer.
+        assert_eq!(model.scrollback_len(), 4);
+        assert_eq!(model.snapshot().scrollback_start, 4);
+        // "L0" occupies cells[0..2]; the retained window is L0..=L3.
+        assert_eq!(
+            model.scrollback().get(0).unwrap().cells[0].text.as_deref(),
+            Some("L")
+        );
+        assert_eq!(
+            model.scrollback().get(0).unwrap().cells[1].text.as_deref(),
+            Some("0")
+        );
+        assert_eq!(
+            model.scrollback().get(3).unwrap().cells[1].text.as_deref(),
+            Some("3")
+        );
+    }
+
+    #[test]
+    fn alternate_screen_has_no_scrollback() {
+        let mut model = ScreenModel::new(7, 3, 4);
+        model.apply_event(&set_mode(1049, true));
+        for _ in 0..5 {
+            model.apply_event(&text("x"));
+            model.apply_event(&ParseEvent::LineFeed);
+        }
+        assert_eq!(model.scrollback_len(), 0);
+    }
+
+    #[test]
+    fn scrollback_dump_off_by_default() {
+        let mut model = ScreenModel::new(7, 3, 4);
+        for _ in 0..5 {
+            model.apply_event(&text("x"));
+            model.apply_event(&ParseEvent::LineFeed);
+        }
+        assert!(model.scrollback_len() > 0);
+        assert!(
+            model.dump_scrollback(4).is_none(),
+            "sensitive scrollback dumps must be off by default"
+        );
+        model.set_scrollback_dump_policy(ScrollbackDumpPolicy {
+            allow_dump: true,
+            max_bytes: 1024,
+        });
+        assert!(model.dump_scrollback(4).is_some());
     }
 
     #[test]
