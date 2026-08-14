@@ -177,3 +177,15 @@ livelock or unbounded memory growth fails the test and the failing input must
 be persisted back to the corpus. `run-fuzz-smoke.ps1` runs the core + SSH
 targets, accumulates CPU time via `-IterationsMultiplier` for the nightly
 budget, and archives the corpus under `artifacts/fuzz/corpus-archive/`.
+
+## T091: OpenSSH config / known_hosts / key-metadata importer
+
+`crates/ssh-backend/src/importer.rs`:
+
+- `parse_config` - parses OpenSSH `~/.ssh/config` (Host, HostName, User, Port,
+  IdentityFile, ProxyJump, Include, Match, ...) into per-line directives plus
+  warnings for unsupported directives.
+- `parse_known_hosts` - reports each known_hosts line (including hashed
+  `|1|salt|host|` entries).
+- `inspect_key` - reads only a private key's header and size and fingerprints
+  a public `.pub` sibling; the private key is **never copied**.

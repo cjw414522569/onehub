@@ -19,6 +19,7 @@ pub mod connectivity;
 mod fuzz;
 pub mod hardware_key;
 pub mod host_key_verify;
+pub mod importer;
 pub mod keepalive;
 pub mod known_hosts;
 pub mod private_key;
@@ -61,6 +62,10 @@ pub use hardware_key::{
 };
 pub use host_key_verify::{
     CaStore, HostCertificate, HostKeyFingerprint, HostKeyVerification, HostKeyVerifier,
+};
+pub use importer::{
+    inspect_key, parse_config, parse_known_hosts, ConfigParseResult, KeyMetadata, KnownHostsLine,
+    ParsedDirective,
 };
 pub use keepalive::{
     probe_with_timeout, run_reconnect_loop, KeepaliveConfig, LivenessProbe, MonitorState,
