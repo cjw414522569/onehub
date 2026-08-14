@@ -9,12 +9,14 @@
 //! segmentation used by the model (T064).
 
 pub mod color;
+pub mod hyperlink;
 pub mod osc;
 pub mod parser;
 pub mod screen;
 pub mod unicode;
 
 pub use color::{Palette, Rgb};
+pub use hyperlink::{effective_host, scheme_of, HyperlinkPolicy, HyperlinkReview};
 pub use osc::{Notification, OscPolicy};
 pub use parser::{ParseBatch, ParseEvent, ParserDiagnostic, TerminalParser};
 pub use screen::{Modes, ScreenBuffer, ScreenModel};

@@ -30,6 +30,12 @@ fn script() -> Vec<u8> {
     bytes.extend_from_slice(
         "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}".as_bytes(), // family emoji
     );
+    // T067 OSC 8 hyperlink: disable origin mode, position to row 8, attach a
+    // link to "click", then end it.
+    bytes.extend_from_slice("\x1b[?6l\x1b[8;1H\x1b[0m".as_bytes());
+    bytes.extend_from_slice("\x1b]8;id=doc;https://example.com/path\x07".as_bytes());
+    bytes.extend_from_slice("click".as_bytes());
+    bytes.extend_from_slice("\x1b]8;;\x07".as_bytes());
     bytes
 }
 

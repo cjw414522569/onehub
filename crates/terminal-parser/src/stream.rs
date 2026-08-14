@@ -429,6 +429,19 @@ fn parse_osc(payload: &[u8]) -> Option<ParseEvent> {
             summary: rest.to_owned(),
             body: String::new(),
         }),
+        "8" => {
+            // OSC 8;params;uri ? empty uri ends the hyperlink.
+            let mut parts = rest.splitn(2, ';');
+            let params = parts.next().unwrap_or_default();
+            let uri = parts.next().unwrap_or_default();
+            let id = params
+                .split(';')
+                .find_map(|p| p.strip_prefix("id=").map(str::to_owned));
+            Some(ParseEvent::Hyperlink {
+                id,
+                url: uri.to_owned(),
+            })
+        }
         "777" => {
             let mut parts = rest.splitn(3, ';');
             match (parts.next(), parts.next(), parts.next()) {
@@ -640,6 +653,30 @@ mod tests {
         assert_eq!(
             events,
             vec![ParseEvent::Text("ok".to_owned()), ParseEvent::LineFeed]
+        );
+    }
+
+    #[test]
+    fn osc8_hyperlink_parsing() {
+        let mut parser = BoundedByteStreamParser::new();
+        let (events, diags) = collect(
+            &mut parser,
+            b"\x1b]8;id=link-1;https://example.com/path\x07link\x1b]8;;\x07",
+        );
+        assert!(diags.is_empty());
+        assert_eq!(
+            events,
+            vec![
+                ParseEvent::Hyperlink {
+                    id: Some("link-1".to_owned()),
+                    url: "https://example.com/path".to_owned(),
+                },
+                ParseEvent::Text("link".to_owned()),
+                ParseEvent::Hyperlink {
+                    id: None,
+                    url: String::new(),
+                },
+            ]
         );
     }
 

@@ -2273,7 +2273,7 @@
     {
       "cells": [
         {
-          "text": null,
+          "text": "c",
           "style": {
             "fg": "Default",
             "bg": "Default",
@@ -2284,12 +2284,15 @@
             "dim": false,
             "underline_style": "None"
           },
-          "hyperlink": null,
+          "hyperlink": {
+            "id": "doc",
+            "url": "https://example.com/path"
+          },
           "image": null,
           "wide_continuation": false
         },
         {
-          "text": null,
+          "text": "l",
           "style": {
             "fg": "Default",
             "bg": "Default",
@@ -2300,12 +2303,15 @@
             "dim": false,
             "underline_style": "None"
           },
-          "hyperlink": null,
+          "hyperlink": {
+            "id": "doc",
+            "url": "https://example.com/path"
+          },
           "image": null,
           "wide_continuation": false
         },
         {
-          "text": null,
+          "text": "i",
           "style": {
             "fg": "Default",
             "bg": "Default",
@@ -2316,12 +2322,15 @@
             "dim": false,
             "underline_style": "None"
           },
-          "hyperlink": null,
+          "hyperlink": {
+            "id": "doc",
+            "url": "https://example.com/path"
+          },
           "image": null,
           "wide_continuation": false
         },
         {
-          "text": null,
+          "text": "c",
           "style": {
             "fg": "Default",
             "bg": "Default",
@@ -2332,12 +2341,15 @@
             "dim": false,
             "underline_style": "None"
           },
-          "hyperlink": null,
+          "hyperlink": {
+            "id": "doc",
+            "url": "https://example.com/path"
+          },
           "image": null,
           "wide_continuation": false
         },
         {
-          "text": null,
+          "text": "k",
           "style": {
             "fg": "Default",
             "bg": "Default",
@@ -2348,7 +2360,10 @@
             "dim": false,
             "underline_style": "None"
           },
-          "hyperlink": null,
+          "hyperlink": {
+            "id": "doc",
+            "url": "https://example.com/path"
+          },
           "image": null,
           "wide_continuation": false
         },
@@ -2596,7 +2611,7 @@
     }
   ],
   "cursor": {
-    "row": 4,
+    "row": 7,
     "col": 5,
     "visible": true
   },

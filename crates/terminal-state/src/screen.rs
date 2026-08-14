@@ -10,10 +10,11 @@
 //! is exposed as a [`TerminalSnapshot`] for the renderer.
 
 use core_protocol::terminal::{
-    CursorState, TerminalCell, TerminalColor, TerminalRow, TerminalSnapshot, TerminalStyle,
-    UnderlineStyle,
+    CursorState, Hyperlink, TerminalCell, TerminalColor, TerminalRow, TerminalSnapshot,
+    TerminalStyle, UnderlineStyle,
 };
 
+use crate::hyperlink::HyperlinkPolicy;
 use crate::osc::{Notification, OscPolicy};
 use crate::parser::{ParseBatch, ParseEvent, ParserDiagnostic};
 use crate::unicode::{grapheme_clusters, WidthPolicy};
@@ -74,6 +75,7 @@ pub struct ScreenBuffer {
     scroll_bottom: usize,
     style: TerminalStyle,
     pending_wrap: bool,
+    current_hyperlink: Option<Hyperlink>,
 }
 
 impl ScreenBuffer {
@@ -91,6 +93,7 @@ impl ScreenBuffer {
             scroll_bottom: rows.saturating_sub(1),
             style: TerminalStyle::default(),
             pending_wrap: false,
+            current_hyperlink: None,
         }
     }
 
@@ -188,11 +191,14 @@ impl ScreenBuffer {
         if row < self.rows && col < self.cols {
             let mut cell = TerminalCell::cluster(cluster);
             cell.style = self.style.clone();
+            cell.hyperlink = self.current_hyperlink.clone();
             self.cells[row][col] = cell;
             if width >= 2 {
                 let end = (col + width).min(self.cols);
                 for cont in (col + 1)..end {
-                    self.cells[row][cont] = TerminalCell::wide_continuation(self.style.clone());
+                    let mut continuation = TerminalCell::wide_continuation(self.style.clone());
+                    continuation.hyperlink = self.current_hyperlink.clone();
+                    self.cells[row][cont] = continuation;
                 }
             }
         }
@@ -217,6 +223,16 @@ impl ScreenBuffer {
             self.cells[row][col - 1] = TerminalCell::empty();
         }
         self.cells[row][col] = TerminalCell::empty();
+    }
+
+    /// Sets the active hyperlink; subsequent cells carry it.
+    fn set_hyperlink(&mut self, hyperlink: Hyperlink) {
+        self.current_hyperlink = Some(hyperlink);
+    }
+
+    /// Ends the active hyperlink (OSC 8 with an empty URI).
+    fn clear_hyperlink(&mut self) {
+        self.current_hyperlink = None;
     }
 
     /// Erase display: 0 cursor->end, 1 start->cursor, 2 all, 3 all (+scrollback
@@ -445,6 +461,7 @@ pub struct ScreenModel {
     working_directory: Option<String>,
     notification: Option<Notification>,
     osc_policy: OscPolicy,
+    hyperlink_policy: HyperlinkPolicy,
     stream_id: u64,
     sequence: u64,
     width_policy: WidthPolicy,
@@ -461,6 +478,7 @@ impl ScreenModel {
             working_directory: None,
             notification: None,
             osc_policy: OscPolicy::default(),
+            hyperlink_policy: HyperlinkPolicy::default(),
             stream_id,
             sequence: 0,
             width_policy: WidthPolicy::default(),
@@ -536,6 +554,16 @@ impl ScreenModel {
         self.osc_policy = policy;
     }
 
+    /// The active hyperlink policy.
+    pub fn hyperlink_policy(&self) -> &HyperlinkPolicy {
+        &self.hyperlink_policy
+    }
+
+    /// Sets the hyperlink policy (scheme whitelist + length cap).
+    pub fn set_hyperlink_policy(&mut self, policy: HyperlinkPolicy) {
+        self.hyperlink_policy = policy;
+    }
+
     /// Resizes both buffers (preserving content where possible).
     pub fn resize(&mut self, rows: usize, cols: usize) {
         self.primary.resize(rows, cols);
@@ -597,6 +625,16 @@ impl ScreenModel {
             }
             ParseEvent::Notification { summary, body } => {
                 self.notification = self.osc_policy.sanitize_notification(summary, body);
+            }
+            ParseEvent::Hyperlink { id, url } => {
+                if url.is_empty() {
+                    buffer.clear_hyperlink();
+                } else if self.hyperlink_policy.can_open(url) {
+                    buffer.set_hyperlink(Hyperlink {
+                        id: id.clone(),
+                        url: url.clone(),
+                    });
+                }
             }
         }
     }
@@ -1031,6 +1069,44 @@ mod tests {
         model.set_osc_policy(policy);
         model.apply_event(&ParseEvent::Title("evil".to_owned()));
         assert_eq!(model.title(), Some("a]0;bc"));
+    }
+
+    #[test]
+    fn osc8_hyperlink_attaches_and_clears() {
+        let mut model = model();
+        model.apply_event(&ParseEvent::Hyperlink {
+            id: Some("l1".to_owned()),
+            url: "https://example.com/path".to_owned(),
+        });
+        model.apply_event(&text("ab"));
+        let row = &model.snapshot().rows[0].cells;
+        assert_eq!(
+            row[0].hyperlink.as_ref().map(|h| h.url.as_str()),
+            Some("https://example.com/path")
+        );
+        assert_eq!(
+            row[0].hyperlink.as_ref().and_then(|h| h.id.as_deref()),
+            Some("l1")
+        );
+        assert!(row[1].hyperlink.is_some());
+        // Empty URI ends the hyperlink.
+        model.apply_event(&ParseEvent::Hyperlink {
+            id: None,
+            url: String::new(),
+        });
+        model.apply_event(&text("c"));
+        assert!(model.snapshot().rows[0].cells[2].hyperlink.is_none());
+    }
+
+    #[test]
+    fn osc8_dangerous_scheme_is_ignored() {
+        let mut model = model();
+        model.apply_event(&ParseEvent::Hyperlink {
+            id: None,
+            url: "javascript:alert(1)".to_owned(),
+        });
+        model.apply_event(&text("x"));
+        assert!(model.snapshot().rows[0].cells[0].hyperlink.is_none());
     }
 
     #[test]

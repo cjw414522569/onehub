@@ -40,6 +40,9 @@ pub enum ParseEvent {
     /// `OSC 9;summary BEL/ST` or `OSC 777;notify;summary;body BEL/ST` ?
     /// desktop notification request (policy-gated downstream).
     Notification { summary: String, body: String },
+    /// `OSC 8;params;uri BEL/ST` ? hyperlink; an empty `uri` ends the active
+    /// hyperlink (policy-gated downstream).
+    Hyperlink { id: Option<String>, url: String },
 }
 
 /// A structured parser diagnostic (stable code, no secret context).
