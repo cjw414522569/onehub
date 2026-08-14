@@ -1,0 +1,34 @@
+{
+  "corpus": [
+    {
+      "app": "vim",
+      "file": "tests/compat_replay.rs::vim_replay",
+      "coverage": "alternate screen, tilde markers, reverse-video status line"
+    },
+    {
+      "app": "tmux",
+      "file": "tests/compat_replay.rs::tmux_replay",
+      "coverage": "alternate screen, pane status line"
+    },
+    {
+      "app": "screen",
+      "file": "tests/compat_replay.rs::screen_replay",
+      "coverage": "hardstatus window list, active-window marker"
+    },
+    {
+      "app": "htop",
+      "file": "tests/compat_replay.rs::htop_replay",
+      "coverage": "alternate screen, box-drawing borders, header"
+    },
+    {
+      "app": "fzf",
+      "file": "tests/compat_replay.rs::fzf_replay",
+      "coverage": "alternate screen, hidden cursor, highlighted match"
+    },
+    {
+      "app": "lazygit",
+      "file": "tests/compat_replay.rs::lazygit_replay",
+      "coverage": "alternate screen, colored header, Unicode border"
+    }
+  ]
+}

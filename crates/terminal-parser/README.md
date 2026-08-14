@@ -34,6 +34,15 @@ directory, CJK / combining / emoji, and an OSC 8 hyperlink) against
 `Vec<Vec<u16>>` (e.g. `4:2` = `[[4, 2]]` double underline).
 `tests/golden/color-matrix.json` is a deterministic color golden.
 
+## T082: recorded-replay compatibility regression set
+
+`tests/compat_replay.rs` + `tests/compat-corpus.json` replay recorded vim /
+tmux / screen / htop / fzf / lazygit interaction scripts through the parser
+into `ScreenModel` and assert the expected markers (alternate screen, status
+lines, box-drawing borders, highlights) with clean diagnostics. The full
+interactive vttest / esctest suites and live TUI sessions require a real
+PTY/terminal and are `blocked_environment` on CI hosts without one.
+
 ## T066/T067: OSC handling
 
 `parse_osc` maps OSC 0/2 -> Title, OSC 7 -> WorkingDirectory, OSC 8 ->
