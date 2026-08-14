@@ -15,6 +15,7 @@ use core_protocol::terminal::{
 };
 
 use crate::hyperlink::HyperlinkPolicy;
+use crate::input::{KeyboardProtocol, MouseMode};
 use crate::osc::{Notification, OscPolicy};
 use crate::parser::{ParseBatch, ParseEvent, ParserDiagnostic};
 use crate::unicode::{grapheme_clusters, WidthPolicy};
@@ -38,8 +39,14 @@ pub struct Modes {
     pub bracketed_paste: bool,
     /// ?5 — reverse video.
     pub reverse_video: bool,
-    /// ?1000 — mouse tracking.
-    pub mouse_tracking: bool,
+    /// ?1000/?1002/?1003 — mouse tracking mode.
+    pub mouse_mode: MouseMode,
+    /// ?1006 — SGR mouse coordinate encoding.
+    pub mouse_sgr: bool,
+    /// ?1004 — focus events.
+    pub focus_events: bool,
+    /// Negotiated keyboard protocol (xterm / modifyOtherKeys / kitty).
+    pub keyboard_protocol: KeyboardProtocol,
     /// ?47 / ?1049 — alternate screen active.
     pub alternate_screen: bool,
 }
@@ -55,7 +62,10 @@ impl Default for Modes {
             cursor_visible: true,
             bracketed_paste: false,
             reverse_video: false,
-            mouse_tracking: false,
+            mouse_mode: MouseMode::Off,
+            mouse_sgr: false,
+            focus_events: false,
+            keyboard_protocol: KeyboardProtocol::Xterm,
             alternate_screen: false,
         }
     }
@@ -653,7 +663,29 @@ impl ScreenModel {
             25 => self.modes.cursor_visible = enabled,
             47 => self.modes.alternate_screen = enabled,
             66 => self.modes.app_keypad = enabled,
-            1000 => self.modes.mouse_tracking = enabled,
+            1000 => {
+                self.modes.mouse_mode = if enabled {
+                    MouseMode::Buttons
+                } else {
+                    MouseMode::Off
+                };
+            }
+            1002 => {
+                self.modes.mouse_mode = if enabled {
+                    MouseMode::Drag
+                } else {
+                    MouseMode::Off
+                };
+            }
+            1003 => {
+                self.modes.mouse_mode = if enabled {
+                    MouseMode::Motion
+                } else {
+                    MouseMode::Off
+                };
+            }
+            1004 => self.modes.focus_events = enabled,
+            1006 => self.modes.mouse_sgr = enabled,
             2004 => self.modes.bracketed_paste = enabled,
             1049 => {
                 if enabled {
@@ -747,7 +779,7 @@ impl ScreenBuffer {
 mod tests {
     use core_protocol::terminal::TerminalColor;
 
-    use super::{Modes, OscPolicy, ScreenModel, UnderlineStyle, WidthPolicy};
+    use super::{Modes, MouseMode, OscPolicy, ScreenModel, UnderlineStyle, WidthPolicy};
     use crate::parser::ParseEvent;
 
     fn model() -> ScreenModel {
@@ -1107,6 +1139,21 @@ mod tests {
         });
         model.apply_event(&text("x"));
         assert!(model.snapshot().rows[0].cells[0].hyperlink.is_none());
+    }
+
+    #[test]
+    fn input_protocol_modes_wire() {
+        let mut model = model();
+        model.apply_event(&set_mode(1004, true));
+        model.apply_event(&set_mode(1000, true));
+        model.apply_event(&set_mode(1006, true));
+        assert!(model.modes().focus_events);
+        assert_eq!(model.modes().mouse_mode, MouseMode::Buttons);
+        assert!(model.modes().mouse_sgr);
+        model.apply_event(&set_mode(1003, true));
+        assert_eq!(model.modes().mouse_mode, MouseMode::Motion);
+        model.apply_event(&set_mode(1003, false));
+        assert_eq!(model.modes().mouse_mode, MouseMode::Off);
     }
 
     #[test]
