@@ -21,7 +21,7 @@ session-orchestrator = { path = "../session-orchestrator" }
 sha1 = "0.10"
 sha2 = "0.10"
 ssh-key = { version = "0.6", features = ["encryption", "crypto", "getrandom"] }
-tokio = { version = "1", features = ["net", "time", "rt", "macros", "sync"] }
+tokio = { version = "1", features = ["net", "time", "rt", "macros", "sync", "io-util"] }
 
 [dev-dependencies]
 rand = "0.8"

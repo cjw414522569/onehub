@@ -131,3 +131,19 @@ node scripts/test-session-channel.mjs .
 node scripts/test-channel-qos.mjs .
 node scripts/test-proxy-jump.mjs .
 ```
+
+## T055: agent forwarding (off by default)
+
+| Model | Purpose |
+|---|---|
+| `AgentForwardController` | Off by default; explicit per-session authorization; revoke. |
+| `AgentForwardRisk` | UI risk notice (`AGENT_FORWARD_RISK`) requiring confirmation. |
+| `AgentForwardState` | Disabled / Authorized / Rejected / Closed. |
+| `AgentForwardOutcome` | Enabled / Rejected { reason } / Disconnected. |
+| `AgentForwardTransport` | Opens the `auth-agent@openssh.com` channel (RFC 4254), forwards agent frames (T045 codec), observes close. |
+
+Tests: off by default, per-session authorization isolation, risk notice for
+the UI, channel-open codec round trips, wire confirmation (Enabled), wire
+rejection (Rejected), channel close (Disconnected), and an agent-frame
+round trip (REQUEST_IDENTITIES -> IDENTITIES_ANSWER) through the forwarded
+channel over a duplex stream.

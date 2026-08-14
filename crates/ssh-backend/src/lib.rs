@@ -9,6 +9,7 @@
 //! a fake transport.
 
 pub mod agent;
+pub mod agent_forwarding;
 pub mod algorithms;
 pub mod authentication;
 pub mod channel_qos;
@@ -26,6 +27,14 @@ pub mod user_certificate;
 pub use agent::{
     frame_message, parse_frame, AgentClient, AgentError, AgentIdentity, AgentStream,
     FakeAgentServer, AGENT_MAX_MESSAGE_LEN, SSH_AGENT_CONSTRAIN_CONFIRM,
+};
+pub use agent_forwarding::{
+    decode_agent_channel_open, encode_agent_channel_open, encode_channel_close,
+    encode_channel_open_confirmation, encode_channel_open_failure, AgentForwardController,
+    AgentForwardError, AgentForwardOutcome, AgentForwardPeer, AgentForwardRisk, AgentForwardState,
+    AgentForwardTransport, AGENT_FORWARD_CHANNEL_TYPE, AGENT_FORWARD_RISK_CODE,
+    SSH_MSG_CHANNEL_CLOSE, SSH_MSG_CHANNEL_OPEN, SSH_MSG_CHANNEL_OPEN_CONFIRMATION,
+    SSH_MSG_CHANNEL_OPEN_FAILURE,
 };
 pub use algorithms::{
     negotiate_algorithm, Algorithm, AlgorithmKind, AlgorithmPolicy, AlgorithmSecurity,
