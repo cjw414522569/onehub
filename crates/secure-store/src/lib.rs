@@ -6,8 +6,13 @@
 //! Platform secure-storage adapter (T085): the SecureStore contract and the
 //! Windows adapter targeting Credential Manager / DPAPI.
 
+pub mod apple;
 pub mod store;
 
+pub use apple::{
+    migrate_keychain, AccessControl, AccessPolicy, AppleKeychainStore, Biometrics,
+    MemoryKeychainStore, MigrationOutcome,
+};
 pub use store::{
     MemorySecureStore, ProtectionMechanism, SecureStore, StoreError, SystemCredentialBackend,
     WindowsSecureStore,
