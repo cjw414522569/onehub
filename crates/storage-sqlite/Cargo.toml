@@ -11,4 +11,6 @@ path = "src/lib.rs"
 [dependencies]
 chacha20poly1305 = "0.10"
 core-domain = { path = "../core-domain" }
+getrandom = "0.2"
+scrypt = "0.11"
 core-protocol = { path = "../core-protocol" }

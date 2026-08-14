@@ -275,7 +275,9 @@
       "external_imports": [
         "sqlite",
         "sqlx",
-        "chacha20poly1305"
+        "chacha20poly1305",
+        "scrypt",
+        "getrandom"
       ]
     },
     {

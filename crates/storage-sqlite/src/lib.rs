@@ -6,10 +6,15 @@
 //! SQLite persistence adapter: schema versioning, migration, backup, and
 //! downgrade policy (T083).
 
+pub mod backup;
 pub mod crypto;
 pub mod migration;
 pub mod repository;
 
+pub use backup::{
+    decrypt_backup, encrypt_backup, random_salt, BackupArchive, BackupError, ExportScope,
+    KdfParams, BACKUP_VERSION,
+};
 pub use crypto::{
     reencrypt, EncryptedField, FieldEncryptor, KeyRing, MasterKeyWrapper, AEAD_VERSION,
 };

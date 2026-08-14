@@ -48,3 +48,16 @@ preserved); the domain layer never depends on SQL.
   for recovery.
 
 Tampering, rotation, and recovery are verified by tests.
+
+## T090: secure import/export and encrypted backup format
+
+`crates/storage-sqlite/src/backup.rs`:
+
+- `BackupArchive` - a versioned (BACKUP_VERSION=1), password-encrypted backup
+  with an explicit `ExportScope` (which categories are included).
+- `KdfParams` - scrypt parameters (salt, log_n>=15, r>=8, p>=1); `random_salt`
+  uses getrandom.
+- `encrypt_backup` / `decrypt_backup` - ChaCha20-Poly1305 under the derived
+  key; a wrong passphrase yields `BadPassphrase`.
+
+Round-trip and wrong-passphrase behavior are verified by tests.
