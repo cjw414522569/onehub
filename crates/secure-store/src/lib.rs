@@ -8,6 +8,7 @@
 
 pub mod android;
 pub mod apple;
+pub mod erasure;
 pub mod linux;
 pub mod store;
 
@@ -18,6 +19,10 @@ pub use android::{
 pub use apple::{
     migrate_keychain, AccessControl, AccessPolicy, AppleKeychainStore, Biometrics,
     MemoryKeychainStore, MigrationOutcome,
+};
+pub use erasure::{
+    forensic_scan, BackupStore, CryptoErasure, DataStore, ErasurePlan, ErasureReport, ErasureScope,
+    MemoryBackupStore, MemoryDataStore, ACCOUNT_SECRET_PREFIX,
 };
 pub use linux::{
     detect_environment, FallbackPolicy, LinuxSecretStore, MemoryLinuxStore, SecretEnvironment,

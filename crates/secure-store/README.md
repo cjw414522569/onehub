@@ -61,3 +61,25 @@ deterministically.
 Real keyring containers (with/without a Secret Service) are
 `blocked_environment` on this host; the environment and no-plaintext contract
 is verified deterministically.
+
+
+## T096: local data deletion, account sign-out, and cryptographic erasure
+
+`crates/secure-store/src/erasure.rs`:
+
+- `CryptoErasure::plan` - computes the exact `ErasurePlan` (secret names,
+  local-data keys, backup archives) for a user-selected `ErasureScope`
+  *before* mutating anything, so the user can confirm the scope.
+- `ErasureScope` - `Account` (sign-out: clears `account:*` sync secrets),
+  `LocalData`, `Backups`, or `Everything` (full wipe).
+- `CryptoErasure::erase` - removes exactly the confirmed items and returns an
+  `ErasureReport` (counts erased).
+- `forensic_scan` - the post-deletion forensic check: re-reads every store and
+  reports any remaining occurrence of known plaintext markers / secret names
+  (empty = nothing recoverable left).
+- `DataStore` / `BackupStore` - generic local-data and backup-archive
+  contracts with deterministic `MemoryDataStore` / `MemoryBackupStore`
+  doubles.
+
+`SecureStore` gained `names()` (default empty; `MemorySecureStore` enumerates
+its keys) so erasure and forensic scans can enumerate secrets.

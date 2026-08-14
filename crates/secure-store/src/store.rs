@@ -42,6 +42,11 @@ pub trait SecureStore {
     /// Whether secrets are currently accessible (lock screen / account
     /// switch may make them unavailable).
     fn is_available(&self) -> bool;
+    /// Names of all stored secrets, for erasure and forensic scans. Stores
+    /// that cannot enumerate their contents report an empty list.
+    fn names(&self) -> Vec<String> {
+        Vec::new()
+    }
 }
 
 /// A deterministic in-memory store that models lock-screen / account-switch
@@ -94,6 +99,12 @@ impl SecureStore for MemorySecureStore {
     fn is_available(&self) -> bool {
         self.available
     }
+
+    fn names(&self) -> Vec<String> {
+        let mut names: Vec<String> = self.secrets.keys().cloned().collect();
+        names.sort();
+        names
+    }
 }
 
 /// The Windows secure-storage adapter.
@@ -141,6 +152,10 @@ impl SecureStore for WindowsSecureStore {
 
     fn is_available(&self) -> bool {
         self.backend.is_available()
+    }
+
+    fn names(&self) -> Vec<String> {
+        self.backend.names()
     }
 }
 
