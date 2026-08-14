@@ -19,6 +19,7 @@ pub mod screen;
 pub mod scrollback;
 pub mod search;
 pub mod selection;
+pub mod shape;
 pub mod unicode;
 
 pub use color::{Palette, Rgb};
@@ -35,6 +36,7 @@ pub use screen::{remap_point, Modes, ReflowInfo, ScreenBuffer, ScreenModel};
 pub use scrollback::{Scrollback, ScrollbackConfig, ScrollbackDumpPolicy};
 pub use search::{SearchBuffer, SearchNavigation, SearchQuery, SearchResult, SearchSession};
 pub use selection::{cell_selection_text, is_word_char, word_bounds, Selection, SelectionMode};
+pub use shape::{cells_align, grid_fit, shape_run, LigaturePolicy, ShapedGlyph};
 pub use unicode::{grapheme_clusters, WidthPolicy, UNICODE_VERSION};
 
 /// Module identity used by diagnostics and architecture tooling.

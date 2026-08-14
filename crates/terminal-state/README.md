@@ -154,6 +154,24 @@ property tests.
   predictably. The cross-platform screenshot coverage matrix requires a real
   renderer/GPU and is `blocked_environment` on CI hosts without one.
 
+## T075: glyph shaping, ligature toggle, cell alignment
+
+`crates/terminal-state/src/shape.rs`:
+
+- `LigaturePolicy` ? enable/disable ligature merging.
+- `shape_run(text, policy, ligatures)` ? segments into grapheme clusters and
+  produces `ShapedGlyph` entries with grid-cell footprints; known programming
+  ligature sequences (`->`, `=>`, `!=`, ...) merge into one glyph that spans
+  the same cells.
+- `cells_align` ? verifies the grid invariant: total glyph cells equal the
+  text's display width and no glyph spans fewer cells than its width.
+- `grid_fit(advance, cell)` ? ceil-maps a shaped advance to whole cells so a
+  glyph never overflows its footprint.
+
+HarfBuzz screenshot validation (programming ligatures / CJK / RTL) requires a
+real renderer and is `blocked_environment` on CI hosts without one; the grid
+semantics are verified deterministically by unit tests.
+
 ## Verification
 
 ```text
