@@ -14,3 +14,6 @@ policy-engine = { path = "../../crates/policy-engine" }
 storage-sqlite = { path = "../../crates/storage-sqlite" }
 sync-core = { path = "../../crates/sync-core" }
 
+
+[dev-dependencies]
+secure-store = { path = "../../crates/secure-store" }

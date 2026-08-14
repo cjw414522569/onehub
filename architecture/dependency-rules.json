@@ -186,7 +186,8 @@
       ],
       "external_imports": [
         "crypto-traits",
-        "chacha20poly1305"
+        "chacha20poly1305",
+        "getrandom"
       ]
     },
     {

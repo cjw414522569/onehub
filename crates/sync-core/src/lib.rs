@@ -7,9 +7,15 @@
 //! end-to-end encrypted sync protocol design (T092).
 
 pub mod crdt;
+pub mod device_lifecycle;
 pub mod sync_protocol;
 
 pub use crdt::{converge, CrdtEntry, CrdtState, LamportClock, ReplicaId};
+pub use device_lifecycle::{
+    unwrap_data_key, wrap_data_key, DataKey, Device, DeviceKey, DeviceRecord, KeyManager,
+    LifecycleError, PairingCode, RecoveryCode, RotatedKeys, DATA_KEY_LEN, DEVICE_KEY_LEN,
+    PAIRING_CODE_LEN, RECOVERY_CODE_LEN,
+};
 pub use sync_protocol::{
     decrypt_envelope, encrypt_envelope, DeviceIdentity, RevocationList, RotateKey, SyncEnvelope,
     TestVector, ThreatModel, SYNC_PROTOCOL_VERSION,
