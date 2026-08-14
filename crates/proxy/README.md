@@ -20,3 +20,18 @@
 The compatibility matrix (protocol x auth x DNS policy x address family x
 timeout x reply codes) runs as an integration test over loopback TCP with
 in-process test servers.
+
+## T054: dynamic SOCKS5 forwarding
+
+| Model | Purpose |
+|---|---|
+| `AccessPolicy` | AllowAll / LoopbackOnly / Allowlist for anti-proxy-abuse. |
+| `DynamicSocksConfig` | Listen address, access policy, optional RFC 1929 auth, connection cap, handshake timeout. |
+| `DynamicSocksServer` | SOCKS5 server reusing the T051 codec: method negotiation, CONNECT (IPv4/IPv6/domain), policy, forward via `TargetConnector`. |
+| `REP_NOT_ALLOWED` | Reply code 0x02 for policy denials. |
+
+Conformance matrix over loopback: IPv4 / domain / IPv6 CONNECT targets all
+echo through the server, allowlist and loopback-only policies deny with
+`REP_NOT_ALLOWED`, required auth accepts/rejects, unreachable targets reply
+connection refused, idle clients are closed after the handshake timeout, and
+bind failures are reported.

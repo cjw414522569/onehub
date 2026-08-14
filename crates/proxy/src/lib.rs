@@ -8,9 +8,13 @@
 //! policy, IPv6, timeouts) runs over real loopback sockets and the wire format
 //! stays auditable.
 
+pub mod dynamic;
 pub mod http_connect;
 pub mod socks5;
 
+pub use dynamic::{
+    AccessPolicy, DynamicSocksConfig, DynamicSocksError, DynamicSocksServer, REP_NOT_ALLOWED,
+};
 pub use http_connect::{
     build_connect_request, http_connect, parse_status_code, HttpConnectConfig, MAX_HEADER_BYTES,
 };
