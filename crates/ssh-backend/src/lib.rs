@@ -15,6 +15,8 @@ pub mod authentication;
 pub mod channel_qos;
 pub mod compat_matrix;
 pub mod connectivity;
+#[cfg(test)]
+mod fuzz;
 pub mod hardware_key;
 pub mod host_key_verify;
 pub mod keepalive;

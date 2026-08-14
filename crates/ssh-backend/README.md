@@ -164,3 +164,16 @@ plus a legacy RHEL 6/5.3 SHA-1-only combo that is rejected under secure
 defaults and connects only with an explicit legacy policy. The full nightly
 live-server matrix (provisioned sshd across platforms) is `blocked_environment`
 on this host and is meant for CI.
+
+## T061: continuous fuzzing of SSH decoders, auth messages, channel data
+
+`src/fuzz.rs` (test-only) adds deterministic, bounded fuzz targets over the
+SSH wire surface: agent frame parsing (`parse_frame`, size-bounded),
+auth-agent channel-open decoding, known_hosts host/hashed/wildcard matching,
+QoS scheduler op sequences (no panic / no livelock / bounded queues), session
+channel validators, and random `|1|salt|hash|` fields. Each target uses a
+fixed seed from `fuzz/smoke-corpus.json`; any panic, out-of-bounds access,
+livelock or unbounded memory growth fails the test and the failing input must
+be persisted back to the corpus. `run-fuzz-smoke.ps1` runs the core + SSH
+targets, accumulates CPU time via `-IterationsMultiplier` for the nightly
+budget, and archives the corpus under `artifacts/fuzz/corpus-archive/`.

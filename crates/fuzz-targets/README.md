@@ -19,3 +19,11 @@ Each target in `fuzz/smoke-corpus.json` runs with a fixed seed and iteration bud
 | `fuzz_command_resolution` | resolution never panics; sensitivity boolean consistent. |
 
 Run via `scripts/run-fuzz-smoke.ps1` (time-limited). Crash inputs must be added back to the corpus for regression.
+
+## T061
+
+SSH-decoder fuzz targets live in `crates/ssh-backend/src/fuzz.rs`
+(test-only) because `fuzz-targets` (L1) must not depend on `ssh-backend`
+(L2) per the layer rules. The corpus (`fuzz/smoke-corpus.json`) declares
+both the core targets here and the SSH targets; `run-fuzz-smoke.ps1` runs
+both and archives the corpus.
