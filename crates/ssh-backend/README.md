@@ -74,6 +74,25 @@ Fault-injection tests use scripted probes (flaky / always-dead / hanging): a fla
 Both drivers propagate the final exit status (code or signal) and reject empty
 TERM / empty command at construction. Tests cover the multi-shell TERM matrix,
 resize propagation, nonzero/signal exit status, and input validation.
+
+## T049: multi-channel fair scheduling and flow-window management
+
+| Model | Purpose |
+|---|---|
+| `TrafficClass` | Control / Interactive / Bulk classification with priority rank. |
+| `FlowWindow` | Per-channel SSH send window (RFC 4254 5.2): consume on send, replenish on peer `WINDOW_ADJUST`, capped at `max_window`. |
+| `QosError` | Unknown/duplicate channel, window-exceeded, invalid config (no secret context). |
+| `SchedulerConfig` | Bulk DRR quantum, interactive quantum, round budget, initial/max window, max packet. |
+| `Scheduler` | Strict priority (Control, then Interactive, then Bulk DRR), deterministic id order, budget-bounded `drain`, per-channel snapshot. |
+| `ScheduledSend` / `ChannelSnapshot` / `SchedulerSnapshot` | Authorized sends and visible per-channel state for QoS benchmarks. |
+
+Guarantees verified by tests: interactive bytes are always scheduled in the same
+`drain` they are enqueued (zero waiting rounds behind bulk data); bulk channels
+share via deficit round robin with no starvation; a full flow window blocks a
+channel until `window_adjust` arrives; window adjusts are capped; round budget
+bounds each drain. The acceptance benchmark runs one interactive terminal + two
+SFTP transfers + two port-forward streams and asserts interactive latency 0,
+per-round bulk progress, and full 8 MiB/channel completion under flow control.
 ## Validation
 
 ```text
@@ -91,4 +110,5 @@ node scripts/test-agent.mjs .
 node scripts/test-hardware-key.mjs .
 node scripts/test-keepalive.mjs .
 node scripts/test-session-channel.mjs .
+node scripts/test-channel-qos.mjs .
 ```

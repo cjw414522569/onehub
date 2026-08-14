@@ -11,6 +11,7 @@
 pub mod agent;
 pub mod algorithms;
 pub mod authentication;
+pub mod channel_qos;
 pub mod connectivity;
 pub mod hardware_key;
 pub mod host_key_verify;
@@ -32,6 +33,10 @@ pub use algorithms::{
 pub use authentication::{
     run_keyboard_interactive, AuthChallenge, AuthFailure, AuthMethod, AuthOutcome, AuthPrompt,
     AuthResponse, KeyboardInteractiveHandler, PasswordAuthenticator,
+};
+pub use channel_qos::{
+    ChannelSnapshot, FlowWindow, QosError, ScheduledSend, Scheduler, SchedulerConfig,
+    SchedulerSnapshot, TrafficClass,
 };
 pub use connectivity::{
     happy_eyeballs_connect, ConnectError, ConnectOutcome, ConnectionGuard, Connector,
