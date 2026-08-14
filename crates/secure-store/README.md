@@ -3,5 +3,18 @@
 - Layer: L3 (infrastructure)
 - Dependencies: `core-domain`
 - Scope: platform secure-storage adapter returning opaque secret references.
-- T016 status: buildable workspace skeleton; platform integration is deferred to its control row.
 
+## T085: Windows secure storage adapter
+
+`crates/secure-store/src/store.rs`:
+
+- `SecureStore` - the platform-agnostic secret contract (opaque bytes;
+  set/get/delete/is_available).
+- `WindowsSecureStore` - targets Windows Credential Manager / DPAPI
+  (`ProtectionMechanism::WindowsCredentialManager`); the real OS binding is
+  `blocked_environment` without a native credential scope.
+- `MemorySecureStore` - deterministic test double modeling lock-screen /
+  account-switch availability (`StoreError::Unavailable` on lock, restored on
+  unlock).
+- `SystemCredentialBackend` - the system backend boundary (reports
+  `NotSupported` without a native binding).
