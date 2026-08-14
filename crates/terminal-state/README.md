@@ -172,6 +172,20 @@ HarfBuzz screenshot validation (programming ligatures / CJK / RTL) requires a
 real renderer and is `blocked_environment` on CI hosts without one; the grid
 semantics are verified deterministically by unit tests.
 
+## T076: glyph atlas, cache eviction, DPI bucketing
+
+`crates/terminal-state/src/atlas.rs`:
+
+- `GlyphAtlas` ? bounded glyph cache (`GlyphKey` -> `AtlasEntry`) with true
+  LRU eviction; `AtlasLimits { max_entries, max_bytes }` keeps cache memory
+  under an explicit budget. `clear()` invalidates everything (device loss).
+- `AtlasSet` ? one atlas per DPI bucket (`dpi_bucket(scale)`), so zoom / DPI
+  hot-switching never serves a wrong texture (each bucket has its own atlas),
+  and `clear_all()` handles device loss.
+
+DPI hot-switch and device-loss behavior are covered by unit tests; real GPU
+texture upload is the renderer's job.
+
 ## Verification
 
 ```text

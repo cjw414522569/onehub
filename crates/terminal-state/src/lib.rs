@@ -8,6 +8,7 @@
 //! (T062/T063), plus the locked Unicode width policy and grapheme
 //! segmentation used by the model (T064).
 
+pub mod atlas;
 pub mod color;
 pub mod delta;
 pub mod font;
@@ -22,6 +23,7 @@ pub mod selection;
 pub mod shape;
 pub mod unicode;
 
+pub use atlas::{dpi_bucket, AtlasEntry, AtlasLimits, AtlasSet, GlyphAtlas, GlyphKey};
 pub use color::{Palette, Rgb};
 pub use delta::{apply_delta, blank_snapshot, diff_rows, DeltaBuilder, DeltaError, DirtyTracker};
 pub use font::{script_for_char, FallbackPolicy, FontSpec, FontStyle, Script};
