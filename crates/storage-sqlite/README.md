@@ -33,3 +33,18 @@ locks the schema/versioning contract.
 
 Concurrent modifications never lose data (8 threads x 250 CAS increments all
 preserved); the domain layer never depends on SQL.
+
+## T089: database field-level encryption and master-key wrapping
+
+`crates/storage-sqlite/src/crypto.rs`:
+
+- `EncryptedField` - a versioned ChaCha20-Poly1305 AEAD blob (version + nonce +
+  ciphertext + tag).
+- `FieldEncryptor` / `KeyRing` - field keys live outside the database;
+  `KeyRing::rotate` adds a new key version (old versions stay decryptable) and
+  `reencrypt` moves rows to the active version.
+- `MasterKeyWrapper` - wraps the active field key with a master key held in
+  the OS secure store (never in the database); `unwrap` rebuilds the key ring
+  for recovery.
+
+Tampering, rotation, and recovery are verified by tests.

@@ -274,7 +274,8 @@
       ],
       "external_imports": [
         "sqlite",
-        "sqlx"
+        "sqlx",
+        "chacha20poly1305"
       ]
     },
     {
