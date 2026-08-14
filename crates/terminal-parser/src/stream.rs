@@ -36,6 +36,9 @@ pub struct BoundedByteStreamParser {
     text_buffer: String,
     /// Parser state.
     state: State,
+    /// Whether the next Escape byte is the ST terminator of a pending OSC
+    /// (set when `ESC` is seen inside an OSC payload).
+    osc_st: bool,
     /// Monotonic feed sequence.
     sequence: u64,
     /// Hard cap for ESC/CSI/OSC buffers.
@@ -68,6 +71,7 @@ impl BoundedByteStreamParser {
             osc: Vec::new(),
             text_buffer: String::new(),
             state: State::Ground,
+            osc_st: false,
             sequence: 0,
             max_sequence_len,
             max_text_len,
@@ -181,24 +185,40 @@ impl BoundedByteStreamParser {
     }
 
     fn escape(&mut self, byte: u8) -> (Vec<ParseEvent>, Vec<ParserDiagnostic>) {
-        let events = Vec::new();
+        let mut events = Vec::new();
         self.pending.push(byte);
         match byte {
             b'[' => {
                 self.state = State::Csi;
+                self.osc_st = false;
             }
             b']' => {
                 self.state = State::Osc;
                 self.osc.clear();
+                self.osc_st = false;
             }
             b'P' | b'_' | b'^' => {
                 self.state = State::DiscardUntilSt;
+                self.osc_st = false;
+            }
+            b'\\' if self.osc_st => {
+                // ST (ESC \\) terminates the pending OSC.
+                self.osc_st = false;
+                self.pending.clear();
+                self.state = State::Ground;
+                let payload = std::mem::take(&mut self.osc);
+                self.flush_text(&mut events);
+                if let Some(event) = parse_osc(&payload) {
+                    events.push(event);
+                }
+                return (events, Vec::new());
             }
             0x1b => {}
             _ => {
                 // Two-character escape (e.g. ESC c): not in the T062 event set.
                 self.pending.clear();
                 self.state = State::Ground;
+                self.osc_st = false;
             }
         }
         (events, Vec::new())
@@ -233,13 +253,17 @@ impl BoundedByteStreamParser {
             let payload = std::mem::take(&mut self.osc);
             self.state = State::Ground;
             self.pending.clear();
+            self.osc_st = false;
             let mut events = Vec::new();
             self.flush_text(&mut events);
-            events.push(parse_osc_title(&payload));
+            if let Some(event) = parse_osc(&payload) {
+                events.push(event);
+            }
             (events, Vec::new())
         } else if byte == 0x1b {
-            // Possible ST (ESC \): the next byte decides in Escape state.
+            // Possible ST (ESC \\): the next byte decides in Escape state.
             self.state = State::Escape;
+            self.osc_st = true;
             (Vec::new(), Vec::new())
         } else {
             self.osc.push(byte);
@@ -255,6 +279,7 @@ impl BoundedByteStreamParser {
         self.pending.clear();
         self.osc.clear();
         self.state = State::Ground;
+        self.osc_st = false;
         (
             Vec::new(),
             vec![ParserDiagnostic::new(code, message_key, 0, false)],
@@ -390,14 +415,35 @@ fn parse_csi(sequence: &[u8]) -> Option<ParseEvent> {
     })
 }
 
-/// Parses an OSC payload into a Title event (OSC 0;title or OSC 2;title).
-fn parse_osc_title(payload: &[u8]) -> ParseEvent {
+/// Parses an OSC payload into a structured event (T066).
+///
+/// OSC 0/2 set the window title, OSC 7 sets the working directory, OSC 9 and
+/// OSC 777;notify request a desktop notification; unknown codes are ignored.
+fn parse_osc(payload: &[u8]) -> Option<ParseEvent> {
     let text = String::from_utf8_lossy(payload);
-    let title = text
-        .split_once(';')
-        .map(|(_, title)| title.to_owned())
-        .unwrap_or_else(|| text.to_string());
-    ParseEvent::Title(title)
+    let (code, rest) = text.split_once(';').unwrap_or(("", text.as_ref()));
+    match code {
+        "0" | "2" => Some(ParseEvent::Title(rest.to_owned())),
+        "7" => Some(ParseEvent::WorkingDirectory(rest.to_owned())),
+        "9" => Some(ParseEvent::Notification {
+            summary: rest.to_owned(),
+            body: String::new(),
+        }),
+        "777" => {
+            let mut parts = rest.splitn(3, ';');
+            match (parts.next(), parts.next(), parts.next()) {
+                (Some("notify"), summary, body) => Some(ParseEvent::Notification {
+                    summary: summary.unwrap_or_default().to_owned(),
+                    body: body.unwrap_or_default().to_owned(),
+                }),
+                _ => Some(ParseEvent::Notification {
+                    summary: rest.to_owned(),
+                    body: String::new(),
+                }),
+            }
+        }
+        _ => None,
+    }
 }
 #[cfg(test)]
 mod tests {
@@ -552,6 +598,48 @@ mod tests {
                 ParseEvent::Text("\u{975B}".to_owned()),
                 ParseEvent::LineFeed,
             ]
+        );
+    }
+
+    #[test]
+    fn osc_working_directory_and_notifications() {
+        let mut parser = BoundedByteStreamParser::new();
+        let (events, diags) = collect(
+            &mut parser,
+            b"\x1b]7;file:///home/user/project\x07\
+              \x1b]9;build done\x07\
+              \x1b]777;notify;deploy;2 of 3 ok\x07\
+              \x1b]99;ignored\x07",
+        );
+        assert!(diags.is_empty());
+        assert_eq!(
+            events,
+            vec![
+                ParseEvent::WorkingDirectory("file:///home/user/project".to_owned()),
+                ParseEvent::Notification {
+                    summary: "build done".to_owned(),
+                    body: String::new(),
+                },
+                ParseEvent::Notification {
+                    summary: "deploy".to_owned(),
+                    body: "2 of 3 ok".to_owned(),
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn osc_terminated_by_st_is_finalized() {
+        let mut parser = BoundedByteStreamParser::new();
+        let (events, diags) = collect(&mut parser, b"\x1b]0;st-title\x1b\\");
+        assert!(diags.is_empty());
+        assert_eq!(events, vec![ParseEvent::Title("st-title".to_owned())]);
+        // The parser recovers and continues after ST.
+        let (events, diags) = collect(&mut parser, b"ok\n");
+        assert!(diags.is_empty());
+        assert_eq!(
+            events,
+            vec![ParseEvent::Text("ok".to_owned()), ParseEvent::LineFeed]
         );
     }
 

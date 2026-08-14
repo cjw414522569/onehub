@@ -12,7 +12,7 @@
 
 | Model | Purpose |
 |---|---|
-| `ParseEvent` | Text / CR / LF / BS / EraseDisplay / EraseLine / CursorPosition / CursorMove / Sgr / SetMode / SetScrollRegion / Title. |
+| `ParseEvent` | Text / CR / LF / BS / EraseDisplay / EraseLine / CursorPosition / CursorMove / Sgr / SetMode / SetScrollRegion / Title / WorkingDirectory / Notification. |
 | `ParserDiagnostic` | Stable codes (`invalid_utf8`, `sequence_too_long`, `truncated_sequence`), no secrets. |
 | `ParseBatch` | Monotonic feed sequence + events + diagnostics. |
 | `TerminalParser` | `feed` / `finish` contract. |
@@ -22,40 +22,46 @@
 
 ## T064: Unicode width policy and grapheme clusters
 
-`crates/terminal-state/src/unicode.rs` locks the Unicode version to the
-`unicode-width` tables (`UNICODE_VERSION = "17.0.0"`, asserted against
-`unicode_width::UNICODE_VERSION`) and exposes a configurable `WidthPolicy`
+`crates/terminal-state/src/unicode.rs` locks the Unicode version
+(`UNICODE_VERSION = "17.0.0"`) and exposes a configurable `WidthPolicy`
 (`Unicode` / `EastAsian` / `Legacy`). Text is segmented into extended grapheme
-clusters (UAX #29), so combining sequences and ZWJ emoji occupy a single cell
-with the width of their base; wide clusters mark a `wide_continuation` cell.
-See `crates/terminal-parser/tests/golden/vttest-basic.json`.
+clusters (UAX #29); wide clusters mark a `wide_continuation` cell. See
+`crates/terminal-parser/tests/golden/vttest-basic.json`.
 
 ## T065: colors, attributes, underline styles, and palette
 
-`crates/terminal-state/src/color.rs`:
+`crates/terminal-state/src/color.rs` provides `Rgb` and a configurable
+`Palette` (default fg/bg + 16 ANSI colors) with xterm 256-color resolution
+(cube + grayscale). `ScreenBuffer::apply_sgr` supports 16/256/truecolor,
+bold/dim/italic/inverse, and underline styles (`4:N` colon sub-parameters,
+`21`, `24`). `Sgr` carries `Vec<Vec<u16>>` sub-parameters. See
+`crates/terminal-parser/tests/golden/color-matrix.json`.
 
-- `Rgb` — an 8-bit RGB color.
-- `Palette` — configurable default fg/bg plus the 16 ANSI colors (8 regular +
-  8 bright), with `resolve(TerminalColor) -> Rgb`; indices 16..=231 use the
-  6x6x6 color cube and 232..=255 the 24-step grayscale ramp (xterm
-  convention).
+## T066: OSC title, working directory, notifications, and security filter
 
-`ScreenBuffer::apply_sgr` now supports the full T065 set: 16-color fg/bg
-(30-37/90-97, 40-47/100-107), 256-color (`38;5;n`), truecolor (`38;2;r;g;b`),
-bold/dim/italic/inverse, and underline styles including `4:N` colon
-sub-parameters (`4:0` off, `4:1` single, `4:2` double, `4:3` curly, `4:4`
-dotted, `4:5` dashed) plus `21` double and `24` reset. `Sgr` carries
-`Vec<Vec<u16>>` so each parameter keeps its `:`-separated sub-parameters.
-The color-matrix golden (`crates/terminal-parser/tests/golden/color-matrix.json`,
-66,615 bytes) covers 16/256/truecolor, inverse/dim, and underline styles.
+`crates/terminal-state/src/osc.rs`:
+
+- `Notification` — summary + body.
+- `OscPolicy` — gates titles (`allow_title`), the working directory
+  (`allow_working_directory`), and notifications (`allow_notifications`);
+  sanitizes payloads (control characters stripped) and caps lengths.
+  Notifications are **denied by default** so untrusted terminal output cannot
+  bypass the notification policy; opt in explicitly.
+
+`ScreenModel` applies the policy to `Title` / `WorkingDirectory` /
+`Notification` events, stores the sanitized title and working directory in the
+snapshot, and exposes `notification()` / `take_notification()` for the UI
+layer. The parser emits `WorkingDirectory` for OSC 7 and `Notification` for
+OSC 9 / OSC 777;notify, terminated by BEL or ST.
 
 ## Verification
 
 ```text
-cargo test -p terminal-state --locked    PASS (27 tests)
-cargo test -p terminal-parser --locked   PASS (11 unit + 2 golden)
+cargo test -p terminal-state --locked    PASS (35 tests)
+cargo test -p terminal-parser --locked   PASS (13 unit + 2 golden)
 cargo test -p core-protocol --locked     PASS (14 tests)
 node .\scripts\test-terminal-screen.mjs . PASS
 node .\scripts\test-terminal-unicode.mjs . PASS
 node .\scripts\test-color-golden.mjs .   PASS
+node .\scripts\test-osc-policy.mjs .     PASS
 ```

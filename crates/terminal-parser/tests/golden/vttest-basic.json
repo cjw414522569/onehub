@@ -2601,7 +2601,7 @@
     "visible": true
   },
   "title": "vttest-basic",
-  "working_directory": null,
+  "working_directory": "file:///home/user/demo",
   "scrollback_start": 0,
   "extensions": []
 }

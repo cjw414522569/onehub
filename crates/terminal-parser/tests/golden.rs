@@ -21,7 +21,8 @@ fn script() -> Vec<u8> {
         b"\x1b[31;1mred bold\x1b[0m plain\r\n\
           \x1b[2J\x1b[2;3HX\x1b[4;1H\x1b[Ktail\r\n\
           \x1b[1;5r\x1b[?6h\x1b[1;1Ha\x1b[2;1Hb\x1b[3;1Hc\r\n\
-          \x1b[?1049h\x1b[2Jalt-screen\x1b[?1049l\x1b]0;vttest-basic\x07",
+          \x1b[?1049h\x1b[2Jalt-screen\x1b[?1049l\x1b]0;vttest-basic\x07\
+          \x1b]7;file:///home/user/demo\x07",
     );
     bytes.extend_from_slice("\x1b[5;1H".as_bytes());
     bytes.extend_from_slice("\u{4e2d}".as_bytes()); // CJK wide char (width 2)

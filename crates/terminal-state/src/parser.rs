@@ -33,8 +33,13 @@ pub enum ParseEvent {
     },
     /// `CSI Ps ; Ps r` — set scroll region (1-based; 0 = full).
     SetScrollRegion { top: u16, bottom: u16 },
-    /// `OSC 0;title BEL/ST`.
+    /// `OSC 0;title BEL/ST` (also OSC 2).
     Title(String),
+    /// `OSC 7;path BEL/ST` ? working directory.
+    WorkingDirectory(String),
+    /// `OSC 9;summary BEL/ST` or `OSC 777;notify;summary;body BEL/ST` ?
+    /// desktop notification request (policy-gated downstream).
+    Notification { summary: String, body: String },
 }
 
 /// A structured parser diagnostic (stable code, no secret context).

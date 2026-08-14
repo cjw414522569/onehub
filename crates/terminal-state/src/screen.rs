@@ -14,6 +14,7 @@ use core_protocol::terminal::{
     UnderlineStyle,
 };
 
+use crate::osc::{Notification, OscPolicy};
 use crate::parser::{ParseBatch, ParseEvent, ParserDiagnostic};
 use crate::unicode::{grapheme_clusters, WidthPolicy};
 
@@ -441,6 +442,9 @@ pub struct ScreenModel {
     alternate: ScreenBuffer,
     modes: Modes,
     title: Option<String>,
+    working_directory: Option<String>,
+    notification: Option<Notification>,
+    osc_policy: OscPolicy,
     stream_id: u64,
     sequence: u64,
     width_policy: WidthPolicy,
@@ -454,6 +458,9 @@ impl ScreenModel {
             alternate: ScreenBuffer::new(rows, cols),
             modes: Modes::default(),
             title: None,
+            working_directory: None,
+            notification: None,
+            osc_policy: OscPolicy::default(),
             stream_id,
             sequence: 0,
             width_policy: WidthPolicy::default(),
@@ -502,6 +509,31 @@ impl ScreenModel {
     /// The window title.
     pub fn title(&self) -> Option<&str> {
         self.title.as_deref()
+    }
+
+    /// The OSC 7 working directory (policy-sanitized).
+    pub fn working_directory(&self) -> Option<&str> {
+        self.working_directory.as_deref()
+    }
+
+    /// The most recent policy-approved notification, if any.
+    pub fn notification(&self) -> Option<&Notification> {
+        self.notification.as_ref()
+    }
+
+    /// Takes (clears) the most recent notification; the UI layer consumes it.
+    pub fn take_notification(&mut self) -> Option<Notification> {
+        self.notification.take()
+    }
+
+    /// The active OSC policy.
+    pub fn osc_policy(&self) -> &OscPolicy {
+        &self.osc_policy
+    }
+
+    /// Sets the OSC policy (title / working-directory / notification gating).
+    pub fn set_osc_policy(&mut self, policy: OscPolicy) {
+        self.osc_policy = policy;
     }
 
     /// Resizes both buffers (preserving content where possible).
@@ -553,7 +585,19 @@ impl ScreenModel {
             ParseEvent::SetScrollRegion { top, bottom } => {
                 buffer.set_scroll_region(*top, *bottom, &self.modes);
             }
-            ParseEvent::Title(title) => self.title = Some(title.clone()),
+            ParseEvent::Title(title) => {
+                if let Some(title) = self.osc_policy.sanitize_title(title) {
+                    self.title = Some(title);
+                }
+            }
+            ParseEvent::WorkingDirectory(directory) => {
+                if let Some(directory) = self.osc_policy.sanitize_working_directory(directory) {
+                    self.working_directory = Some(directory);
+                }
+            }
+            ParseEvent::Notification { summary, body } => {
+                self.notification = self.osc_policy.sanitize_notification(summary, body);
+            }
         }
     }
 
@@ -606,7 +650,7 @@ impl ScreenModel {
                 visible: self.modes.cursor_visible,
             },
             title: self.title.clone(),
-            working_directory: None,
+            working_directory: self.working_directory.clone(),
             scrollback_start: 0,
             extensions: Vec::new(),
         }
@@ -665,7 +709,7 @@ impl ScreenBuffer {
 mod tests {
     use core_protocol::terminal::TerminalColor;
 
-    use super::{Modes, ScreenModel, UnderlineStyle, WidthPolicy};
+    use super::{Modes, OscPolicy, ScreenModel, UnderlineStyle, WidthPolicy};
     use crate::parser::ParseEvent;
 
     fn model() -> ScreenModel {
@@ -933,6 +977,60 @@ mod tests {
         let cell = &model.snapshot().rows[0].cells[5];
         assert!(!cell.style.underline);
         assert_eq!(cell.style.underline_style, UnderlineStyle::None);
+    }
+
+    #[test]
+    fn osc_title_and_working_directory() {
+        let mut model = model();
+        model.apply_event(&ParseEvent::Title("demo".to_owned()));
+        assert_eq!(model.title(), Some("demo"));
+        model.apply_event(&ParseEvent::WorkingDirectory("/home/user".to_owned()));
+        assert_eq!(model.working_directory(), Some("/home/user"));
+        assert_eq!(
+            model.snapshot().working_directory.as_deref(),
+            Some("/home/user")
+        );
+    }
+
+    #[test]
+    fn osc_notification_policy_gating() {
+        let mut model = model();
+        // Denied by default: no notification surfaces from untrusted output.
+        model.apply_event(&ParseEvent::Notification {
+            summary: "spam".to_owned(),
+            body: "click".to_owned(),
+        });
+        assert!(model.notification().is_none());
+        // Opt in explicitly: notification stored; take() consumes it.
+        let policy = OscPolicy {
+            allow_notifications: true,
+            ..OscPolicy::default()
+        };
+        model.set_osc_policy(policy);
+        model.apply_event(&ParseEvent::Notification {
+            summary: "build ok".to_owned(),
+            body: "0 errors".to_owned(),
+        });
+        let notification = model.take_notification().expect("notification");
+        assert_eq!(notification.summary, "build ok");
+        assert_eq!(notification.body, "0 errors");
+        assert!(model.notification().is_none());
+    }
+
+    #[test]
+    fn osc_untitled_sequences_cannot_bypass_policy() {
+        let mut model = model();
+        // Embedded control bytes are stripped, not interpreted.
+        model.apply_event(&ParseEvent::Title("a\x1b]0;b\x07c".to_owned()));
+        assert_eq!(model.title(), Some("a]0;bc"));
+        // Denying titles leaves the previous title intact.
+        let policy = OscPolicy {
+            allow_title: false,
+            ..OscPolicy::default()
+        };
+        model.set_osc_policy(policy);
+        model.apply_event(&ParseEvent::Title("evil".to_owned()));
+        assert_eq!(model.title(), Some("a]0;bc"));
     }
 
     #[test]
