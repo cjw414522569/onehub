@@ -139,6 +139,21 @@ stays in bounds, and selection characters survive reflow.
 Incremental/full equivalence and dropped-frame recovery are verified by
 property tests.
 
+## T074: font discovery, fallback, bold/italic, variable-font policy
+
+`crates/terminal-state/src/font.rs`:
+
+- `Script` classification (`script_for_char`) ? Latin / CJK / Emoji /
+  Powerline / Other.
+- `FallbackPolicy` ? maps each script to a font family (Windows-first
+  defaults: Cascadia Mono, Microsoft YaHei UI, Segoe UI Emoji, a Nerd Font for
+  Powerline) and maps `FontStyle` to variable-font weight / italic axes
+  (normal 400 / bold 700).
+- `resolve(ch, style, size_pt) -> FontSpec` ? picks the family by script and
+  the axes by style, so CJK / emoji / Powerline missing glyphs fall back
+  predictably. The cross-platform screenshot coverage matrix requires a real
+  renderer/GPU and is `blocked_environment` on CI hosts without one.
+
 ## Verification
 
 ```text
