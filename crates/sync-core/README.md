@@ -21,3 +21,16 @@
 
 The protocol is optional (disabled by default); when enabled, only encrypted
 envelopes reach the sync server.
+
+## T093: local sync CRDT / conflict-merge core
+
+`crates/sync-core/src/crdt.rs`:
+
+- `CrdtState` - a per-key last-writer-wins register CRDT with `LamportClock`
+  versions and tombstones.
+- `set` / `delete` (tombstone) / `get` / `is_tombstone` / `merge` /
+  `converge` - offline concurrent edits deterministically converge (merge is
+  commutative and idempotent), and deletes are recoverable (a newer set wins
+  over a tombstone).
+
+Random multi-replica property tests verify convergence in any merge order.
