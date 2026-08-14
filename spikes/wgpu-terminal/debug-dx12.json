@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "tool": "wgpu-terminal-feasibility",
+  "status": "passed",
+  "backend_request": "dx12",
+  "scenario_request": "frame",
+  "device_class": "windows",
+  "replay_bytes": 305,
+  "replay_sha256": "232ee435ecb435bf4d1e0d442463cd2ce569b3318c277a90d347cd3934649fb1",
+  "adapter": {
+    "name": "NVIDIA GeForce RTX 5060",
+    "backend": "Dx12",
+    "device_type": "DiscreteGpu",
+    "driver": "32.0.16.1088",
+    "driver_info": "",
+    "vendor": 4318,
+    "device": 11525,
+    "features": "Features { features_wgpu: FeaturesWGPU(TEXTURE_FORMAT_16BIT_NORM | TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES | TIMESTAMP_QUERY_INSIDE_ENCODERS | TIMESTAMP_QUERY_INSIDE_PASSES | MAPPABLE_PRIMARY_BUFFERS | TEXTURE_BINDING_ARRAY | STORAGE_RESOURCE_BINDING_ARRAY | SAMPLED_TEXTURE_AND_STORAGE_BUFFER_ARRAY_NON_UNIFORM_INDEXING | STORAGE_TEXTURE_ARRAY_NON_UNIFORM_INDEXING | PARTIALLY_BOUND_BINDING_ARRAY | MULTI_DRAW_INDIRECT_COUNT | ADDRESS_MODE_CLAMP_TO_ZERO | ADDRESS_MODE_CLAMP_TO_BORDER | POLYGON_MODE_LINE | CONSERVATIVE_RASTERIZATION | VERTEX_WRITABLE_STORAGE | CLEAR_TEXTURE | TEXTURE_ATOMIC | TEXTURE_FORMAT_NV12 | TEXTURE_FORMAT_P010 | EXTERNAL_TEXTURE | PASSTHROUGH_SHADERS | MEMORY_DECORATION_COHERENT), features_webgpu: FeaturesWebGPU(DEPTH_CLIP_CONTROL | DEPTH32FLOAT_STENCIL8 | TEXTURE_COMPRESSION_BC | TEXTURE_COMPRESSION_BC_SLICED_3D | TIMESTAMP_QUERY | INDIRECT_FIRST_INSTANCE | RG11B10UFLOAT_RENDERABLE | BGRA8UNORM_STORAGE | FLOAT32_FILTERABLE | FLOAT32_BLENDABLE | DUAL_SOURCE_BLENDING | IMMEDIATES | PRIMITIVE_INDEX) }",
+    "limits": {
+      "max_texture_dimension_2d": 16384,
+      "max_buffer_size": 2147483647,
+      "max_bind_groups": 8,
+      "max_uniform_buffer_binding_size": 65536
+    }
+  },
+  "scenarios": [
+    {
+      "id": "4k-full-refresh",
+      "status": "passed",
+      "measurement": "3840x2160 offscreen render pass and queue wait",
+      "samples": 4,
+      "p50_ms": 0.2914,
+      "p95_ms": 2.3785,
+      "p99_ms": 2.3785,
+      "throughput_mb_s": null,
+      "fps": 3431.7089910775567,
+      "dropped_frames": 0,
+      "target": 120.0,
+      "passed": true,
+      "notes": [
+        "offscreen texture; no window surface",
+        "GPU trace is enabled by --trace-dir"
+      ]
+    }
+  ],
+  "error": null
+}

@@ -1,0 +1,45 @@
+[workspace]
+resolver = "2"
+members = [
+  "crates/core-domain",
+  "crates/core-errors",
+  "crates/core-protocol",
+  "crates/session-orchestrator",
+  "crates/secret",
+  "crates/fuzz-targets",
+  "crates/terminal-state",
+  "crates/transfer",
+  "crates/forwarding",
+  "crates/sync-core",
+  "crates/ssh-backend",
+  "crates/sftp-backend",
+  "crates/proxy",
+  "crates/terminal-parser",
+  "crates/wgpu-renderer",
+  "crates/storage-sqlite",
+  "crates/secure-store",
+  "crates/telemetry",
+  "crates/update",
+  "crates/policy-engine",
+  "crates/abi-c",
+  "crates/wasm",
+  "apps/cli",
+  "services/gateway",
+  "services/sync-service",
+  "clients/windows",
+]
+exclude = [
+  "spikes/wgpu-terminal",
+  "spikes/terminal-engines",
+  "spikes/ssh-engines",
+  "spikes/terminal-contract",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+publish = false
+
+[workspace.lints.rust]
+unsafe_code = "forbid"

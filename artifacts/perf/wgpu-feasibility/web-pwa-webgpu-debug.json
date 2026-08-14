@@ -1,0 +1,9 @@
+﻿{
+    "schema_version":  1,
+    "status":  "blocked_environment",
+    "device_class":  "web-pwa",
+    "backend_request":  "webgpu",
+    "profile":  "debug",
+    "reason":  "target device is not attached to this runner host",
+    "command":  "wgpu-terminal.exe --backend webgpu --scenario all --replay C:\\work\\ssh\\spikes\\wgpu-terminal\\fixtures\\replay-10mb.bin --frames 30 --scroll-lines 1000000 --device-class web-pwa --trace-dir C:\\work\\ssh\\artifacts\\perf\\wgpu-feasibility\\web-pwa-webgpu-debug-trace --output C:\\work\\ssh\\artifacts\\perf\\wgpu-feasibility\\web-pwa-webgpu-debug.json"
+}

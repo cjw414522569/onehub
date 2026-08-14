@@ -1,0 +1,28 @@
+[package]
+name = "ssh-backend"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+base64 = "0.22"
+core-domain = { path = "../core-domain" }
+core-protocol = { path = "../core-protocol" }
+ed25519-dalek = { version = "2", features = ["rand_core", "pkcs8"] }
+hmac = "0.12"
+pem-rfc7468 = "0.7"
+pkcs8 = { version = "0.10", features = ["encryption", "pem", "std"] }
+secret = { path = "../secret" }
+session-orchestrator = { path = "../session-orchestrator" }
+sha1 = "0.10"
+sha2 = "0.10"
+ssh-key = { version = "0.6", features = ["encryption", "crypto", "getrandom"] }
+tokio = { version = "1", features = ["net", "time", "rt", "macros", "sync"] }
+
+[dev-dependencies]
+rand = "0.8"
+tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "time", "test-util", "net", "sync", "io-util"] }

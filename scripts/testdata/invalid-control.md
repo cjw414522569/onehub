@@ -1,0 +1,1 @@
+- [x] T001 negative validator fixture | 状态：未开始 | 验收：fixture | 测试：fixture | 证据：—

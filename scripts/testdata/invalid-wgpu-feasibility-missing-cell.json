@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "status": "complete_with_blocked_environment",
+  "fixture": {
+    "file": "spikes\\wgpu-terminal\\fixtures\\replay-10mb.bin",
+    "bytes": 10485760,
+    "sha256": "afc7695eb202286eee7b5d5c4edd024ce06adb9f61051c5ccb595bd97b5a7101"
+  },
+  "backend_matrix": ["dx12", "metal", "vulkan", "webgpu"],
+  "device_matrix": ["windows", "macos-intel", "macos-apple-silicon", "linux", "ios-ipados", "android", "web-pwa"],
+  "scenario_matrix": ["replay-10mb", "4k-full-refresh", "ligature-fi-ffi", "ime-composition-proxy", "scrollback-million-lines"],
+  "results": []
+}

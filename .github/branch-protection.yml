@@ -1,0 +1,29 @@
+schema_version: 1
+provider: github
+branch: main
+require_pull_request: true
+required_pull_request_reviews:
+  required_approving_review_count: 1
+  require_code_owner_reviews: true
+  dismiss_stale_reviews: true
+  require_last_push_approval: true
+required_status_checks:
+  strict: true
+  contexts:
+    - "ci / governance"
+    - "ci / cargo"
+    - "ci / license"
+    - "ci / toolchain-contract"
+    - "ci / supply-chain"
+    - "ci / fuzz-smoke"
+    - "ci / control-ledger"
+    - "ci / platform-windows"
+    - "ci / platform-macos"
+    - "ci / platform-ios"
+    - "ci / platform-linux"
+    - "ci / platform-android"
+enforce_admins: true
+required_conversation_resolution: true
+require_linear_history: true
+allow_force_pushes: false
+allow_deletions: false

@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "matrix_id": "ssh-engine-compat-v1",
+  "description": "Shared candidate matrix for SSH engine spike. Every candidate receives every test id.",
+  "tests": [
+    {
+      "id": "metadata",
+      "category": "maintenance",
+      "description": "Record version, repository, license, feature/backend and release provenance.",
+      "evidence_required": ["command", "exit_code", "version", "license", "repository"]
+    },
+    {
+      "id": "build",
+      "category": "build",
+      "description": "Build or link the candidate using the supported local path.",
+      "evidence_required": ["command", "exit_code", "status", "stdout", "stderr"]
+    },
+    {
+      "id": "host-key-callback",
+      "category": "security",
+      "description": "Verify the candidate exposes a server host-key verification callback or equivalent policy hook.",
+      "evidence_required": ["command", "exit_code", "status", "api_evidence"]
+    },
+    {
+      "id": "authentication-api",
+      "category": "function",
+      "description": "Verify public-key/password/agent authentication API surface is discoverable.",
+      "evidence_required": ["command", "exit_code", "status", "api_evidence"]
+    },
+    {
+      "id": "exec",
+      "category": "function",
+      "description": "Verify non-interactive command execution API or system client path.",
+      "evidence_required": ["command", "exit_code", "status", "api_evidence"]
+    },
+    {
+      "id": "interactive-channel",
+      "category": "function",
+      "description": "Verify session channel, PTY or interactive stream API surface.",
+      "evidence_required": ["command", "exit_code", "status", "api_evidence"]
+    },
+    {
+      "id": "sftp-forwarding-api",
+      "category": "function",
+      "description": "Verify SFTP and local/remote forwarding API surface or system capability.",
+      "evidence_required": ["command", "exit_code", "status", "api_evidence"]
+    },
+    {
+      "id": "cancel-timeout",
+      "category": "reliability",
+      "description": "Verify timeout, disconnect, cancellation or non-blocking operation controls are exposed.",
+      "evidence_required": ["command", "exit_code", "status", "api_evidence"]
+    },
+    {
+      "id": "performance-smoke",
+      "category": "performance",
+      "description": "Record a repeatable local wall-clock smoke measurement for the candidate path; daemon throughput remains a separate interoperability gate.",
+      "evidence_required": ["command", "exit_code", "status", "duration_ms", "measurement_scope"]
+    },
+    {
+      "id": "secret-log-scan",
+      "category": "security",
+      "description": "Scan captured logs and report artifacts for forbidden secret-like values.",
+      "evidence_required": ["command", "exit_code", "status", "scan_scope"]
+    }
+  ]
+}

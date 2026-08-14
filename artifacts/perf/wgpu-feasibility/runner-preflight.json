@@ -1,0 +1,145 @@
+{
+  "schema_version": 1,
+  "status": "partial",
+  "platform": "win32",
+  "environment": {
+    "developer_dir": null
+  },
+  "tools": {
+    "rustc": {
+      "available": true,
+      "path": "C:\\Users\\c4145\\.cargo\\bin\\rustc.exe",
+      "version": "rustc 1.97.1 (8bab26f4f 2026-07-14)"
+    },
+    "cargo": {
+      "available": true,
+      "path": "C:\\Users\\c4145\\.cargo\\bin\\cargo.exe",
+      "version": "cargo 1.97.1 (c980f4866 2026-06-30)"
+    },
+    "java": {
+      "available": false,
+      "path": null,
+      "version": null
+    },
+    "gradle": {
+      "available": false,
+      "path": null,
+      "version": null
+    },
+    "adb": {
+      "available": false,
+      "path": null,
+      "version": null
+    },
+    "xcrun": {
+      "available": false,
+      "path": null,
+      "version": null
+    },
+    "dotnet": {
+      "available": false,
+      "path": null,
+      "version": null
+    },
+    "msbuild": {
+      "available": false,
+      "path": null,
+      "version": null
+    }
+  },
+  "browsers": {
+    "chrome": {
+      "available": true,
+      "path": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
+    },
+    "edge": {
+      "available": false,
+      "path": null
+    },
+    "chromium": {
+      "available": false,
+      "path": null
+    }
+  },
+  "devices": {
+    "android": {
+      "connected": false,
+      "count": 0,
+      "devices": []
+    },
+    "ios": {
+      "connected": false,
+      "count": 0,
+      "devices": []
+    }
+  },
+  "host_capabilities": {
+    "containers": {
+      "docker": false,
+      "podman": false,
+      "qemu": false
+    },
+    "linux_compat": {
+      "wsl": false
+    },
+    "mobile_sdk_tools": {
+      "emulator": false,
+      "avdmanager": false,
+      "sdkmanager": false,
+      "xcodebuild": false,
+      "swift": false
+    }
+  },
+  "runners": {
+    "native_windows": {
+      "available": true,
+      "reason": null
+    },
+    "native_linux": {
+      "available": false,
+      "reason": "host is not Linux"
+    },
+    "native_metal": {
+      "available": false,
+      "reason": "host is not macOS"
+    },
+    "ios_native": {
+      "available": false,
+      "reason": "host is not macOS"
+    },
+    "android_native": {
+      "available": false,
+      "reason": "adb is unavailable"
+    },
+    "browser_webgpu": {
+      "available": true,
+      "reason": null
+    }
+  },
+  "matrix": {
+    "required_device_classes": [
+      "windows",
+      "macos-intel",
+      "macos-apple-silicon",
+      "linux",
+      "ios-ipados",
+      "android",
+      "web-pwa"
+    ],
+    "complete": false,
+    "available_runners": [
+      "native_windows",
+      "browser_webgpu"
+    ],
+    "missing_runners": [
+      "native_linux",
+      "native_metal",
+      "ios_native",
+      "android_native"
+    ]
+  },
+  "blockers": [
+    "missing runner coverage: native_linux, native_metal, ios_native, android_native"
+  ],
+  "generated_at_utc": "2026-08-12T23:45:48.438Z"
+}

@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "policy": "All dependency and toolchain lockfiles must be committed. A missing, invalid, or drifted lockfile fails the supply-chain gate.",
+  "lockfiles": [
+    {
+      "path": "Cargo.lock",
+      "kind": "cargo",
+      "purpose": "Rust workspace dependency graph lock (crates.io, git, and path sources) for the workspace and excluded spike workspaces."
+    },
+    {
+      "path": "toolchains/toolchain.lock.json",
+      "kind": "toolchain",
+      "purpose": "Locked toolchain versions for Rust, Node, npm, .NET/Windows App SDK, Swift/Xcode, Kotlin/Gradle, and GTK."
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+﻿{
+    "schema_version":  1,
+    "fixture_id":  "wgpu-terminal-replay-10mb-v1",
+    "file":  "spikes\\wgpu-terminal\\fixtures\\replay-10mb.bin",
+    "bytes":  10485760,
+    "sha256":  "afc7695eb202286eee7b5d5c4edd024ce06adb9f61051c5ccb595bd97b5a7101",
+    "seed":  "replay-seed.txt plus CSI/OSC/SGR/CRLF/CJK/emoji/invalid-UTF8 markers",
+    "generated_at_utc":  "2026-08-12T23:45:29.6449257Z"
+}

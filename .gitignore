@@ -1,0 +1,39 @@
+# Rust build output
+/target/
+**/target/
+
+# Generated local probes and temporary fixtures
+/tmp/
+/artifacts/tmp/
+*.tmp
+*.fixture
+
+# IDE and OS state
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Local secrets and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa
+id_ed25519
+known_hosts
+known_hosts.old
+
+# Local logs and crash dumps
+*.log
+*.dmp
+*.core
+
+
+# Public test-key fixtures from RustCrypto test vectors (not real credentials)
+!crates/ssh-backend/tests/fixtures/*.pem

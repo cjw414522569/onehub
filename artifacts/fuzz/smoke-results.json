@@ -1,0 +1,20 @@
+﻿{
+    "schema_version":  1,
+    "task":  "T036",
+    "status":  "pass",
+    "generated_at_utc":  "2026-08-14T15:05:57.1177195Z",
+    "elapsed_seconds":  0.783,
+    "timeout_seconds":  300,
+    "target_count":  7,
+    "targets_passed":  7,
+    "exit_code":  0,
+    "target_names":  [
+                         "fuzz_known_hosts_parse",
+                         "fuzz_terminal_snapshot_deserialize",
+                         "fuzz_proxy_chain_validation",
+                         "fuzz_session_state_machine",
+                         "fuzz_forwarding_table",
+                         "fuzz_settings_migration",
+                         "fuzz_command_resolution"
+                     ]
+}

@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "adr": "ADR-002",
+  "layer_order": {
+    "L0": 0,
+    "L1": 1,
+    "L2": 2,
+    "L3": 3,
+    "L4": 4,
+    "L5": 5,
+    "L6": 6
+  },
+  "layers": {
+    "L0": "pure-types",
+    "L1": "core-services",
+    "L2": "protocol-adapters",
+    "L3": "infrastructure",
+    "L4": "abi-platform-bridges",
+    "L5": "native-ui",
+    "L6": "entrypoints"
+  },
+  "required_rules": {
+    "ui_must_depend_on_one_of": ["abi-c", "wasm"],
+    "ui_forbidden_modules": ["ssh-backend", "sftp-backend", "storage-sqlite", "secure-store", "crypto", "sync-service"],
+    "core_max_layer": "L2",
+    "core_forbidden_external_imports": ["winui", "swiftui", "appkit", "uikit", "compose", "gtk", "flutter", "tauri", "typescript", "webview", "sqlite", "sqlx", "russh", "libssh", "ssh2"],
+    "abi_required_message_fields": ["schema_version", "message_type", "byte_len", "request_id", "cancel", "backpressure", "error_code"]
+  },
+  "modules": [
+    {"id":"core-domain","layer":"L0","path":"crates/core-domain","dependencies":["secret"],"external_imports":["rust:std","serde"]},
+    {"id":"core-errors","layer":"L0","path":"crates/core-errors","dependencies":["core-domain"],"external_imports":["rust:std","serde"]},
+    {"id":"core-protocol","layer":"L0","path":"crates/core-protocol","dependencies":["core-domain","core-errors"],"external_imports":["rust:std","serde"]},
+    {"id":"session-orchestrator","layer":"L1","path":"crates/session-orchestrator","dependencies":["core-domain","core-errors","core-protocol"],"external_imports":["tokio","serde"]},
+    {"id":"secret","layer":"L0","path":"crates/secret","dependencies":[],"external_imports":["rust:std","zeroize"]},
+    {"id":"fuzz-targets","layer":"L1","path":"crates/fuzz-targets","dependencies":["core-domain","core-errors","core-protocol","session-orchestrator"],"external_imports":["rust:std","serde"]},
+    {"id":"terminal-state","layer":"L1","path":"crates/terminal-state","dependencies":["core-domain","core-protocol"],"external_imports":["unicode-width"]},
+    {"id":"transfer","layer":"L1","path":"crates/transfer","dependencies":["core-domain","core-protocol"],"external_imports":["tokio"]},
+    {"id":"forwarding","layer":"L1","path":"crates/forwarding","dependencies":["core-domain","core-protocol"],"external_imports":["tokio"]},
+    {"id":"sync-core","layer":"L1","path":"crates/sync-core","dependencies":["core-domain","core-protocol"],"external_imports":["crypto-traits"]},
+    {"id":"ssh-backend","layer":"L2","path":"crates/ssh-backend","dependencies":["core-domain","core-protocol","session-orchestrator","secret"],"external_imports":["russh-adapter","tokio","base64","hmac","sha1","sha2","ed25519-dalek","pkcs8","ssh-key","pem-rfc7468"]},
+    {"id":"sftp-backend","layer":"L2","path":"crates/sftp-backend","dependencies":["core-domain","core-protocol","transfer"],"external_imports":["ssh-sftp"]},
+    {"id":"proxy","layer":"L2","path":"crates/proxy","dependencies":["core-domain","core-protocol","forwarding"],"external_imports":["socks5","http-connect"]},
+    {"id":"terminal-parser","layer":"L2","path":"crates/terminal-parser","dependencies":["core-domain","core-protocol","terminal-state"],"external_imports":["vt-parser"]},
+    {"id":"wgpu-renderer","layer":"L2","path":"crates/wgpu-renderer","dependencies":["core-protocol","terminal-state"],"external_imports":["wgpu","harfbuzz"]},
+    {"id":"storage-sqlite","layer":"L3","path":"crates/storage-sqlite","dependencies":["core-domain","core-protocol"],"external_imports":["sqlite","sqlx"]},
+    {"id":"secure-store","layer":"L3","path":"crates/secure-store","dependencies":["core-domain"],"external_imports":["platform-keychain"]},
+    {"id":"telemetry","layer":"L3","path":"crates/telemetry","dependencies":["core-domain","core-protocol"],"external_imports":["allowlist-logger"]},
+    {"id":"update","layer":"L3","path":"crates/update","dependencies":["core-domain","core-protocol"],"external_imports":["signature-verifier"]},
+    {"id":"policy-engine","layer":"L3","path":"crates/policy-engine","dependencies":["core-domain","core-protocol"],"external_imports":["url-policy"]},
+    {"id":"abi-c","layer":"L4","path":"crates/abi-c","dependencies":["core-domain","core-errors","core-protocol","session-orchestrator"],"external_imports":["c-abi"]},
+    {"id":"bindings-swift","layer":"L4","path":"bindings/swift","dependencies":["abi-c"],"external_imports":["swift-ffi"]},
+    {"id":"bindings-kotlin","layer":"L4","path":"bindings/kotlin","dependencies":["abi-c"],"external_imports":["jni"]},
+    {"id":"bindings-csharp","layer":"L4","path":"bindings/csharp","dependencies":["abi-c"],"external_imports":["dotnet-interop"]},
+    {"id":"wasm","layer":"L4","path":"crates/wasm","dependencies":["core-protocol","terminal-state","wgpu-renderer"],"external_imports":["wasm-bindgen"]},
+    {"id":"clients-windows","layer":"L5","path":"clients/windows","dependencies":["abi-c"],"external_imports":["winui-3","windows-app-sdk"]},
+    {"id":"clients-apple","layer":"L5","path":"clients/apple","dependencies":["bindings-swift"],"external_imports":["swiftui","appkit","uikit"]},
+    {"id":"clients-android","layer":"L5","path":"clients/android","dependencies":["bindings-kotlin"],"external_imports":["kotlin","jetpack-compose"]},
+    {"id":"clients-linux","layer":"L5","path":"clients/linux","dependencies":["abi-c"],"external_imports":["gtk4","libadwaita"]},
+    {"id":"clients-web","layer":"L5","path":"clients/web","dependencies":["wasm"],"external_imports":["typescript","webgpu"]},
+    {"id":"cli","layer":"L6","path":"apps/cli","dependencies":["session-orchestrator","terminal-parser","transfer","forwarding"],"external_imports":["clap"]},
+    {"id":"gateway","layer":"L6","path":"services/gateway","dependencies":["session-orchestrator","ssh-backend","proxy","policy-engine"],"external_imports":["websocket","rate-limit"]},
+    {"id":"sync-service","layer":"L6","path":"services/sync-service","dependencies":["sync-core","storage-sqlite","policy-engine"],"external_imports":["http-api","object-store"]}
+  ],
+  "abi_contract": {
+    "message_fields": ["schema_version", "message_type", "byte_len", "request_id", "cancel", "backpressure", "error_code"],
+    "ownership": "creator_owns_handle_and_release_is_idempotent",
+    "forbidden_cross_boundary_values": ["raw_pointer", "borrowed_reference", "exception", "closure", "secret_debug"]
+  }
+}

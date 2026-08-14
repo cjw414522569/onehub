@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "status": "passed",
+  "secure_context": true,
+  "navigator_gpu": true,
+  "adapter_available": true,
+  "device_created": true,
+  "fixture": {
+    "bytes": 10485760,
+    "sha256": "afc7695eb202286eee7b5d5c4edd024ce06adb9f61051c5ccb595bd97b5a7101"
+  },
+  "scenarios": [
+    { "id": "replay-10mb", "status": "passed", "samples": 1, "throughput_mb_s": 100, "passed": true },
+    { "id": "4k-full-refresh", "status": "passed", "samples": 30, "fps": 60, "passed": true },
+    { "id": "ligature-fi-ffi", "status": "proxy_passed", "passed": true },
+    { "id": "ime-composition-proxy", "status": "proxy_passed", "passed": true },
+    { "id": "scrollback-million-lines", "status": "proxy_passed", "passed": true }
+  ]
+}

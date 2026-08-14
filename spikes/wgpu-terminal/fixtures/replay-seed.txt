@@ -1,0 +1,7 @@
+\x1b[2J\x1b[H\x1b]0;wgpu-terminal\x07
+user@host:~$ printf 'Ligature: office affinity -> fi ffi; CJK: 界面; emoji: 🙂\n'
+Ligature: office affinity -> fi ffi; CJK: 界面; emoji: 🙂
+\x1b[31mred\x1b[0m \x1b[1;34mbold blue\x1b[0m\r\n
+IME composition: n -> ni -> 你 -> 你好
+scrollback row 0000000001
+

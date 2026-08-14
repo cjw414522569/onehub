@@ -1,0 +1,17 @@
+[package]
+name = "cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "ssh-cli"
+path = "src/main.rs"
+
+[dependencies]
+forwarding = { path = "../../crates/forwarding" }
+session-orchestrator = { path = "../../crates/session-orchestrator" }
+terminal-parser = { path = "../../crates/terminal-parser" }
+transfer = { path = "../../crates/transfer" }
+

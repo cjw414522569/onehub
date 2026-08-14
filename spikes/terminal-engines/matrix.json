@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "id": "terminal-engine-spike-v1",
+  "fixture": "fixtures/vt-unicode-replay.txt",
+  "target_bytes": 10485760,
+  "repetitions": 5,
+  "terminal_size": { "columns": 80, "rows": 24 },
+  "tests": [
+    { "id": "vt-compatibility", "description": "CSI cursor movement, SGR, erasure, OSC title and CR/LF" },
+    { "id": "unicode", "description": "CJK width, combining marks, emoji variation selectors and invalid UTF-8" },
+    { "id": "replay", "description": "Deterministic replay and normalized output hash" },
+    { "id": "throughput", "description": "Five release-mode replay samples with p50/p95 and MiB/s" },
+    { "id": "license", "description": "Declared dependency and adapter license evidence" }
+  ],
+  "candidates": [
+    { "id": "alacritty_terminal", "version": "0.26.0", "license": "Apache-2.0", "repository": "https://github.com/alacritty/alacritty" },
+    { "id": "wezterm-fork-proxy", "version": "0.1.0-fork.5", "license": "MIT", "repository": "https://github.com/tattoy-org/wezterm", "upstream_note": "tattoy-wezterm-term is a WezTerm fork proxy, not the official standalone wezterm-term crate" },
+    { "id": "adapter-baseline", "version": "baseline-v1", "license": "MIT", "repository": "workspace://spikes/terminal-engines" }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "generated_at_utc": "2026-08-12T00:00:00Z",
+  "corpus_sha256": "expected",
+  "vttest_status": "blocked_environment",
+  "vttest_blocked_reason": "not installed",
+  "candidates": [
+    {
+      "id": "alacritty_terminal",
+      "version": "0.26.0",
+      "license": "Apache-2.0",
+      "corpus_sha256": "wrong",
+      "output_sha256": "output",
+      "vt": {"status":"passed","exit_code":0,"command":"test"},
+      "unicode": {"status":"passed","exit_code":0,"command":"test"},
+      "replay": {"status":"passed","exit_code":0,"command":"test"},
+      "throughput": {"status":"passed","exit_code":0,"command":"test"},
+      "license_check": {"status":"passed","exit_code":0,"command":"test"},
+      "metrics": {"p50_ms":1,"p95_ms":1,"throughput_mb_s":1}
+    }
+  ]
+}

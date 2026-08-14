@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "path": "clients/web",
+  "layer": "L5",
+  "status": "interface-only",
+  "approved_bridge": "wasm",
+  "native_toolkit": "TypeScript / WebGPU",
+  "build_verification": "blocked-unavailable-toolchain",
+  "scope": "Approved boundary only; no browser build is claimed in the Windows-first phase.",
+  "forbidden_dependencies": ["ssh-backend", "sftp-backend", "storage-sqlite", "secure-store", "sync-service"]
+}

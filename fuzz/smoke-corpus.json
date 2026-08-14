@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "policy": "Each fuzz target is a deterministic, bounded smoke run over a persisted corpus seed. Crash inputs must be added back to the corpus for regression; CI runs every target with a wall-clock limit.",
+  "targets": [
+    { "name": "fuzz_known_hosts_parse", "seed": 11, "iterations": 20000, "focus": "known_hosts line parser must never panic" },
+    { "name": "fuzz_terminal_snapshot_deserialize", "seed": 12, "iterations": 20000, "focus": "arbitrary JSON must never panic; unknown extensions ignored" },
+    { "name": "fuzz_proxy_chain_validation", "seed": 13, "iterations": 20000, "focus": "cycle detection must be total and deterministic" },
+    { "name": "fuzz_session_state_machine", "seed": 14, "iterations": 20000, "focus": "every event sequence yields a defined outcome" },
+    { "name": "fuzz_forwarding_table", "seed": 15, "iterations": 20000, "focus": "conflict detection must be consistent" },
+    { "name": "fuzz_settings_migration", "seed": 16, "iterations": 20000, "focus": "migration must never panic and be idempotent" },
+    { "name": "fuzz_command_resolution", "seed": 17, "iterations": 20000, "focus": "resolution must never panic and sensitivity must be boolean" }
+  ]
+}

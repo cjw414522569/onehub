@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "path": "clients/android",
+  "layer": "L5",
+  "status": "interface-only",
+  "approved_bridge": "bindings-kotlin",
+  "native_toolkit": "Kotlin / Gradle / Jetpack Compose",
+  "build_verification": "blocked-unavailable-toolchain",
+  "scope": "Approved boundary only; no native build is claimed in the Windows-first phase.",
+  "forbidden_dependencies": ["ssh-backend", "sftp-backend", "storage-sqlite", "secure-store", "sync-service"]
+}

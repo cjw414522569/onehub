@@ -1,0 +1,123 @@
+{
+  "schema_version": 1,
+  "tool": "wgpu-terminal-feasibility",
+  "status": "passed",
+  "backend_request": "dx12",
+  "scenario_request": "all",
+  "device_class": "windows",
+  "replay_bytes": 10485760,
+  "replay_sha256": "afc7695eb202286eee7b5d5c4edd024ce06adb9f61051c5ccb595bd97b5a7101",
+  "adapter": {
+    "name": "NVIDIA GeForce RTX 5060",
+    "backend": "Dx12",
+    "device_type": "DiscreteGpu",
+    "driver": "32.0.16.1088",
+    "driver_info": "",
+    "vendor": 4318,
+    "device": 11525,
+    "features": "Features { features_wgpu: FeaturesWGPU(TEXTURE_FORMAT_16BIT_NORM | TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES | TIMESTAMP_QUERY_INSIDE_ENCODERS | TIMESTAMP_QUERY_INSIDE_PASSES | MAPPABLE_PRIMARY_BUFFERS | TEXTURE_BINDING_ARRAY | STORAGE_RESOURCE_BINDING_ARRAY | SAMPLED_TEXTURE_AND_STORAGE_BUFFER_ARRAY_NON_UNIFORM_INDEXING | STORAGE_TEXTURE_ARRAY_NON_UNIFORM_INDEXING | PARTIALLY_BOUND_BINDING_ARRAY | MULTI_DRAW_INDIRECT_COUNT | ADDRESS_MODE_CLAMP_TO_ZERO | ADDRESS_MODE_CLAMP_TO_BORDER | POLYGON_MODE_LINE | CONSERVATIVE_RASTERIZATION | VERTEX_WRITABLE_STORAGE | CLEAR_TEXTURE | TEXTURE_ATOMIC | TEXTURE_FORMAT_NV12 | TEXTURE_FORMAT_P010 | EXTERNAL_TEXTURE | PASSTHROUGH_SHADERS | MEMORY_DECORATION_COHERENT), features_webgpu: FeaturesWebGPU(DEPTH_CLIP_CONTROL | DEPTH32FLOAT_STENCIL8 | TEXTURE_COMPRESSION_BC | TEXTURE_COMPRESSION_BC_SLICED_3D | TIMESTAMP_QUERY | INDIRECT_FIRST_INSTANCE | RG11B10UFLOAT_RENDERABLE | BGRA8UNORM_STORAGE | FLOAT32_FILTERABLE | FLOAT32_BLENDABLE | DUAL_SOURCE_BLENDING | IMMEDIATES | PRIMITIVE_INDEX) }",
+    "limits": {
+      "max_texture_dimension_2d": 16384,
+      "max_buffer_size": 2147483647,
+      "max_bind_groups": 8,
+      "max_uniform_buffer_binding_size": 65536
+    }
+  },
+  "scenarios": [
+    {
+      "id": "replay-10mb",
+      "status": "passed",
+      "measurement": "CPU VT/UTF-8 batch scan; release profile",
+      "samples": 30,
+      "p50_ms": 9.8168,
+      "p95_ms": 9.9091,
+      "p99_ms": 9.9445,
+      "throughput_mb_s": 1068.1444055089235,
+      "fps": null,
+      "dropped_frames": null,
+      "target": 150.0,
+      "passed": true,
+      "notes": [
+        "control_bytes=673071",
+        "printable_bytes=8218574",
+        "lines=212548",
+        "unicode_bytes=1558690",
+        "bytes=10485760",
+        "checksum=296c2d0a36485a5d"
+      ]
+    },
+    {
+      "id": "4k-full-refresh",
+      "status": "passed",
+      "measurement": "3840x2160 offscreen render pass and queue wait",
+      "samples": 8,
+      "p50_ms": 0.1573,
+      "p95_ms": 1.721,
+      "p99_ms": 1.721,
+      "throughput_mb_s": null,
+      "fps": 6357.279084551812,
+      "dropped_frames": 0,
+      "target": 120.0,
+      "passed": true,
+      "notes": [
+        "offscreen texture; no window surface",
+        "GPU trace is enabled by --trace-dir"
+      ]
+    },
+    {
+      "id": "ligature-fi-ffi",
+      "status": "proxy_passed",
+      "measurement": "ligature fixture shaping proxy; platform text shaper required for final proof",
+      "samples": 30,
+      "p50_ms": 0.0,
+      "p95_ms": 0.00009999999999999999,
+      "p99_ms": 0.0003,
+      "throughput_mb_s": null,
+      "fps": null,
+      "dropped_frames": null,
+      "target": null,
+      "passed": true,
+      "notes": [
+        "fixture includes fi, ffi, and U+FB03",
+        "headless prototype validates data path; glyph rasterizer remains platform integration work"
+      ]
+    },
+    {
+      "id": "ime-composition-proxy",
+      "status": "proxy_passed",
+      "measurement": "IME composition event proxy; native IME bridge required for final proof",
+      "samples": 30,
+      "p50_ms": 0.0,
+      "p95_ms": 0.00009999999999999999,
+      "p99_ms": 0.00009999999999999999,
+      "throughput_mb_s": null,
+      "fps": null,
+      "dropped_frames": null,
+      "target": null,
+      "passed": true,
+      "notes": [
+        "composition sequence n -> ni -> 你 -> 你好",
+        "headless prototype records contract payload only; no native OS IME claim"
+      ]
+    },
+    {
+      "id": "scrollback-million-lines",
+      "status": "proxy_passed",
+      "measurement": "bounded scrollback index traversal proxy",
+      "samples": 30,
+      "p50_ms": 0.0007,
+      "p95_ms": 0.0007999999999999999,
+      "p99_ms": 0.0007999999999999999,
+      "throughput_mb_s": null,
+      "fps": null,
+      "dropped_frames": null,
+      "target": null,
+      "passed": true,
+      "notes": [
+        "lines=1000",
+        "full RSS/private-bytes measurement belongs to platform harness"
+      ]
+    }
+  ],
+  "error": null
+}

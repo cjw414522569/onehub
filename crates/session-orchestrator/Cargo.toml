@@ -1,0 +1,20 @@
+[package]
+name = "session-orchestrator"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+core-domain = { path = "../core-domain" }
+core-errors = { path = "../core-errors" }
+core-protocol = { path = "../core-protocol" }
+serde = { version = "1", features = ["derive"] }
+tokio = { version = "1", features = ["macros", "sync", "time", "rt"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time", "test-util", "sync"] }
+serde_json = "1"

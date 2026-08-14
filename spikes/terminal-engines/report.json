@@ -1,0 +1,190 @@
+{
+  "candidates": [
+    {
+      "blocked_reason": "",
+      "corpus_sha256": "49c43e128d188404c3692f1c59899dda00c242927077dbdacdbe7208bbaebdef",
+      "id": "alacritty_terminal",
+      "implementation": "alacritty_terminal::vte::ansi::Processor + Term",
+      "license": "Apache-2.0",
+      "license_check": {
+        "command": "cargo run --release --manifest-path spikes/terminal-engines/Cargo.toml (license)",
+        "exit_code": 0,
+        "status": "passed"
+      },
+      "metrics": {
+        "cells": 1920,
+        "combining_chars": 0,
+        "errors": 229196,
+        "events": 1920,
+        "input_bytes": 10485760,
+        "p50_ms": 342.447,
+        "p95_ms": 348.612,
+        "peak_alloc_bytes_approx": 122880,
+        "samples_ms": [
+          342.447,
+          342.645,
+          336.037,
+          348.612,
+          339.319
+        ],
+        "throughput_mb_s": 29.202,
+        "wide_chars": 0
+      },
+      "output_sha256": "64f0fd3036cf4ed3c6c0d5123c7420725a9910dea425952d41d52ec57ff03352",
+      "replay": {
+        "command": "cargo run --release --manifest-path spikes/terminal-engines/Cargo.toml (replay)",
+        "exit_code": 0,
+        "status": "passed"
+      },
+      "repository": "https://github.com/alacritty/alacritty",
+      "status": "passed",
+      "throughput": {
+        "command": "cargo run --release --manifest-path spikes/terminal-engines/Cargo.toml (throughput)",
+        "exit_code": 0,
+        "status": "passed"
+      },
+      "unicode": {
+        "command": "cargo run --release --manifest-path spikes/terminal-engines/Cargo.toml (unicode)",
+        "exit_code": 0,
+        "status": "passed"
+      },
+      "version": "0.26.0",
+      "vt": {
+        "command": "cargo run --release --manifest-path spikes/terminal-engines/Cargo.toml (vt-compatibility)",
+        "exit_code": 0,
+        "status": "passed"
+      }
+    },
+    {
+      "blocked_reason": "",
+      "corpus_sha256": "49c43e128d188404c3692f1c59899dda00c242927077dbdacdbe7208bbaebdef",
+      "id": "wezterm-fork-proxy",
+      "implementation": "tattoy-wezterm-term fork proxy; Terminal::advance_bytes",
+      "license": "MIT",
+      "license_check": {
+        "command": "cargo run --release --manifest-path spikes/terminal-engines/Cargo.toml (license)",
+        "exit_code": 0,
+        "status": "passed"
+      },
+      "metrics": {
+        "cells": 400,
+        "combining_chars": 0,
+        "errors": 229196,
+        "events": 400,
+        "input_bytes": 10485760,
+        "p50_ms": 999.323,
+        "p95_ms": 1000.469,
+        "peak_alloc_bytes_approx": 38400,
+        "samples_ms": [
+          999.061,
+          998.286,
+          1000.095,
+          999.323,
+          1000.469
+        ],
+        "throughput_mb_s": 10.007,
+        "wide_chars": 0
+      },
+      "output_sha256": "1d88359daaa3119bec5f5075fd01479975995e56ac9a2b8369f72ad9caf40f77",
+      "replay": {
+        "command": "cargo run --release --manifest-path spikes/terminal-engines/Cargo.toml (replay)",
+        "exit_code": 0,
+        "status": "passed"
+      },
+      "repository": "https://github.com/tattoy-org/wezterm",
+      "status": "passed",
+      "throughput": {
+        "command": "cargo run --release --manifest-path spikes/terminal-engines/Cargo.toml (throughput)",
+        "exit_code": 0,
+        "status": "passed"
+      },
+      "unicode": {
+        "command": "cargo run --release --manifest-path spikes/terminal-engines/Cargo.toml (unicode)",
+        "exit_code": 0,
+        "status": "passed"
+      },
+      "version": "0.1.0-fork.5",
+      "vt": {
+        "command": "cargo run --release --manifest-path spikes/terminal-engines/Cargo.toml (vt-compatibility)",
+        "exit_code": 0,
+        "status": "passed"
+      }
+    },
+    {
+      "blocked_reason": "",
+      "corpus_sha256": "49c43e128d188404c3692f1c59899dda00c242927077dbdacdbe7208bbaebdef",
+      "id": "adapter-baseline",
+      "implementation": "independent CSI/OSC/UTF-8 baseline parser",
+      "license": "MIT",
+      "license_check": {
+        "command": "cargo run --release --manifest-path spikes/terminal-engines/Cargo.toml (license)",
+        "exit_code": 0,
+        "status": "passed"
+      },
+      "metrics": {
+        "cells": 1920,
+        "combining_chars": 229196,
+        "errors": 229196,
+        "events": 630294,
+        "input_bytes": 10485760,
+        "p50_ms": 120.69,
+        "p95_ms": 121.288,
+        "peak_alloc_bytes_approx": 92160,
+        "samples_ms": [
+          120.036,
+          120.634,
+          121.288,
+          120.69,
+          120.742
+        ],
+        "throughput_mb_s": 82.857,
+        "wide_chars": 401093
+      },
+      "output_sha256": "e5f137c703a484e211cfda55f5750e17bec522a0cf5a634f273c7fb4923e741d",
+      "replay": {
+        "command": "cargo run --release --manifest-path spikes/terminal-engines/Cargo.toml (replay)",
+        "exit_code": 0,
+        "status": "passed"
+      },
+      "repository": "workspace://spikes/terminal-engines",
+      "status": "passed",
+      "throughput": {
+        "command": "cargo run --release --manifest-path spikes/terminal-engines/Cargo.toml (throughput)",
+        "exit_code": 0,
+        "status": "passed"
+      },
+      "unicode": {
+        "command": "cargo run --release --manifest-path spikes/terminal-engines/Cargo.toml (unicode)",
+        "exit_code": 0,
+        "status": "passed"
+      },
+      "version": "baseline-v1",
+      "vt": {
+        "command": "cargo run --release --manifest-path spikes/terminal-engines/Cargo.toml (vt-compatibility)",
+        "exit_code": 0,
+        "status": "passed"
+      }
+    }
+  ],
+  "corpus_bytes": 10485760,
+  "corpus_sha256": "49c43e128d188404c3692f1c59899dda00c242927077dbdacdbe7208bbaebdef",
+  "fixture": "C:\\work\\ssh\\spikes\\terminal-engines\\fixtures\\vt-unicode-replay.txt",
+  "generated_at_utc": "2026-08-12T19:10:04.760Z",
+  "matrix": "C:\\work\\ssh\\spikes\\terminal-engines\\matrix.json",
+  "official_wezterm_term": {
+    "command": "cargo search wezterm-term",
+    "exit_code": 1,
+    "note": "tattoy-wezterm-term is recorded explicitly as a fork proxy, not official wezterm-term.",
+    "status": "not_published_as_standalone_crate"
+  },
+  "repetitions": 5,
+  "schema_version": 1,
+  "target_bytes": 10485760,
+  "terminal_size": {
+    "columns": 80,
+    "rows": 24
+  },
+  "vttest_blocked_reason": "vttest executable is not installed; custom corpus is not full vttest coverage.",
+  "vttest_command": "",
+  "vttest_status": "blocked_environment"
+}

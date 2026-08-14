@@ -1,0 +1,84 @@
+{
+  "schema_version": 1,
+  "contract_id": "terminal-contract-v1",
+  "status": "accepted",
+  "source_evidence": {
+    "spike_report": "docs/reports/TERMINAL_ENGINE_SPIKE.json",
+    "spike_report_sha256": "97E11B84A380A44D37AADCF88B043820E5BB37995845B2F1C31B3D5EDFFC542C",
+    "spike_candidates": ["alacritty_terminal", "wezterm-fork-proxy", "adapter-baseline"]
+  },
+  "layers": [
+    {
+      "id": "parser",
+      "replaceable": true,
+      "interface": "TerminalParser::feed(chunk) -> ParseBatch; finish() -> ParseBatch",
+      "input_batch": "TerminalOutputChunk{stream_id, sequence, bytes, end_of_chunk}",
+      "output_batch": "ParseBatch{stream_id, sequence, events, diagnostics}",
+      "public_types": ["TerminalOutputChunk", "ParseBatch", "ParseEvent", "ParserDiagnostic"],
+      "forbidden_dependencies": ["ssh", "sqlite", "platform-ui"],
+      "invariants": ["chunking-equivalent", "bounded-input", "structured-diagnostics"]
+    },
+    {
+      "id": "screen_model",
+      "replaceable": true,
+      "interface": "ScreenModel::apply(parse_batch) -> ModelResult; snapshot() -> TerminalSnapshot",
+      "input_batch": "ParseBatch with ordered events",
+      "output_batch": "TerminalSnapshot{sequence, rows, cursor, modes, title, scrollback_range}",
+      "public_types": ["ScreenModel", "TerminalSnapshot", "TerminalRow", "TerminalCell", "CursorState", "ModeSet"],
+      "forbidden_dependencies": ["ssh", "sqlite", "platform-ui"],
+      "invariants": ["deterministic-snapshot", "monotonic-sequence", "bounded-scrollback"]
+    },
+    {
+      "id": "render_diff",
+      "replaceable": true,
+      "interface": "RenderDiff::diff(previous, next) -> RenderBatch",
+      "input_batch": "Pair<TerminalSnapshot, TerminalSnapshot>",
+      "output_batch": "RenderBatch{from_sequence, to_sequence, operations}",
+      "public_types": ["RenderDiff", "RenderBatch", "RenderOp", "RenderCellRun", "RenderCursor"],
+      "forbidden_dependencies": ["ssh", "sqlite", "platform-ui"],
+      "invariants": ["deterministic-operations", "no-op-is-empty", "bounded-operation-count"]
+    },
+    {
+      "id": "input_encoder",
+      "replaceable": true,
+      "interface": "InputEncoder::encode(batch) -> EncodedInput",
+      "input_batch": "InputBatch{stream_id, sequence, events}",
+      "output_batch": "EncodedInput{stream_id, sequence, bytes}",
+      "public_types": ["InputBatch", "InputEvent", "InputEncoder", "EncodedInput", "KeyCode", "Modifiers"],
+      "forbidden_dependencies": ["ssh", "sqlite", "platform-ui"],
+      "invariants": ["stable-encoding", "batch-only", "bounded-paste"]
+    }
+  ],
+  "stable_wire": {
+    "encoding": "versioned length-delimited batch records",
+    "record_header": ["schema_version:u16", "message_type:u16", "byte_len:u32", "sequence:u64"],
+    "sequence_field": "sequence:u64 monotonic per stream and never reused after reconnect",
+    "cancellation": "request.cancel with request_id; long operations must acknowledge cancellation",
+    "backpressure": "flow.window_update credit_bytes and credit_messages; zero credit pauses sender",
+    "error_model": "structured error code, retryable flag, message key and allowlisted machine-readable details",
+    "forbidden_values": ["raw-borrowed-reference", "unbounded-buffer", "secret-debug-string", "per-character-widget", "language-exception"]
+  },
+  "render_op_kinds": ["fill", "copy", "clear", "cursor", "title"],
+  "input_event_kinds": ["text", "key", "paste", "mouse", "resize"],
+  "invariants": {
+    "batch_only": true,
+    "parser_chunking_equivalent": true,
+    "snapshot_deterministic": true,
+    "no_per_character_abi": true,
+    "no_ui_dependency": true,
+    "bounded_memory": true,
+    "sequence_monotonic": true
+  },
+  "compatibility": {
+    "major_change_policy": "new-contract-id-and-explicit-migration",
+    "minor_change_policy": "additive-optional-fields-only",
+    "unknown_message_behavior": "structured-error",
+    "snapshot_recovery": "terminal.snapshot replaces local state after sequence gap"
+  },
+  "non_goals": [
+    "Expose a concrete VT parser type to UI clients",
+    "Expose SSH, SQLite, crypto or platform-window handles in terminal records",
+    "Guarantee visual identity across font rasterizers",
+    "Use one renderer-specific operation vocabulary as the domain model"
+  ]
+}

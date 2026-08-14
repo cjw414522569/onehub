@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "generated_at_utc": "2026-08-12T00:00:00Z",
+  "corpus_sha256": "invalid",
+  "vttest_status": "blocked_environment",
+  "vttest_blocked_reason": "not installed",
+  "candidates": []
+}

@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "matrix_id": "invalid-ssh-engine-compat-v1",
+  "tests": [
+    {"id":"metadata"},
+    {"id":"build"},
+    {"id":"host-key-callback"},
+    {"id":"authentication-api"},
+    {"id":"exec"},
+    {"id":"interactive-channel"},
+    {"id":"sftp-forwarding-api"},
+    {"id":"cancel-timeout"},
+    {"id":"secret-log-scan"}
+  ]
+}

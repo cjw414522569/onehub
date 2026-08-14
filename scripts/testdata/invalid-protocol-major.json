@@ -1,0 +1,97 @@
+{
+  "protocol_id": "ssh-client.domain",
+  "schema_version": 1,
+  "version": {
+    "major": 2,
+    "minor": 0,
+    "patch": 0,
+    "minimum_compatible_major": 1,
+    "minimum_compatible_minor": 0,
+    "wire_encoding": "json-utf8",
+    "binary_payload": "length-prefixed-uint32-be"
+  },
+  "compatibility": {
+    "major_change": "reject",
+    "minor_change": "add-optional-fields-or-messages-only",
+    "patch_change": "bugfix-without-wire-shape-change",
+    "unknown_fields": "ignore",
+    "unknown_message_type": "structured-error",
+    "required_field_removal": "breaking",
+    "enum_value_addition": "receiver-preserves-unknown"
+  },
+  "envelope": {
+    "required_fields": ["protocol_id", "schema_version", "message_type", "message_id", "session_id", "request_id", "body", "byte_len"],
+    "optional_fields": ["deadline_ms", "cancel", "flow_control", "trace_id"],
+    "max_body_bytes": 1048576,
+    "max_message_bytes": 2097152,
+    "body_encoding": "json-utf8",
+    "message_id_format": "uuid-v4",
+    "request_id_format": "uuid-v4-or-null",
+    "session_id_format": "uuid-v4-or-null"
+  },
+  "capability_negotiation": {
+    "hello_message_type": "capabilities.hello",
+    "ack_message_type": "capabilities.ack",
+    "required_fields": ["supported_schema_majors", "supported_message_types", "features", "max_message_bytes", "max_in_flight"],
+    "feature_ids": ["terminal.delta.v1", "terminal.snapshot.v1", "session.cancel.v1", "flow.window.v1", "error.structured.v1", "sftp.transfer.v1", "forwarding.v1"],
+    "algorithm": "intersection-with-explicit-rejection",
+    "unsupported_feature": "structured-error"
+  },
+  "cancellation": {
+    "message_type": "request.cancel",
+    "required_fields": ["request_id", "reason", "state"],
+    "states": ["requested", "acknowledged", "completed", "rejected"],
+    "idempotent": true,
+    "deadline_behavior": "cancel-before-deadline-or-return-timeout"
+  },
+  "flow_control": {
+    "message_type": "flow.window_update",
+    "required_fields": ["stream_id", "credit_bytes", "credit_messages", "sequence"],
+    "zero_credit_behavior": "pause-sender",
+    "max_credit_bytes": 67108864,
+    "max_credit_messages": 4096,
+    "sequence_monotonic": true,
+    "sender_must_not_exceed_credit": true
+  },
+  "structured_errors": {
+    "message_type": "error.structured",
+    "required_fields": ["code", "class", "retryable", "message_key", "details", "request_id"],
+    "classes": ["invalid_argument", "unauthorized", "not_found", "conflict", "timeout", "cancelled", "transport", "protocol", "resource_exhausted", "internal"],
+    "codes": ["E_INVALID_ARGUMENT", "E_UNAUTHORIZED", "E_HOST_KEY_CHANGED", "E_UNSUPPORTED_VERSION", "E_UNSUPPORTED_FEATURE", "E_TIMEOUT", "E_CANCELLED", "E_FLOW_CONTROL", "E_RESOURCE_LIMIT", "E_INTERNAL"],
+    "details_policy": "machine-readable-allowlist-no-secret-values"
+  },
+  "messages": [
+    {"type":"capabilities.hello","direction":"bidirectional","required":["supported_schema_majors","supported_message_types","features","max_message_bytes","max_in_flight"],"optional":["client_name","client_version"],"stability":"stable"},
+    {"type":"capabilities.ack","direction":"bidirectional","required":["selected_schema_major","selected_message_types","selected_features","max_message_bytes","max_in_flight"],"optional":["server_name","server_version"],"stability":"stable"},
+    {"type":"session.open","direction":"request","required":["host_id","profile_id","terminal_size","environment"],"optional":["pty_kind","command","proxy_chain"],"stability":"stable"},
+    {"type":"session.opened","direction":"event","required":["session_state","terminal_size","server_fingerprint"],"optional":["remote_version","warnings"],"stability":"stable"},
+    {"type":"session.input","direction":"request","required":["stream_id","data","sequence"],"optional":["encoding"],"stability":"stable"},
+    {"type":"terminal.delta","direction":"event","required":["stream_id","sequence","rows","cursor","modes"],"optional":["title","working_directory","hyperlinks"],"stability":"stable"},
+    {"type":"terminal.snapshot","direction":"event","required":["stream_id","sequence","rows","cursor","modes","scrollback_range"],"optional":["title","working_directory","hyperlinks"],"stability":"stable"},
+    {"type":"terminal.resize","direction":"request","required":["columns","rows","pixel_width","pixel_height"],"optional":[],"stability":"stable"},
+    {"type":"request.cancel","direction":"request","required":["request_id","reason","state"],"optional":["deadline_ms"],"stability":"stable"},
+    {"type":"flow.window_update","direction":"event","required":["stream_id","credit_bytes","credit_messages","sequence"],"optional":[],"stability":"stable"},
+    {"type":"error.structured","direction":"event","required":["code","class","retryable","message_key","details","request_id"],"optional":["cause_code","retry_after_ms"],"stability":"stable"},
+    {"type":"sftp.transfer_progress","direction":"event","required":["transfer_id","bytes_done","bytes_total","state"],"optional":["checksum","remote_path"],"stability":"stable"}
+  ],
+  "ffi": {
+    "abi_version": 1,
+    "handle_type": "opaque-u64",
+    "message_transport": "pointer-plus-length-owned-by-caller",
+    "functions": [
+      {"name":"domain_create","inputs":["config_bytes_ptr","config_bytes_len"],"returns":"opaque_handle","cancelable":false},
+      {"name":"domain_send","inputs":["handle","message_ptr","message_len"],"returns":"error_code","cancelable":true},
+      {"name":"domain_poll_batch","inputs":["handle","out_ptr","out_capacity"],"returns":"byte_len_or_error_code","cancelable":true},
+      {"name":"domain_cancel","inputs":["handle","request_id"],"returns":"error_code","cancelable":false},
+      {"name":"domain_release","inputs":["handle"],"returns":"void","cancelable":false}
+    ],
+    "forbidden_values": ["raw-borrowed-reference", "language-exception", "secret-debug-string", "unbounded-buffer"]
+  },
+  "wasm": {
+    "exported_namespace": "ssh_client_domain_v1",
+    "transport": "Uint8Array-length-delimited",
+    "async_model": "promise-with-cancel-token",
+    "unknown_message_behavior": "structured-error",
+    "max_memory_bytes": 268435456
+  }
+}

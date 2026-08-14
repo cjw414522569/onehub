@@ -1,0 +1,24 @@
+# Shared terminal corpus fixture v1. Escapes are decoded by the Rust runner.
+ESC|\x1b[2J
+ESC|\x1b[1;1H
+TEXT|plain
+ESC|\x1b[1;34m
+TEXT|bold-blue
+ESC|\x1b[0m
+ESC|\x1b[4;10H
+TEXT|cursor-move
+ESC|\x1b[2K
+ESC|\x1b[6n
+ESC|\x1b]0;Spike title\x07
+TEXT|CJK宽字符
+TEXT|combining é å
+TEXT|emoji 🙂 ☕️ 🧑‍💻
+ESC|\r\n
+TEXT|CRLF
+ESC|\x1b[3;1H
+TEXT|erase-next
+ESC|\x1b[1K
+BYTES|\xff\xfe\x80\xc3\x28
+ESC|\x1b[8;1H
+TEXT|end-of-seed
+TARGET_BYTES|10485760

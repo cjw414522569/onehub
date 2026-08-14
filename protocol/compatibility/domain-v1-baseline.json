@@ -1,0 +1,10 @@
+{
+  "protocol_id": "ssh-client.domain",
+  "schema_version": 1,
+  "major": 1,
+  "required_envelope_fields": ["protocol_id", "schema_version", "message_type", "message_id", "session_id", "request_id", "body", "byte_len"],
+  "required_message_types": ["capabilities.hello", "capabilities.ack", "session.open", "session.opened", "session.input", "terminal.delta", "terminal.snapshot", "terminal.resize", "request.cancel", "flow.window_update", "error.structured"],
+  "required_features": ["terminal.delta.v1", "terminal.snapshot.v1", "session.cancel.v1", "flow.window.v1", "error.structured.v1"],
+  "required_abi_fields": ["schema_version", "message_type", "byte_len", "request_id", "cancel", "backpressure", "error_code"],
+  "compatibility_rule": "same-major-preserves-required-fields-and-message-types"
+}

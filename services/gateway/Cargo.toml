@@ -1,0 +1,17 @@
+[package]
+name = "gateway"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "ssh-gateway"
+path = "src/main.rs"
+
+[dependencies]
+policy-engine = { path = "../../crates/policy-engine" }
+proxy = { path = "../../crates/proxy" }
+session-orchestrator = { path = "../../crates/session-orchestrator" }
+ssh-backend = { path = "../../crates/ssh-backend" }
+

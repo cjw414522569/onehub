@@ -1,0 +1,115 @@
+{
+  "schema_version": 1,
+  "status": "passed",
+  "secure_context": true,
+  "navigator_gpu": true,
+  "adapter_available": true,
+  "adapter": {
+    "features": [
+      "bgra8unorm-storage",
+      "chromium-experimental-multi-draw-indirect",
+      "chromium-experimental-timestamp-query-inside-passes",
+      "clip-distances",
+      "core-features-and-limits",
+      "depth-clip-control",
+      "depth32float-stencil8",
+      "dual-source-blending",
+      "float32-blendable",
+      "float32-filterable",
+      "indirect-first-instance",
+      "primitive-index",
+      "rg11b10ufloat-renderable",
+      "shader-f16",
+      "subgroups",
+      "texture-component-swizzle",
+      "texture-compression-bc",
+      "texture-compression-bc-sliced-3d",
+      "texture-formats-tier1",
+      "texture-formats-tier2",
+      "timestamp-query"
+    ],
+    "limits": {
+      "maxTextureDimension2D": 16384,
+      "maxBufferSize": 2147483648
+    }
+  },
+  "device_created": true,
+  "fixture": {
+    "file": ".\\spikes\\wgpu-terminal\\fixtures\\replay-10mb.bin",
+    "bytes": 10485760,
+    "sha256": "afc7695eb202286eee7b5d5c4edd024ce06adb9f61051c5ccb595bd97b5a7101"
+  },
+  "scenarios": [
+    {
+      "id": "replay-10mb",
+      "status": "passed",
+      "measurement": "WebGPU queue.writeBuffer and queue completion",
+      "samples": 30,
+      "p50_ms": 6.599999997764826,
+      "p95_ms": 11.800000000745058,
+      "p99_ms": 25.5,
+      "mean_ms": 7.673333333308498,
+      "stddev_ms": 3.635192185094014,
+      "throughput_mb_s": 1588.751515689566,
+      "passed": true,
+      "target": 40
+    },
+    {
+      "id": "4k-full-refresh",
+      "status": "passed",
+      "measurement": "WebGPU offscreen 4K render pass and queue completion",
+      "samples": 30,
+      "p50_ms": 3,
+      "p95_ms": 3.2999999970197678,
+      "p99_ms": 4.800000000745058,
+      "mean_ms": 3.0733333334326742,
+      "stddev_ms": 0.3335998936573058,
+      "throughput_mb_s": 0,
+      "fps": 333.3333333333333,
+      "passed": true,
+      "target": 60
+    },
+    {
+      "id": "ligature-fi-ffi",
+      "status": "proxy_passed",
+      "measurement": "headless ligature fixture data-path proxy",
+      "samples": 1,
+      "p50_ms": 0,
+      "p95_ms": 0,
+      "p99_ms": 0,
+      "ligature_clusters": 34,
+      "passed": true
+    },
+    {
+      "id": "ime-composition-proxy",
+      "status": "proxy_passed",
+      "measurement": "headless IME composition payload proxy",
+      "samples": 1,
+      "p50_ms": 0,
+      "p95_ms": 0,
+      "p99_ms": 0,
+      "committed": "??",
+      "passed": true
+    },
+    {
+      "id": "scrollback-million-lines",
+      "status": "proxy_passed",
+      "measurement": "headless scrollback index traversal proxy",
+      "samples": 1,
+      "p50_ms": 5.699999999254942,
+      "p95_ms": 5.699999999254942,
+      "p99_ms": 5.699999999254942,
+      "checksum": 3205071072,
+      "passed": true
+    }
+  ],
+  "runner": {
+    "browser": "Chrome via CDP",
+    "chrome_path": "C:/Program Files/Google/Chrome/Application/chrome.exe",
+    "host": "win32",
+    "node": "v22.23.2",
+    "backend": "webgpu",
+    "page_origin": "http://127.0.0.1:51929"
+  },
+  "generated_at_utc": "2026-08-12T23:46:28.228Z"
+}

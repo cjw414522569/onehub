@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "path": "clients/windows",
+  "layer": "L5",
+  "status": "windows-first-buildable",
+  "approved_bridge": "abi-c",
+  "native_toolkit": "WinUI 3 / Windows App SDK",
+  "build_verification": "cargo-check-on-windows",
+  "scope": "Buildable host-shell contract only; native UI wiring remains behind this boundary.",
+  "forbidden_dependencies": ["ssh-backend", "sftp-backend", "storage-sqlite", "secure-store", "sync-service"]
+}

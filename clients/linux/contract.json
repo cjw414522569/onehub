@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "path": "clients/linux",
+  "layer": "L5",
+  "status": "interface-only",
+  "approved_bridge": "abi-c",
+  "native_toolkit": "GTK4 / libadwaita",
+  "build_verification": "blocked-unavailable-toolchain",
+  "scope": "Approved boundary only; no native build is claimed in the Windows-first phase.",
+  "forbidden_dependencies": ["ssh-backend", "sftp-backend", "storage-sqlite", "secure-store", "sync-service"]
+}

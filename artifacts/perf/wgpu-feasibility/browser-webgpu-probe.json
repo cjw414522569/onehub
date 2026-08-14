@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "generated_at_utc": "2026-08-12T00:00:00Z",
+  "runner": {
+    "browser": "Google Chrome 151.0.7922.109",
+    "host": "Windows",
+    "gpu_flags": [
+      "--enable-gpu",
+      "--enable-unsafe-webgpu",
+      "--use-angle=d3d11"
+    ]
+  },
+  "probes": [
+    {
+      "origin": "data:text/html",
+      "secure_context": false,
+      "navigator_gpu": false,
+      "adapter_result": "not_attempted",
+      "result": "not_capability_evidence"
+    },
+    {
+      "origin": "http://127.0.0.1:<ephemeral-port>",
+      "secure_context": true,
+      "navigator_gpu": true,
+      "adapter_result": "timeout_in_dump_dom_harness",
+      "result": "inconclusive"
+    }
+  ],
+  "result": "blocked_environment",
+  "limitation": "A real Chrome CDP probe can create a WebGPU adapter and device, but this workspace still lacks the full browser benchmark runner, native Metal/mobile devices, native IME/shaping evidence, and RSS/private-bytes/soak evidence. The probe therefore does not satisfy T012 completion.",
+  "cdp_probe": {
+    "browser": "Google Chrome 151.0.7922.109",
+    "origin": "https://webgpureport.org/",
+    "secure_context": true,
+    "navigator_gpu": true,
+    "adapter_available": true,
+    "device_created": true,
+    "result": "capability_probe_passed",
+    "notes": "Chrome DevTools Protocol Runtime.evaluate with awaitPromise; this is not the T012 replay/4K/IME/scrollback benchmark and does not cover native device classes."
+  }
+}

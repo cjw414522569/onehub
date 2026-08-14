@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "contract_id": "terminal-contract-v1-invalid-missing-layer",
+  "status": "accepted",
+  "source_evidence": {
+    "spike_report": "docs/reports/TERMINAL_ENGINE_SPIKE.json",
+    "spike_report_sha256": "97E11B84A380A44D37AADCF88B043820E5BB37995845B2F1C31B3D5EDFFC542C"
+  },
+  "layers": [
+    {
+      "id": "parser",
+      "replaceable": true,
+      "interface": "batch parser",
+      "input_batch": "chunk",
+      "output_batch": "parse batch",
+      "public_types": ["ParseBatch"],
+      "forbidden_dependencies": ["ssh", "sqlite", "platform-ui"]
+    },
+    {
+      "id": "screen_model",
+      "replaceable": true,
+      "interface": "batch screen model",
+      "input_batch": "parse batch",
+      "output_batch": "snapshot",
+      "public_types": ["TerminalSnapshot"],
+      "forbidden_dependencies": ["ssh", "sqlite", "platform-ui"]
+    },
+    {
+      "id": "render_diff",
+      "replaceable": true,
+      "interface": "batch diff",
+      "input_batch": "snapshots",
+      "output_batch": "render batch",
+      "public_types": ["RenderBatch"],
+      "forbidden_dependencies": ["ssh", "sqlite", "platform-ui"]
+    }
+  ],
+  "stable_wire": {
+    "encoding": "versioned length-delimited batch records",
+    "sequence_field": "sequence:u64",
+    "cancellation": "request.cancel",
+    "backpressure": "flow.window_update",
+    "error_model": "structured error",
+    "forbidden_values": [
+      "raw-borrowed-reference",
+      "unbounded-buffer",
+      "secret-debug-string",
+      "per-character-widget",
+      "language-exception"
+    ]
+  },
+  "render_op_kinds": ["fill", "copy", "clear", "cursor", "title"],
+  "input_event_kinds": ["text", "key", "paste", "mouse", "resize"],
+  "invariants": {
+    "batch_only": true,
+    "parser_chunking_equivalent": true,
+    "snapshot_deterministic": true,
+    "no_per_character_abi": true,
+    "no_ui_dependency": true,
+    "bounded_memory": true,
+    "sequence_monotonic": true
+  }
+}

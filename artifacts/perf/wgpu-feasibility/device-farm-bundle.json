@@ -1,0 +1,166 @@
+{
+  "schema_version": 1,
+  "bundle_id": "wgpu-device-farm-v1",
+  "status": "partial",
+  "generated_at_utc": "2026-08-13T11:25:57.845Z",
+  "fixture": {
+    "path": "spikes/wgpu-terminal/fixtures/replay-10mb.bin",
+    "bytes": 10485760,
+    "sha256": "afc7695eb202286eee7b5d5c4edd024ce06adb9f61051c5ccb595bd97b5a7101"
+  },
+  "matrix": {
+    "backends": [
+      "dx12",
+      "metal",
+      "vulkan",
+      "webgpu"
+    ],
+    "device_classes": [
+      "windows",
+      "macos-intel",
+      "macos-apple-silicon",
+      "linux",
+      "ios-ipados",
+      "android",
+      "web-pwa"
+    ],
+    "profiles": [
+      "debug",
+      "release"
+    ],
+    "scenarios": [
+      "replay-10mb",
+      "4k-full-refresh",
+      "ligature-fi-ffi",
+      "ime-composition-proxy",
+      "scrollback-million-lines"
+    ],
+    "required_results": [
+      "windows-dx12-debug",
+      "windows-dx12-release",
+      "windows-vulkan-debug",
+      "windows-vulkan-release",
+      "windows-metal-debug",
+      "windows-metal-release",
+      "windows-webgpu-debug",
+      "windows-webgpu-release",
+      "macos-intel-dx12-debug",
+      "macos-intel-dx12-release",
+      "macos-intel-vulkan-debug",
+      "macos-intel-vulkan-release",
+      "macos-intel-metal-debug",
+      "macos-intel-metal-release",
+      "macos-intel-webgpu-debug",
+      "macos-intel-webgpu-release",
+      "macos-apple-silicon-dx12-debug",
+      "macos-apple-silicon-dx12-release",
+      "macos-apple-silicon-vulkan-debug",
+      "macos-apple-silicon-vulkan-release",
+      "macos-apple-silicon-metal-debug",
+      "macos-apple-silicon-metal-release",
+      "macos-apple-silicon-webgpu-debug",
+      "macos-apple-silicon-webgpu-release",
+      "linux-dx12-debug",
+      "linux-dx12-release",
+      "linux-vulkan-debug",
+      "linux-vulkan-release",
+      "linux-metal-debug",
+      "linux-metal-release",
+      "linux-webgpu-debug",
+      "linux-webgpu-release",
+      "ios-ipados-dx12-debug",
+      "ios-ipados-dx12-release",
+      "ios-ipados-vulkan-debug",
+      "ios-ipados-vulkan-release",
+      "ios-ipados-metal-debug",
+      "ios-ipados-metal-release",
+      "ios-ipados-webgpu-debug",
+      "ios-ipados-webgpu-release",
+      "android-dx12-debug",
+      "android-dx12-release",
+      "android-vulkan-debug",
+      "android-vulkan-release",
+      "android-metal-debug",
+      "android-metal-release",
+      "android-webgpu-debug",
+      "android-webgpu-release",
+      "web-pwa-dx12-debug",
+      "web-pwa-dx12-release",
+      "web-pwa-vulkan-debug",
+      "web-pwa-vulkan-release",
+      "web-pwa-metal-debug",
+      "web-pwa-metal-release",
+      "web-pwa-webgpu-debug",
+      "web-pwa-webgpu-release"
+    ]
+  },
+  "files": [
+    {
+      "path": "spikes/wgpu-terminal/fixtures/replay-10mb.bin",
+      "role": "fixed replay fixture",
+      "bytes": 10485760,
+      "sha256": "afc7695eb202286eee7b5d5c4edd024ce06adb9f61051c5ccb595bd97b5a7101"
+    },
+    {
+      "path": "spikes/wgpu-terminal/fixtures/manifest.json",
+      "role": "fixture manifest",
+      "bytes": 406,
+      "sha256": "3886ab43c5defc211c19a2f8e7d2097091db00925cf7adfc0c18f887215d4b67"
+    },
+    {
+      "path": "docs/reports/WGPU_FEASIBILITY.json",
+      "role": "base feasibility report",
+      "bytes": 95306,
+      "sha256": "acc71652c879c6997359724dd509d25f2bf08148daa995522bf1b43748b5f544"
+    },
+    {
+      "path": "docs/reports/WGPU_FEASIBILITY.md",
+      "role": "rendered feasibility report",
+      "bytes": 6131,
+      "sha256": "735997a3edc008756b5e796c7a5dbbe0d0f82e235f386eb8e48f153a06dbaefc"
+    },
+    {
+      "path": "artifacts/perf/wgpu-feasibility/runner-preflight.json",
+      "role": "runner preflight snapshot",
+      "bytes": 2911,
+      "sha256": "5d5bdc6db7fa7db5f1934cc4ef05c92076e20fb18171e54a8b43cd07bfa152da"
+    },
+    {
+      "path": "scripts/run-wgpu-feasibility.ps1",
+      "role": "native matrix runner",
+      "bytes": 8417,
+      "sha256": "788a62fc80f90a77ece5e9ef48d906f3d25747d3eea3dad039d5415db6d69550"
+    },
+    {
+      "path": "scripts/validate-wgpu-feasibility.ps1",
+      "role": "native matrix validator",
+      "bytes": 15651,
+      "sha256": "c63e09d92eff66dc08de8572d082d51073b81f50e6c070811506ed80fd1a5b58"
+    },
+    {
+      "path": "scripts/merge-wgpu-device-farm.mjs",
+      "role": "device farm merge tool",
+      "bytes": 6479,
+      "sha256": "a45760e66967df69fdbaec8b972552cd12cbcd63cf750377aac6b63e549288b5"
+    },
+    {
+      "path": "scripts/validate-wgpu-device-farm-bundle.mjs",
+      "role": "bundle validator",
+      "bytes": 8994,
+      "sha256": "b60e58a3edba76bbf575589536fc98d81131fd95878f22b87a6fa35e146af7fc"
+    }
+  ],
+  "preflight": {
+    "path": "artifacts/perf/wgpu-feasibility/runner-preflight.json",
+    "status": "partial",
+    "sha256": "5d5bdc6db7fa7db5f1934cc4ef05c92076e20fb18171e54a8b43cd07bfa152da"
+  },
+  "commands": [
+    "node scripts/runner-preflight.mjs --output artifacts/perf/wgpu-feasibility/runner-preflight.json",
+    "node scripts/validate-runner-preflight.mjs artifacts/perf/wgpu-feasibility/runner-preflight.json",
+    "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-wgpu-feasibility.ps1 -SkipBuild",
+    "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/validate-wgpu-feasibility.ps1",
+    "node scripts/merge-wgpu-device-farm.mjs docs/reports/WGPU_FEASIBILITY.json farm-results.json merged-report.json",
+    "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/validate-wgpu-feasibility.ps1 -ReportFile merged-report.json"
+  ]
+}

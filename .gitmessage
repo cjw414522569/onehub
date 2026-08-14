@@ -1,0 +1,6 @@
+# Conventional Commits: <type>(<scope>): <subject, imperative, <=72 characters>
+#
+# Types: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert
+# Keep the subject concise. Explain motivation and user-visible impact below.
+#
+# BREAKING CHANGE: describe migration steps when an API or protocol contract breaks.

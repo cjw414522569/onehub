@@ -1,0 +1,256 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  governance:
+    name: ci / governance
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - name: Validate governance
+        run: node scripts/validate-git-governance.mjs .
+      - name: Validate control ledger
+        shell: pwsh
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/validate-control.ps1
+  cargo:
+    name: ci / cargo
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.97.1
+      - name: Format
+        run: cargo fmt --manifest-path spikes/wgpu-terminal/Cargo.toml -- --check
+      - name: Check and test release candidate
+        shell: pwsh
+        run: |
+          cargo check --manifest-path spikes/wgpu-terminal/Cargo.toml --locked
+          cargo test --manifest-path spikes/wgpu-terminal/Cargo.toml --locked
+          cargo build --release --manifest-path spikes/wgpu-terminal/Cargo.toml --locked
+      - name: Check and test supporting spikes
+        shell: pwsh
+        run: |
+          cargo check --manifest-path spikes/terminal-engines/Cargo.toml --locked
+          cargo test --manifest-path spikes/terminal-engines/Cargo.toml --locked
+          cargo check --manifest-path spikes/ssh-engines/Cargo.toml --locked
+          cargo test --manifest-path spikes/ssh-engines/Cargo.toml --locked
+          cargo check --manifest-path spikes/terminal-contract/Cargo.toml --locked
+          cargo test --manifest-path spikes/terminal-contract/Cargo.toml --locked
+  platform-windows:
+    name: ci / platform-windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.97.1
+          components: rustfmt, clippy
+      - name: Build
+        shell: pwsh
+        run: |
+          node scripts/validate-platform-ci.mjs . --platform windows
+          cargo build --workspace --release --quiet
+      - name: Lint
+        shell: pwsh
+        run: |
+          node scripts/validate-platform-ci.mjs . --platform windows
+          cargo clippy --workspace --all-targets --all-features -- -D warnings
+      - name: Unit tests
+        shell: pwsh
+        run: |
+          node scripts/validate-platform-ci.mjs . --platform windows
+          cargo test --workspace --quiet
+  platform-macos:
+    name: ci / platform-macos
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - name: Build
+        run: |
+          node scripts/validate-platform-ci.mjs . --platform macos
+          swift build --package-path clients/apple
+      - name: Lint
+        run: |
+          node scripts/validate-platform-ci.mjs . --platform macos
+          swift package dump-package --package-path clients/apple >/dev/null
+      - name: Unit tests
+        run: |
+          node scripts/validate-platform-ci.mjs . --platform macos
+          swift test --package-path clients/apple
+  platform-ios:
+    name: ci / platform-ios
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - name: Build
+        run: |
+          node scripts/validate-platform-ci.mjs . --platform ios
+          xcodebuild -version
+          swift build --package-path clients/apple
+      - name: Lint
+        run: |
+          node scripts/validate-platform-ci.mjs . --platform ios
+          swift package dump-package --package-path clients/apple >/dev/null
+      - name: Unit tests
+        run: |
+          node scripts/validate-platform-ci.mjs . --platform ios
+          swift test --package-path clients/apple
+  platform-linux:
+    name: ci / platform-linux
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - name: Build
+        run: |
+          node scripts/validate-platform-ci.mjs . --platform linux
+          meson setup clients/linux/build clients/linux --fatal-meson-warnings
+          meson compile -C clients/linux/build
+      - name: Lint
+        run: |
+          node scripts/validate-platform-ci.mjs . --platform linux
+          meson setup clients/linux/lint-build clients/linux --fatal-meson-warnings
+      - name: Unit tests
+        run: |
+          node scripts/validate-platform-ci.mjs . --platform linux
+          meson test -C clients/linux/build --print-errorlogs
+  platform-android:
+    name: ci / platform-android
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.0.0'
+      - name: Build
+        run: |
+          node scripts/validate-platform-ci.mjs . --platform android
+          gradle --no-daemon -p clients/android platformBuild
+      - name: Lint
+        run: |
+          node scripts/validate-platform-ci.mjs . --platform android
+          gradle --no-daemon -p clients/android platformLint
+      - name: Unit tests
+        run: |
+          node scripts/validate-platform-ci.mjs . --platform android
+          gradle --no-daemon -p clients/android platformTest
+  license:
+    name: ci / license
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - name: Refresh and validate license evidence
+        shell: pwsh
+        run: |
+          cargo metadata --manifest-path spikes/wgpu-terminal/Cargo.toml --format-version 1 --locked > artifacts/license-metadata-wgpu-full.json
+          cargo metadata --manifest-path spikes/terminal-engines/Cargo.toml --format-version 1 --locked > artifacts/license-metadata-terminal-full.json
+          cargo metadata --manifest-path spikes/ssh-engines/Cargo.toml --format-version 1 --locked > artifacts/license-metadata-ssh-full.json
+          cargo metadata --manifest-path spikes/terminal-contract/Cargo.toml --format-version 1 --locked > artifacts/license-metadata-contract-full.json
+          node scripts/generate-license-report.mjs
+          node scripts/test-license-report.mjs
+          node scripts/validate-license-report.mjs artifacts/reports/LICENSE_COMPLIANCE.json
+          node scripts/test-license-report-validator.mjs
+  fuzz-smoke:
+    name: ci / fuzz-smoke
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.97.1
+      - name: Run fuzz smoke corpus (time-limited)
+        shell: pwsh
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-fuzz-smoke.ps1 -RepositoryRoot . -TimeoutSeconds 300
+      - name: Validate fuzz infrastructure contract
+        shell: pwsh
+        run: node scripts/test-fuzz-infra.mjs .
+  supply-chain:
+    name: ci / supply-chain
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.97.1
+      - name: Install vulnerability scanner
+        run: cargo install cargo-audit
+      - name: Generate SBOM and run scans
+        shell: pwsh
+        run: |
+          cargo metadata --manifest-path spikes/wgpu-terminal/Cargo.toml --format-version 1 --locked > artifacts/license-metadata-wgpu-full.json
+          cargo metadata --manifest-path spikes/terminal-engines/Cargo.toml --format-version 1 --locked > artifacts/license-metadata-terminal-full.json
+          cargo metadata --manifest-path spikes/ssh-engines/Cargo.toml --format-version 1 --locked > artifacts/license-metadata-ssh-full.json
+          cargo metadata --manifest-path spikes/terminal-contract/Cargo.toml --format-version 1 --locked > artifacts/license-metadata-contract-full.json
+          node scripts/generate-sbom.mjs
+          node scripts/scan-secrets.mjs
+          node scripts/scan-vulnerabilities.mjs
+      - name: Validate supply chain gate
+        shell: pwsh
+        run: node scripts/validate-supply-chain.mjs .
+      - name: Contract tests
+        shell: pwsh
+        run: node scripts/test-supply-chain.mjs .
+  toolchain-contract:
+    name: ci / toolchain-contract
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.302
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.97.1
+          components: rustfmt, clippy
+      - name: Validate locked toolchain projections
+        run: node scripts/validate-toolchain-lock.mjs .
+  control-ledger:
+    name: ci / control-ledger
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate task control document
+        shell: pwsh
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/validate-control.ps1
