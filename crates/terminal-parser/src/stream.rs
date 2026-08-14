@@ -304,6 +304,15 @@ impl TerminalParser for BoundedByteStreamParser {
 }
 
 /// Parses a completed CSI sequence (including the leading ESC [) into an event.
+/// First value of the `index`-th parameter (or `default`).
+fn csi_param(params: &[Vec<u16>], index: usize, default: u16) -> u16 {
+    params
+        .get(index)
+        .and_then(|group| group.first())
+        .copied()
+        .unwrap_or(default)
+}
+
 fn parse_csi(sequence: &[u8]) -> Option<ParseEvent> {
     let body = &sequence[2..];
     let private = body
@@ -311,7 +320,10 @@ fn parse_csi(sequence: &[u8]) -> Option<ParseEvent> {
         .copied()
         .filter(|b| matches!(b, b'?' | b'>' | b'<' | b'='));
     let start = if private.is_some() { 1 } else { 0 };
-    let mut params: Vec<u16> = Vec::new();
+    // Parameters are `;`-separated; `:` separates sub-parameters within one
+    // parameter (e.g. SGR `4:2` = double underline).
+    let mut params: Vec<Vec<u16>> = Vec::new();
+    let mut group: Vec<u16> = Vec::new();
     let mut current: Option<u16> = None;
     let mut index = start;
     while index < body.len() {
@@ -324,52 +336,54 @@ fn parse_csi(sequence: &[u8]) -> Option<ParseEvent> {
                     .saturating_mul(10)
                     .saturating_add(digit),
             );
+        } else if byte == b':' {
+            group.push(current.unwrap_or(0));
+            current = None;
         } else if byte == b';' {
-            params.push(current.unwrap_or(0));
+            group.push(current.unwrap_or(0));
+            params.push(std::mem::take(&mut group));
             current = None;
         }
         index += 1;
     }
-    params.push(current.unwrap_or(0));
-    if params.is_empty() {
-        params.push(0);
-    }
+    group.push(current.unwrap_or(0));
+    params.push(group);
     let final_byte = *body.last()?;
     Some(match final_byte {
         b'J' => ParseEvent::EraseDisplay {
-            mode: params.first().copied().unwrap_or(0),
+            mode: csi_param(&params, 0, 0),
         },
         b'K' => ParseEvent::EraseLine {
-            mode: params.first().copied().unwrap_or(0),
+            mode: csi_param(&params, 0, 0),
         },
         b'H' | b'f' => ParseEvent::CursorPosition {
-            row: params.first().copied().unwrap_or(1),
-            col: params.get(1).copied().unwrap_or(1),
+            row: csi_param(&params, 0, 1),
+            col: csi_param(&params, 1, 1),
         },
         b'A' => ParseEvent::CursorMove {
-            row_delta: -(params.first().copied().unwrap_or(1) as i16),
+            row_delta: -(csi_param(&params, 0, 1) as i16),
             col_delta: 0,
         },
         b'B' => ParseEvent::CursorMove {
-            row_delta: params.first().copied().unwrap_or(1) as i16,
+            row_delta: csi_param(&params, 0, 1) as i16,
             col_delta: 0,
         },
         b'C' => ParseEvent::CursorMove {
             row_delta: 0,
-            col_delta: params.first().copied().unwrap_or(1) as i16,
+            col_delta: csi_param(&params, 0, 1) as i16,
         },
         b'D' => ParseEvent::CursorMove {
             row_delta: 0,
-            col_delta: -(params.first().copied().unwrap_or(1) as i16),
+            col_delta: -(csi_param(&params, 0, 1) as i16),
         },
         b'm' => ParseEvent::Sgr { params },
         b'r' => ParseEvent::SetScrollRegion {
-            top: params.first().copied().unwrap_or(1),
-            bottom: params.get(1).copied().unwrap_or(0),
+            top: csi_param(&params, 0, 1),
+            bottom: csi_param(&params, 1, 0),
         },
         b'h' | b'l' => ParseEvent::SetMode {
             private_mode: private == Some(b'?'),
-            code: params.first().copied().unwrap_or(0),
+            code: csi_param(&params, 0, 0),
             enabled: final_byte == b'h',
         },
         _ => return None,
@@ -531,7 +545,9 @@ mod tests {
                 ParseEvent::CarriageReturn,
                 ParseEvent::LineFeed,
                 ParseEvent::EraseDisplay { mode: 2 },
-                ParseEvent::Sgr { params: vec![31] },
+                ParseEvent::Sgr {
+                    params: vec![vec![31]]
+                },
                 ParseEvent::Title("demo".to_owned()),
                 ParseEvent::Text("\u{975B}".to_owned()),
                 ParseEvent::LineFeed,

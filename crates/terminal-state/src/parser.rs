@@ -21,8 +21,10 @@ pub enum ParseEvent {
     CursorPosition { row: u16, col: u16 },
     /// `CSI Ps A/B/C/D`.
     CursorMove { row_delta: i16, col_delta: i16 },
-    /// `CSI Ps m`.
-    Sgr { params: Vec<u16> },
+    /// `CSI Ps m` ? each entry is one parameter with its colon-separated
+    /// sub-parameters, e.g. `4:2` is `[[4, 2]]` (double underline) and
+    /// `38;5;196` is `[[38], [5], [196]]`.
+    Sgr { params: Vec<Vec<u16>> },
     /// `CSI ? Ps h/l`.
     SetMode {
         private_mode: bool,

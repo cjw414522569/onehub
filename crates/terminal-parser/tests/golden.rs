@@ -32,6 +32,63 @@ fn script() -> Vec<u8> {
     bytes
 }
 
+/// A color-matrix script (T065): 16/256/truecolor, inverse/dim, underline
+/// styles, and reset.
+fn color_script() -> Vec<u8> {
+    let mut bytes = Vec::new();
+    bytes.extend_from_slice(b"\x1b[2J");
+    // 16-color foregrounds (0, 1, 7, 8, 15).
+    bytes.extend_from_slice(b"\x1b[1;1H\x1b[0m\x1b[30m0\x1b[31m1\x1b[37m7\x1b[90m8\x1b[97mA");
+    // 16-color backgrounds.
+    bytes.extend_from_slice(b"\x1b[2;1H\x1b[0m\x1b[40m0\x1b[41m1\x1b[107mB");
+    // 256-color fg/bg.
+    bytes.extend_from_slice(b"\x1b[3;1H\x1b[0m\x1b[38;5;196mR\x1b[48;5;21mB");
+    // Truecolor fg.
+    bytes.extend_from_slice(b"\x1b[4;1H\x1b[0m\x1b[38;2;255;128;0mT");
+    // Inverse + dim combination.
+    bytes.extend_from_slice(b"\x1b[5;1H\x1b[0m\x1b[2;7mID");
+    // Underline styles: single, double (4:2), curly (4:3).
+    bytes.extend_from_slice(b"\x1b[6;1H\x1b[0m\x1b[4mS\x1b[4:2mD\x1b[4:3mC");
+    // Reset returns to defaults.
+    bytes.extend_from_slice(b"\x1b[7;1H\x1b[0m\x1b[1;31mX\x1b[0mN");
+    bytes
+}
+
+#[test]
+fn golden_color_matrix_snapshot() {
+    let mut parser = BoundedByteStreamParser::new();
+    let mut model = ScreenModel::new(7, 8, 20);
+    let mut batch = parser.feed(&color_script());
+    let tail = parser.finish();
+    batch.events.extend(tail.events);
+    batch.diagnostics.extend(tail.diagnostics);
+    assert!(
+        batch.diagnostics.is_empty(),
+        "parser must not diagnose the color script"
+    );
+    model.apply_batch(&batch);
+    let snapshot = model.snapshot();
+
+    let golden_path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/golden/color-matrix.json"
+    );
+    let actual = serde_json::to_string_pretty(&snapshot).expect("serialize snapshot");
+    match fs::read_to_string(golden_path) {
+        Ok(expected) => {
+            assert_eq!(
+                actual.trim(),
+                expected.trim(),
+                "golden diff: regenerate with the golden-update test or fix the model"
+            );
+        }
+        Err(_) => {
+            fs::write(golden_path, actual).expect("write golden");
+            panic!("golden file did not exist; wrote a fresh golden (first run)");
+        }
+    }
+}
+
 #[test]
 fn golden_vttest_basic_snapshot() {
     let mut parser = BoundedByteStreamParser::new();

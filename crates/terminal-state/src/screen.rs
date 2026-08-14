@@ -316,23 +316,62 @@ impl ScreenBuffer {
         self.pending_wrap = false;
     }
 
-    /// Applies an SGR sequence to the current style (T063 basic subset).
-    fn apply_sgr(&mut self, params: &[u16]) {
-        if params.is_empty() || params.contains(&0) {
+    /// Applies an SGR sequence to the current style (T063 basic subset,
+    /// T065 completed: 16/256/truecolor, inverse/dim, underline styles).
+    ///
+    /// Each parameter may carry `:`-separated sub-parameters (e.g. `4:2` for
+    /// double underline); `38;5;n` / `38;2;r;g;b` color selectors span the
+    /// following `;`-separated parameters.
+    fn apply_sgr(&mut self, params: &[Vec<u16>]) {
+        if params.is_empty() || params.iter().any(|g| g.first() == Some(&0)) {
             self.style = TerminalStyle::default();
         }
         let mut index = 0usize;
         while index < params.len() {
-            let param = params[index];
+            let group = &params[index];
+            let param = group.first().copied().unwrap_or(0);
             match param {
                 1 => self.style.bold = true,
                 2 => self.style.dim = true,
                 3 => self.style.italic = true,
                 4 => {
-                    self.style.underline = true;
-                    self.style.underline_style = UnderlineStyle::Single;
+                    // Underline with optional style sub-parameter (4:0..4:5).
+                    match group.get(1).copied() {
+                        Some(0) => {
+                            self.style.underline = false;
+                            self.style.underline_style = UnderlineStyle::None;
+                        }
+                        Some(1) | None => {
+                            self.style.underline = true;
+                            self.style.underline_style = UnderlineStyle::Single;
+                        }
+                        Some(2) => {
+                            self.style.underline = true;
+                            self.style.underline_style = UnderlineStyle::Double;
+                        }
+                        Some(3) => {
+                            self.style.underline = true;
+                            self.style.underline_style = UnderlineStyle::Curly;
+                        }
+                        Some(4) => {
+                            self.style.underline = true;
+                            self.style.underline_style = UnderlineStyle::Dotted;
+                        }
+                        Some(5) => {
+                            self.style.underline = true;
+                            self.style.underline_style = UnderlineStyle::Dashed;
+                        }
+                        Some(_) => {
+                            self.style.underline = true;
+                            self.style.underline_style = UnderlineStyle::Single;
+                        }
+                    }
                 }
                 7 => self.style.inverse = true,
+                21 => {
+                    self.style.underline = true;
+                    self.style.underline_style = UnderlineStyle::Double;
+                }
                 22 => {
                     self.style.bold = false;
                     self.style.dim = false;
@@ -350,35 +389,42 @@ impl ScreenBuffer {
                 90..=97 => self.style.fg = TerminalColor::Indexed((param - 90 + 8) as u8),
                 100..=107 => self.style.bg = TerminalColor::Indexed((param - 100 + 8) as u8),
                 38 | 48 => {
-                    // 38;5;n / 38;2;r;g;b (basic).
-                    if params.get(index + 1) == Some(&5) {
-                        if let Some(color) = params.get(index + 2) {
-                            let color = TerminalColor::Indexed(*color as u8);
-                            if param == 38 {
-                                self.style.fg = color;
-                            } else {
-                                self.style.bg = color;
+                    // 38;5;n (256-color) / 38;2;r;g;b (truecolor).
+                    let sub = params.get(index + 1).and_then(|g| g.first()).copied();
+                    match sub {
+                        Some(5) => {
+                            if let Some(color) =
+                                params.get(index + 2).and_then(|g| g.first()).copied()
+                            {
+                                let color = TerminalColor::Indexed(color as u8);
+                                if param == 38 {
+                                    self.style.fg = color;
+                                } else {
+                                    self.style.bg = color;
+                                }
+                                index += 2;
                             }
-                            index += 2;
                         }
-                    } else if params.get(index + 1) == Some(&2) {
-                        if let (Some(r), Some(g), Some(b)) = (
-                            params.get(index + 2),
-                            params.get(index + 3),
-                            params.get(index + 4),
-                        ) {
-                            let color = TerminalColor::TrueColor {
-                                r: *r as u8,
-                                g: *g as u8,
-                                b: *b as u8,
-                            };
-                            if param == 38 {
-                                self.style.fg = color;
-                            } else {
-                                self.style.bg = color;
+                        Some(2) => {
+                            if let (Some(r), Some(g), Some(b)) = (
+                                params.get(index + 2).and_then(|g| g.first()).copied(),
+                                params.get(index + 3).and_then(|g| g.first()).copied(),
+                                params.get(index + 4).and_then(|g| g.first()).copied(),
+                            ) {
+                                let color = TerminalColor::TrueColor {
+                                    r: r as u8,
+                                    g: g as u8,
+                                    b: b as u8,
+                                };
+                                if param == 38 {
+                                    self.style.fg = color;
+                                } else {
+                                    self.style.bg = color;
+                                }
+                                index += 4;
                             }
-                            index += 4;
                         }
+                        _ => {}
                     }
                 }
                 _ => {}
@@ -619,7 +665,7 @@ impl ScreenBuffer {
 mod tests {
     use core_protocol::terminal::TerminalColor;
 
-    use super::{Modes, ScreenModel, WidthPolicy};
+    use super::{Modes, ScreenModel, UnderlineStyle, WidthPolicy};
     use crate::parser::ParseEvent;
 
     fn model() -> ScreenModel {
@@ -632,7 +678,13 @@ mod tests {
 
     fn sgr(params: &[u16]) -> ParseEvent {
         ParseEvent::Sgr {
-            params: params.to_vec(),
+            params: params.iter().map(|p| vec![*p]).collect(),
+        }
+    }
+
+    fn sgr_groups(groups: &[&[u16]]) -> ParseEvent {
+        ParseEvent::Sgr {
+            params: groups.iter().map(|g| g.to_vec()).collect(),
         }
     }
 
@@ -787,6 +839,100 @@ mod tests {
         assert!(model.modes().bracketed_paste);
         model.apply_event(&set_mode(25, false));
         assert!(!model.snapshot().cursor.visible);
+    }
+
+    #[test]
+    fn sgr_256_color_and_truecolor() {
+        let mut model = model();
+        model.apply_event(&sgr_groups(&[&[38], &[5], &[200]]));
+        model.apply_event(&text("a"));
+        let cell = &model.snapshot().rows[0].cells[0];
+        assert_eq!(cell.style.fg, TerminalColor::Indexed(200));
+        model.apply_event(&sgr_groups(&[&[48], &[5], &[21]]));
+        model.apply_event(&text("b"));
+        assert_eq!(
+            model.snapshot().rows[0].cells[1].style.bg,
+            TerminalColor::Indexed(21)
+        );
+        model.apply_event(&sgr_groups(&[&[38], &[2], &[255], &[128], &[0]]));
+        model.apply_event(&text("c"));
+        assert_eq!(
+            model.snapshot().rows[0].cells[2].style.fg,
+            TerminalColor::TrueColor {
+                r: 255,
+                g: 128,
+                b: 0
+            }
+        );
+    }
+
+    #[test]
+    fn sgr_bright_16_colors() {
+        let mut model = model();
+        model.apply_event(&sgr(&[91, 101]));
+        model.apply_event(&text("x"));
+        let cell = &model.snapshot().rows[0].cells[0];
+        assert_eq!(cell.style.fg, TerminalColor::Indexed(9));
+        assert_eq!(cell.style.bg, TerminalColor::Indexed(9));
+    }
+
+    #[test]
+    fn sgr_inverse_dim_combination() {
+        let mut model = model();
+        model.apply_event(&sgr(&[2, 7]));
+        model.apply_event(&text("x"));
+        let cell = &model.snapshot().rows[0].cells[0];
+        assert!(cell.style.dim);
+        assert!(cell.style.inverse);
+        // Reset clears both.
+        model.apply_event(&sgr(&[0]));
+        model.apply_event(&text("y"));
+        let cell = &model.snapshot().rows[0].cells[1];
+        assert!(!cell.style.dim);
+        assert!(!cell.style.inverse);
+    }
+
+    #[test]
+    fn sgr_underline_styles() {
+        let mut model = model();
+        model.apply_event(&sgr(&[4]));
+        model.apply_event(&text("a"));
+        let cell = &model.snapshot().rows[0].cells[0];
+        assert!(cell.style.underline);
+        assert_eq!(cell.style.underline_style, UnderlineStyle::Single);
+        // 4:2 (colon sub-parameter) = double underline.
+        model.apply_event(&sgr_groups(&[&[4, 2]]));
+        model.apply_event(&text("b"));
+        assert_eq!(
+            model.snapshot().rows[0].cells[1].style.underline_style,
+            UnderlineStyle::Double
+        );
+        // 21 = double underline.
+        model.apply_event(&sgr(&[21]));
+        model.apply_event(&text("c"));
+        assert_eq!(
+            model.snapshot().rows[0].cells[2].style.underline_style,
+            UnderlineStyle::Double
+        );
+        // 4:3 curly, 4:5 dashed.
+        model.apply_event(&sgr_groups(&[&[4, 3]]));
+        model.apply_event(&text("d"));
+        assert_eq!(
+            model.snapshot().rows[0].cells[3].style.underline_style,
+            UnderlineStyle::Curly
+        );
+        model.apply_event(&sgr_groups(&[&[4, 5]]));
+        model.apply_event(&text("e"));
+        assert_eq!(
+            model.snapshot().rows[0].cells[4].style.underline_style,
+            UnderlineStyle::Dashed
+        );
+        // 24 resets.
+        model.apply_event(&sgr(&[24]));
+        model.apply_event(&text("f"));
+        let cell = &model.snapshot().rows[0].cells[5];
+        assert!(!cell.style.underline);
+        assert_eq!(cell.style.underline_style, UnderlineStyle::None);
     }
 
     #[test]

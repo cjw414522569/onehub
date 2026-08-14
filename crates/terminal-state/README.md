@@ -24,32 +24,38 @@
 
 `crates/terminal-state/src/unicode.rs` locks the Unicode version to the
 `unicode-width` tables (`UNICODE_VERSION = "17.0.0"`, asserted against
-`unicode_width::UNICODE_VERSION`) and exposes a configurable `WidthPolicy`:
+`unicode_width::UNICODE_VERSION`) and exposes a configurable `WidthPolicy`
+(`Unicode` / `EastAsian` / `Legacy`). Text is segmented into extended grapheme
+clusters (UAX #29), so combining sequences and ZWJ emoji occupy a single cell
+with the width of their base; wide clusters mark a `wide_continuation` cell.
+See `crates/terminal-parser/tests/golden/vttest-basic.json`.
 
-| Policy | Behavior |
-|---|---|
-| `Unicode` (default) | UAX #11 non-CJK: East Asian Ambiguous = 1 column. |
-| `EastAsian` | CJK context: Ambiguous = 2 columns. |
-| `Legacy` | Every printable character occupies exactly 1 column. |
+## T065: colors, attributes, underline styles, and palette
 
-Text is segmented into extended grapheme clusters (UAX #29 via
-`unicode-segmentation`), so combining sequences (`e` + U+0301) and ZWJ emoji
-(family emoji) occupy a single cell with the width of their base. Wide
-clusters mark a `wide_continuation` cell in the snapshot (`TerminalCell`),
-which is cleared together with its base on overwrite or partial erase.
-`ScreenModel::set_width_policy` selects the policy at runtime.
+`crates/terminal-state/src/color.rs`:
 
-The deterministic golden (`crates/terminal-parser/tests/golden/vttest-basic.json`,
-66,125 bytes) covers SGR, erase, cursor, scroll region, origin mode, alternate
-screen, title, plus a CJK wide char, a combining sequence, and a ZWJ family
-emoji.
+- `Rgb` — an 8-bit RGB color.
+- `Palette` — configurable default fg/bg plus the 16 ANSI colors (8 regular +
+  8 bright), with `resolve(TerminalColor) -> Rgb`; indices 16..=231 use the
+  6x6x6 color cube and 232..=255 the 24-step grayscale ramp (xterm
+  convention).
+
+`ScreenBuffer::apply_sgr` now supports the full T065 set: 16-color fg/bg
+(30-37/90-97, 40-47/100-107), 256-color (`38;5;n`), truecolor (`38;2;r;g;b`),
+bold/dim/italic/inverse, and underline styles including `4:N` colon
+sub-parameters (`4:0` off, `4:1` single, `4:2` double, `4:3` curly, `4:4`
+dotted, `4:5` dashed) plus `21` double and `24` reset. `Sgr` carries
+`Vec<Vec<u16>>` so each parameter keeps its `:`-separated sub-parameters.
+The color-matrix golden (`crates/terminal-parser/tests/golden/color-matrix.json`,
+66,615 bytes) covers 16/256/truecolor, inverse/dim, and underline styles.
 
 ## Verification
 
 ```text
-cargo test -p terminal-state --locked    PASS (20 tests)
-cargo test -p terminal-parser --locked   PASS (11 unit + 1 golden)
+cargo test -p terminal-state --locked    PASS (27 tests)
+cargo test -p terminal-parser --locked   PASS (11 unit + 2 golden)
 cargo test -p core-protocol --locked     PASS (14 tests)
 node .\scripts\test-terminal-screen.mjs . PASS
 node .\scripts\test-terminal-unicode.mjs . PASS
+node .\scripts\test-color-golden.mjs .   PASS
 ```

@@ -23,21 +23,21 @@ byte-by-byte equals feeding the whole stream) is verified by property tests.
 ## T063: shared vocabulary and golden test
 
 The event vocabulary (`ParseEvent`, `ParseBatch`, `ParserDiagnostic`,
-`TerminalParser`) is owned by `terminal-state` (L1) and re-exported here, so
-the L1 screen model and the L2 byte-stream parser share one contract. The
+`TerminalParser`) is owned by `terminal-state` (L1) and re-exported here. The
 vocabulary includes `SetScrollRegion` (`CSI Ps ; Ps r`).
+`tests/golden.rs` diffs a deterministic vttest-basic script (SGR, erase,
+cursor, scroll region, origin mode, alternate screen, title, plus CJK /
+combining / emoji from T064) against `tests/golden/vttest-basic.json`.
 
-`crates/terminal-parser/tests/golden.rs` feeds a deterministic vttest-basic
-script through the parser into `ScreenModel` and diffs the resulting snapshot
-against the committed golden `tests/golden/vttest-basic.json` (66,125 bytes).
-The full interactive vttest suite requires a real terminal and is
+## T065: CSI sub-parameters and color-matrix golden
+
+`parse_csi` now parses `:`-separated sub-parameters: `Sgr` carries
+`Vec<Vec<u16>>` where each parameter keeps its sub-parameters (e.g. `4:2` is
+`[[4, 2]]`). This enables `4:N` underline styles without ambiguity against
+background colors.
+
+`tests/golden/color-matrix.json` (66,615 bytes) is a deterministic color
+golden covering 16-color fg/bg, 256-color, truecolor, inverse/dim
+combinations, underline styles (single/double/curly), and reset. Image-based
+cross-platform color golden tests require a real renderer/GPU and are
 `blocked_environment` on CI hosts without one.
-
-## T064: Unicode width coverage in the golden
-
-The golden script additionally covers T064 Unicode width/grapheme behavior: a
-CJK wide char (`U+4E2D`) occupies two columns with a `wide_continuation` cell,
-`e` + COMBINING ACUTE ACCENT forms one cell, and the ZWJ family emoji
-(`U+1F468 ZWJ U+1F469 ZWJ U+1F467`) is one two-column grapheme. The test calls
-`finish()` after `feed()` so coalesced end-of-stream text is flushed and
-captured in the snapshot.

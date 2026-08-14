@@ -8,10 +8,12 @@
 //! (T062/T063), plus the locked Unicode width policy and grapheme
 //! segmentation used by the model (T064).
 
+pub mod color;
 pub mod parser;
 pub mod screen;
 pub mod unicode;
 
+pub use color::{Palette, Rgb};
 pub use parser::{ParseBatch, ParseEvent, ParserDiagnostic, TerminalParser};
 pub use screen::{Modes, ScreenBuffer, ScreenModel};
 pub use unicode::{grapheme_clusters, WidthPolicy, UNICODE_VERSION};
