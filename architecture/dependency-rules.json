@@ -185,7 +185,8 @@
         "core-protocol"
       ],
       "external_imports": [
-        "crypto-traits"
+        "crypto-traits",
+        "chacha20poly1305"
       ]
     },
     {
