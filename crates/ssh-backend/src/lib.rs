@@ -18,6 +18,7 @@ pub mod host_key_verify;
 pub mod keepalive;
 pub mod known_hosts;
 pub mod private_key;
+pub mod proxy_jump;
 pub mod session_channel;
 pub mod transport;
 pub mod user_certificate;
@@ -58,6 +59,10 @@ pub use known_hosts::{
 };
 pub use private_key::{
     detect_format, load_private_key, KeyAlgorithm, KeyError, PrivateKeyFormat, PrivateKeyHandle,
+};
+pub use proxy_jump::{
+    connect_chain, EstablishedHop, HopEndpoint, HopError, HopErrorKind, HopRecord, HopResolver,
+    HopSession, MultiHopBackend, MultiHopReport,
 };
 pub use session_channel::{
     run_exec_command, run_interactive_shell, ChannelError, ChannelEvent, ExecCommand, ExitStatus,

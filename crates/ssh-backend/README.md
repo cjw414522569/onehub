@@ -93,6 +93,24 @@ channel until `window_adjust` arrives; window adjusts are capped; round budget
 bounds each drain. The acceptance benchmark runs one interactive terminal + two
 SFTP transfers + two port-forward streams and asserts interactive latency 0,
 per-round bulk progress, and full 8 MiB/channel completion under flow control.
+
+## T050: ProxyJump multi-hop connection
+
+| Model | Purpose |
+|---|---|
+| `HopEndpoint` | Resolved hop host + port. |
+| `HopErrorKind` / `HopError` | Stable per-hop failure codes; `hop` index localizes the failing hop (final index = target). |
+| `HopSession` | Established hop: verified fingerprint, auth method, direct-tcpip tunnel opener. |
+| `MultiHopBackend` | Injectable backend: `connect_first` / `connect_next` (through a tunnel). |
+| `HopRecord` / `MultiHopReport` | Per-hop host/port/fingerprint/auth for diagnostics. |
+| `connect_chain` | Walks the chain (T030 `ProxyChain`), verifies and authenticates each hop independently, honours per-hop timeout, returns the report. |
+
+1/2/3-hop topologies are exercised in-process with a fake backend that reuses
+the T028 host-key policy decision and T042 constant-time password
+authentication. Each hop verifies its own host key and uses its own credential;
+failures (connect, resolve, host-key, auth, tunnel, timeout, cancellation,
+cyclic chain) are localized to the failing hop. Real container topologies
+(Docker + sshd) are recorded as `blocked_environment` on this host.
 ## Validation
 
 ```text
@@ -111,4 +129,5 @@ node scripts/test-hardware-key.mjs .
 node scripts/test-keepalive.mjs .
 node scripts/test-session-channel.mjs .
 node scripts/test-channel-qos.mjs .
+node scripts/test-proxy-jump.mjs .
 ```
