@@ -7,10 +7,14 @@
 //! downgrade policy (T083).
 
 pub mod migration;
+pub mod repository;
 
 pub use migration::{
     open_strategy, BackupMode, BackupPolicy, Migration, MigrationContext, MigrationError, Migrator,
     OpenDecision, OpenPolicy, SchemaVersion,
+};
+pub use repository::{
+    AtomicStore, AtomicTransaction, CasError, ConfigRepository, TransactionError,
 };
 
 /// Module identity used by diagnostics and architecture tooling.

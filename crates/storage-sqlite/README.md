@@ -20,3 +20,16 @@
 
 The actual SQL dialect is deferred to the repository layer (T084); this row
 locks the schema/versioning contract.
+## T084: config repository and atomic transactions
+
+`crates/storage-sqlite/src/repository.rs`:
+
+- `ConfigRepository` - the SQL-free domain contract (get/set/delete/contains).
+- `AtomicStore` - in-memory store with per-key versions and
+  `compare_and_swap` (stale writers get `VersionMismatch`, no silent lost
+  update).
+- `AtomicTransaction` - snapshot-isolated atomic transactions with conflict
+  detection on commit.
+
+Concurrent modifications never lose data (8 threads x 250 CAS increments all
+preserved); the domain layer never depends on SQL.
