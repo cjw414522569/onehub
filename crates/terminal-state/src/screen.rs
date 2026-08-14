@@ -87,6 +87,9 @@ pub struct ScreenBuffer {
     style: TerminalStyle,
     pending_wrap: bool,
     current_hyperlink: Option<Hyperlink>,
+    /// Per-row soft-wrap flag: true when the row is full and content
+    /// continues on the next row (used for reflow on resize).
+    wrapped: Vec<bool>,
 }
 
 impl ScreenBuffer {
@@ -105,6 +108,7 @@ impl ScreenBuffer {
             style: TerminalStyle::default(),
             pending_wrap: false,
             current_hyperlink: None,
+            wrapped: vec![false; rows],
         }
     }
 
@@ -238,6 +242,7 @@ impl ScreenBuffer {
             self.cursor_col = self.cols.saturating_sub(1);
             if modes.autowrap {
                 self.pending_wrap = true;
+                self.wrapped[self.cursor_row] = true;
             }
         } else {
             self.cursor_col = col + width;
@@ -278,6 +283,7 @@ impl ScreenBuffer {
                 }
                 for row in (self.cursor_row + 1)..self.rows {
                     self.cells[row] = vec![TerminalCell::empty(); self.cols];
+                    self.wrapped[row] = false;
                 }
             }
             1 => {
@@ -286,12 +292,14 @@ impl ScreenBuffer {
                 }
                 for row in 0..self.cursor_row {
                     self.cells[row] = vec![TerminalCell::empty(); self.cols];
+                    self.wrapped[row] = false;
                 }
             }
             _ => {
                 for row in 0..self.rows {
                     self.cells[row] = vec![TerminalCell::empty(); self.cols];
                 }
+                self.wrapped = vec![false; self.rows];
             }
         }
     }
@@ -311,6 +319,7 @@ impl ScreenBuffer {
             }
             _ => {
                 self.cells[self.cursor_row] = vec![TerminalCell::empty(); self.cols];
+                self.wrapped[self.cursor_row] = false;
             }
         }
     }
@@ -489,6 +498,63 @@ impl ScreenBuffer {
     }
 }
 
+/// The line structure of a grid used to remap points across a reflow.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReflowInfo {
+    /// Row count.
+    pub rows: usize,
+    /// Column count.
+    pub cols: usize,
+    /// Per-row soft-wrap flags.
+    pub wrapped: Vec<bool>,
+}
+
+/// Converts a `(row, col)` point into `(line_index, offset_in_line)` for a
+/// grid layout described by `info`.
+fn point_to_line_offset(point: (usize, usize), info: &ReflowInfo) -> (usize, usize) {
+    let (row, col) = point;
+    let row = row.min(info.rows.saturating_sub(1));
+    let mut line_index = 0usize;
+    let mut start_row = 0usize;
+    for r in 0..row {
+        if !info.wrapped.get(r).copied().unwrap_or(false) {
+            line_index += 1;
+            start_row = r + 1;
+        }
+    }
+    let offset = (row - start_row) * info.cols + col.min(info.cols.saturating_sub(1));
+    (line_index, offset)
+}
+
+/// Converts a `(line_index, offset_in_line)` back to a `(row, col)` point in
+/// the grid layout described by `info`, clamped to bounds.
+fn line_offset_to_point(line_index: usize, offset: usize, info: &ReflowInfo) -> (usize, usize) {
+    let mut current_line = 0usize;
+    let mut start_row = 0usize;
+    for r in 0..info.rows {
+        if current_line == line_index {
+            break;
+        }
+        if !info.wrapped.get(r).copied().unwrap_or(false) {
+            current_line += 1;
+            start_row = r + 1;
+        }
+    }
+    let row = start_row + offset / info.cols.max(1);
+    let col = offset % info.cols.max(1);
+    (
+        row.min(info.rows.saturating_sub(1)),
+        col.min(info.cols.saturating_sub(1)),
+    )
+}
+
+/// Maps a `(row, col)` point from an old grid layout to the same logical
+/// position in a new layout, preserving semantic selections across a reflow.
+pub fn remap_point(point: (usize, usize), old: &ReflowInfo, new: &ReflowInfo) -> (usize, usize) {
+    let (line_index, offset) = point_to_line_offset(point, old);
+    line_offset_to_point(line_index, offset, new)
+}
+
 /// The full terminal model: primary + alternate buffers, modes, title.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ScreenModel {
@@ -645,10 +711,12 @@ impl ScreenModel {
         self.scrollback_dump_policy.dump(&self.scrollback, cols)
     }
 
-    /// Resizes both buffers (preserving content where possible).
+    /// Reflows both buffers to `rows` x `cols`, preserving content, cursor,
+    /// and semantic selection positions (T072).
     pub fn resize(&mut self, rows: usize, cols: usize) {
-        self.primary.resize(rows, cols);
-        self.alternate.resize(rows, cols);
+        let policy = self.width_policy;
+        self.primary.reflow(rows, cols, policy);
+        self.alternate.reflow(rows, cols, policy);
     }
 
     /// Applies a parser batch; returns any model diagnostics.
@@ -823,22 +891,135 @@ impl ScreenBuffer {
         self.cursor_row = 0;
         self.cursor_col = 0;
         self.pending_wrap = false;
+        self.wrapped = vec![false; self.rows];
     }
 
-    fn resize(&mut self, rows: usize, cols: usize) {
+    /// The line structure of the grid (for remapping points across a reflow).
+    pub fn reflow_info(&self) -> ReflowInfo {
+        ReflowInfo {
+            rows: self.rows,
+            cols: self.cols,
+            wrapped: self.wrapped.clone(),
+        }
+    }
+
+    /// The per-row soft-wrap flags.
+    pub fn wrapped(&self) -> &[bool] {
+        &self.wrapped
+    }
+
+    /// Reflows the buffer to `rows` x `cols`, unwrapping soft-wrapped lines
+    /// and re-wrapping them at the new width (T072). Cell styles and
+    /// hyperlinks are preserved; the cursor is remapped to the same logical
+    /// position so semantic selections stay correct.
+    fn reflow(&mut self, rows: usize, cols: usize, policy: WidthPolicy) {
         if rows == self.rows && cols == self.cols {
             return;
         }
-        self.cells.resize(rows, Vec::new());
-        for row in &mut self.cells {
-            row.resize(cols, TerminalCell::empty());
+        if cols == self.cols {
+            // Width unchanged: only add/remove rows at the bottom.
+            self.cells.resize(rows, Vec::new());
+            for row in &mut self.cells {
+                row.resize(cols, TerminalCell::empty());
+            }
+            self.wrapped.resize(rows, false);
+            self.rows = rows;
+            self.scroll_bottom = rows.saturating_sub(1);
+            self.scroll_top = self.scroll_top.min(rows.saturating_sub(1));
+            self.cursor_row = self.cursor_row.min(rows.saturating_sub(1));
+            self.cursor_col = self.cursor_col.min(cols.saturating_sub(1));
+            return;
         }
+
+        let old_info = self.reflow_info();
+        // A pending wrap means the insertion point is at the start of the next
+        // row, so remap from there.
+        let cursor_point = if self.pending_wrap {
+            ((self.cursor_row + 1).min(self.rows.saturating_sub(1)), 0)
+        } else {
+            (self.cursor_row, self.cursor_col)
+        };
+        let lines = self.logical_lines();
+
+        self.cells = vec![vec![TerminalCell::empty(); cols]; rows];
+        self.wrapped = vec![false; rows];
         self.rows = rows;
         self.cols = cols;
-        self.cursor_row = self.cursor_row.min(rows.saturating_sub(1));
-        self.cursor_col = self.cursor_col.min(cols.saturating_sub(1));
+        self.scroll_top = 0;
         self.scroll_bottom = rows.saturating_sub(1);
-        self.scroll_top = self.scroll_top.min(rows.saturating_sub(1));
+        self.pending_wrap = false;
+
+        let mut row = 0usize;
+        let mut col = 0usize;
+        for line in &lines {
+            let mut remaining = line.len();
+            for cell in line {
+                let width = cell
+                    .text
+                    .as_deref()
+                    .map(|t| policy.cluster_width(t))
+                    .unwrap_or(1)
+                    .max(1);
+                if col + width > cols && col > 0 {
+                    if row + 1 >= rows {
+                        remaining = 0;
+                        break;
+                    }
+                    self.wrapped[row] = true;
+                    row += 1;
+                    col = 0;
+                }
+                if row >= rows {
+                    remaining = 0;
+                    break;
+                }
+                self.cells[row][col] = cell.clone();
+                if width >= 2 && col + 1 < cols {
+                    let mut continuation = TerminalCell::wide_continuation(cell.style.clone());
+                    continuation.hyperlink = cell.hyperlink.clone();
+                    self.cells[row][col + 1] = continuation;
+                }
+                col += width;
+                remaining = remaining.saturating_sub(1);
+            }
+            let _ = remaining;
+            if row + 1 < rows {
+                row += 1;
+                col = 0;
+            } else {
+                break;
+            }
+        }
+
+        let new_info = self.reflow_info();
+        let (cursor_row, cursor_col) = remap_point(cursor_point, &old_info, &new_info);
+        self.cursor_row = cursor_row;
+        self.cursor_col = cursor_col;
+        self.pending_wrap = false;
+        // A remapped cursor at the last column of a filled row resumes the
+        // pending wrap.
+        if cursor_col + 1 >= self.cols && self.cells[cursor_row][cursor_col].text.is_some() {
+            self.pending_wrap = true;
+        }
+    }
+
+    /// Collects soft-wrapped rows into logical lines of cells (wide
+    /// continuation cells are skipped).
+    fn logical_lines(&self) -> Vec<Vec<TerminalCell>> {
+        let mut lines = Vec::new();
+        let mut current: Vec<TerminalCell> = Vec::new();
+        for (row_index, row_cells) in self.cells.iter().enumerate() {
+            for cell in row_cells {
+                if cell.wide_continuation {
+                    continue;
+                }
+                current.push(cell.clone());
+            }
+            if !self.wrapped[row_index] || row_index + 1 >= self.rows {
+                lines.push(std::mem::take(&mut current));
+            }
+        }
+        lines
     }
 
     /// Sets the scroll region from 1-based CSI params (0 = full screen).
@@ -868,7 +1049,8 @@ mod tests {
     use core_protocol::terminal::TerminalColor;
 
     use super::{
-        Modes, MouseMode, OscPolicy, ScreenModel, ScrollbackDumpPolicy, UnderlineStyle, WidthPolicy,
+        remap_point, Modes, MouseMode, OscPolicy, ScreenModel, ScrollbackDumpPolicy,
+        UnderlineStyle, WidthPolicy,
     };
     use crate::parser::ParseEvent;
     use crate::selection::{Selection, SelectionMode};
@@ -1316,6 +1498,112 @@ mod tests {
         assert_eq!(
             selection.extract(&snapshot, SelectionMode::Line),
             "alpha\nbeta"
+        );
+    }
+
+    #[test]
+    fn soft_wrap_reflows_on_width_change() {
+        let mut model = ScreenModel::new(7, 4, 3);
+        model.apply_event(&ParseEvent::CarriageReturn);
+        model.apply_event(&text("abcdef"));
+        // At 3 columns: "abc" (wrapped) then "def".
+        let row0: String = model.snapshot().rows[0]
+            .cells
+            .iter()
+            .filter_map(|c| c.text.clone())
+            .collect();
+        assert_eq!(row0, "abc");
+        // Widen to 6 columns: the soft-wrapped line reflows onto one row.
+        model.resize(4, 6);
+        let row0: String = model.snapshot().rows[0]
+            .cells
+            .iter()
+            .filter_map(|c| c.text.clone())
+            .collect();
+        assert_eq!(row0, "abcdef");
+        let cursor = model.snapshot().cursor;
+        assert!(cursor.row < 4 && cursor.col < 6);
+    }
+
+    #[test]
+    fn content_preserved_across_random_resizes() {
+        // Deterministic property test: random text written at a small width,
+        // then resized through random widths, keeps the same logical content.
+        let mut state = 0x1234_5678_9abc_def0u64;
+        let mut next = move || {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state
+        };
+        let alphabet = "abcdefghij";
+        let mut model = ScreenModel::new(7, 6, 5);
+        model.apply_event(&ParseEvent::CarriageReturn);
+        let mut input = String::new();
+        for _ in 0..10 {
+            let ch = alphabet.as_bytes()[(next() % alphabet.len() as u64) as usize] as char;
+            input.push(ch);
+            model.apply_event(&text(&ch.to_string()));
+        }
+        let flatten = |model: &ScreenModel| -> String {
+            let info = model.primary().reflow_info();
+            let mut out = String::new();
+            for (index, row) in model.snapshot().rows.iter().enumerate() {
+                for cell in &row.cells {
+                    if let Some(t) = cell.text.as_deref() {
+                        out.push_str(t);
+                    }
+                }
+                if !info.wrapped.get(index).copied().unwrap_or(false) {
+                    out.push('\n');
+                }
+            }
+            out.trim_end().to_owned()
+        };
+        let before = flatten(&model);
+        for width in [3usize, 8, 2, 12, 5, 7] {
+            model.resize(6, width);
+            let after = flatten(&model);
+            assert_eq!(
+                after, before,
+                "logical content must survive resize to {width}"
+            );
+            let cursor = model.snapshot().cursor;
+            assert!(cursor.row < 6 && cursor.col < width as u16);
+        }
+        let final_text = flatten(&model);
+        for ch in input.chars() {
+            assert!(
+                final_text.contains(ch),
+                "character {ch} must survive reflow"
+            );
+        }
+    }
+
+    #[test]
+    fn selection_survives_reflow() {
+        // "abcdefgh" soft-wraps across two 4-column rows; a selection that
+        // spans the wrap boundary keeps its characters after reflow to 8 cols.
+        let mut model = ScreenModel::new(7, 5, 4);
+        model.apply_event(&ParseEvent::CarriageReturn);
+        model.apply_event(&text("abcdefgh"));
+        let old_snapshot = model.snapshot();
+        let selection = Selection::new((0, 1), (1, 2));
+        let old_text = selection.extract(&old_snapshot, SelectionMode::Character);
+        assert_eq!(old_text, "bcd\nefg");
+
+        let old_info = model.primary().reflow_info();
+        model.resize(5, 8);
+        let new_info = model.primary().reflow_info();
+        let new_start = remap_point(selection.start(), &old_info, &new_info);
+        let new_end = remap_point(selection.end(), &old_info, &new_info);
+        let new_selection = Selection::new(new_start, new_end);
+        let new_snapshot = model.snapshot();
+        let new_text = new_selection.extract(&new_snapshot, SelectionMode::Character);
+        assert_eq!(
+            new_text.replace('\n', ""),
+            old_text.replace('\n', ""),
+            "semantic selection characters must survive reflow"
         );
     }
 

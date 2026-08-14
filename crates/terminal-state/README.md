@@ -109,6 +109,18 @@ and reports `scrollback_start` in the snapshot.
 - Results carry absolute line index + char column + length. Regex support uses
   the `regex` crate (`RegexBuilder`, case-insensitive option).
 
+## T072: terminal reflow preserving semantic selection
+
+`ScreenBuffer` tracks per-row soft-wrap flags (`wrapped`). `ScreenModel::resize`
+reflows each buffer: soft-wrapped rows are unwrapped into logical lines and
+re-wrapped at the new width, preserving cell styles, hyperlinks, and wide-cell
+continuation markers. The cursor is remapped through the layout change
+(pending-wrap aware), and `remap_point(ReflowInfo)` maps old `(row, col)`
+points to the new layout so semantic selections survive a resize.
+
+Random-resize property tests verify logical content is preserved, the cursor
+stays in bounds, and selection characters survive reflow.
+
 ## Verification
 
 ```text

@@ -27,7 +27,7 @@ pub use input::{
 };
 pub use osc::{Notification, OscPolicy};
 pub use parser::{ParseBatch, ParseEvent, ParserDiagnostic, TerminalParser};
-pub use screen::{Modes, ScreenBuffer, ScreenModel};
+pub use screen::{remap_point, Modes, ReflowInfo, ScreenBuffer, ScreenModel};
 pub use scrollback::{Scrollback, ScrollbackConfig, ScrollbackDumpPolicy};
 pub use search::{SearchBuffer, SearchNavigation, SearchQuery, SearchResult, SearchSession};
 pub use selection::{cell_selection_text, is_word_char, word_bounds, Selection, SelectionMode};
