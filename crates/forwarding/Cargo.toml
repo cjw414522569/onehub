@@ -11,4 +11,8 @@ path = "src/lib.rs"
 [dependencies]
 core-domain = { path = "../core-domain" }
 core-protocol = { path = "../core-protocol" }
+tokio = { version = "1", features = ["net", "time", "io-util", "rt", "macros", "sync"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "time", "test-util", "net", "sync", "io-util"] }
 
