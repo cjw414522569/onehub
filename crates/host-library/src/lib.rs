@@ -12,6 +12,7 @@ pub mod gestures;
 pub mod host;
 pub mod keyboard;
 pub mod mobile;
+pub mod paste;
 pub mod workspace;
 
 pub use auth_prompt::{
@@ -40,6 +41,10 @@ pub use keyboard::{
 pub use mobile::{
     effective_safe_area, BarLayout, BottomActionBar, FormFactor, Orientation, SafeAreaInsets,
     SessionStack, SystemBack, Viewport,
+};
+pub use paste::{
+    PasswordPastePolicy, PasteContent, PasteDecision, PastePayload, PastePolicy, PasteRisk,
+    SecurePasteFlow, BRACKETED_PASTE_BEGIN, BRACKETED_PASTE_END,
 };
 pub use workspace::{
     FocusLocation, PaneModel, PaneSnapshot, RestoreError, ShortcutAction, ShortcutMap,

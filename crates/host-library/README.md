@@ -117,3 +117,16 @@
 - Tests: tap/long-press/scroll disambiguation, selection drags never scroll,
   extended keys emit chords mid-scroll and mid-selection without disturbing
   the gesture state.
+
+## T110: secure paste confirmation, multi-line warning, bracketed paste
+
+`crates/host-library/src/paste.rs`:
+
+- `PasteContent::analyze` - detects newlines, control characters, suspicious
+  shell fragments, and size.
+- `SecurePasteFlow` - applies a configurable `PastePolicy` and returns
+  Allow / Confirm / Block. A potential command injection is **previewable**
+  (control chars escaped, truncated with byte count) before pasting.
+- Password pasting has its own configurable policy (Allow / Confirm / Block).
+- Bracketed paste: `bracketed_payload` wraps the text in `ESC[200~ ... ESC[201~`.
+- Tests: newline / control-character / huge-clipboard cases.
