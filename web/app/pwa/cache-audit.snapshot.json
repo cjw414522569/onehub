@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "service_worker": {
+    "install": "ssh-shell-1.0.0",
+    "update": {
+      "next": "1.1.0",
+      "waiting": true
+    },
+    "activate_purged": [
+      "ssh-shell-1.0.0",
+      "ssh-shell-0.9.0"
+    ],
+    "active_after": "ssh-shell-1.1.0",
+    "session_cache_memory_only": "ssh-session-v0"
+  },
+  "cache_audit": {
+    "clean_entries": [
+      {
+        "url": "/static/app.js",
+        "kind": "app-shell",
+        "sensitive": false,
+        "bytes": 48192
+      },
+      {
+        "url": "/static/app.css",
+        "kind": "app-shell",
+        "sensitive": false,
+        "bytes": 12048
+      },
+      {
+        "url": "/static/icon.svg",
+        "kind": "app-shell",
+        "sensitive": false,
+        "bytes": 1024
+      }
+    ],
+    "clean_violations": 0,
+    "leaky_violations": [
+      "sensitive data cached: /session/token",
+      "sensitive data cached: /data/terminal-stream",
+      "session data persisted: /data/terminal-stream"
+    ],
+    "after_clear": [
+      "/static/app.js",
+      "/static/app.css",
+      "/static/icon.svg"
+    ]
+  },
+  "offline": {
+    "status_text_offline": "Offline - not connected",
+    "can_connect_offline": false
+  }
+}

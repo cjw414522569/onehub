@@ -2,6 +2,8 @@
 // terminal surface wiring, and input adapter plumbing. DOM-free and
 // deterministic so the critical paths are testable headlessly.
 
+import type { Connectivity } from './connectivity.ts';
+import { OfflinePolicy } from './connectivity.ts';
 import type { GatewayTransport, SessionMessage } from './gateway-transport.ts';
 import { SESSION_PROTOCOL_VERSION, dataMessage } from './gateway-transport.ts';
 import type { KeyEvent } from './input-adapter.ts';
@@ -11,7 +13,7 @@ import type { Size } from './types.ts';
 import { VtParser } from './vt-parser.ts';
 
 /** Shell connection phases. */
-export type ShellPhase = 'idle' | 'connecting' | 'ready' | 'closed';
+export type ShellPhase = 'idle' | 'connecting' | 'ready' | 'offline' | 'closed';
 
 /** Browser viewport. */
 export interface Viewport {
@@ -64,10 +66,12 @@ export function layoutFor(viewport: Viewport): Layout {
  */
 export class ShellModel {
   phase: ShellPhase = 'idle';
+  connectivity: Connectivity = 'online';
   viewport: Viewport;
   layout: Layout;
   selectedHost: string | null = null;
   title = '';
+  private readonly offlinePolicy = new OfflinePolicy();
 
   readonly hosts: string[];
   private readonly transportFactory: () => GatewayTransport;
@@ -95,6 +99,34 @@ export class ShellModel {
   /** The terminal surface (for rendering / tests). */
   terminal(): TerminalSurface {
     return this.surface;
+  }
+
+  /**
+   * Applies browser connectivity (online/offline). Going offline suspends a
+   * live session: the phase becomes 'offline' (never claiming connectivity)
+   * and the transport closes. Coming back online returns to 'idle' so the
+   * user reconnects explicitly.
+   */
+  setConnectivity(online: boolean): void {
+    this.connectivity = online ? 'online' : 'offline';
+    if (!online && this.phase === 'ready') {
+      if (this.transport) this.transport.close();
+      this.transport = null;
+      this.phase = 'offline';
+    } else if (online && this.phase === 'offline') {
+      this.phase = 'idle';
+      this.sessionToken = null;
+    }
+  }
+
+  /** Whether a connection may be attempted right now. */
+  canConnect(): boolean {
+    return this.offlinePolicy.canConnect(this.connectivity);
+  }
+
+  /** The status-bar text; offline never claims connectivity. */
+  statusText(): string {
+    return this.offlinePolicy.statusText(this.connectivity, this.phase);
   }
 
   /** Applies a new viewport: recompute layout and resize the surface. */

@@ -24,11 +24,29 @@ Layer: Web/PWA (Tier 2). Browser shell that connects through the gateway
   plumbing. `layoutFor()` computes the layout from the viewport.
 - `src/index.ts` - `createShell()` factory.
 
+## T140: PWA offline shell, update, and data-clearing policy
+
+- `src/service-worker.ts` - versioned app-shell cache names, update /
+  activation flow (skipWaiting), stale-cache purge, and a memory-only
+  session cache.
+- `src/cache-policy.ts` - cache classification (app-shell vs session /
+  forbidden), the audit that guarantees offline caches hold no session
+  secrets, and `clearSessionData` which purges session entries while
+  keeping the app shell.
+- `src/connectivity.ts` + `ShellModel.setConnectivity` - offline never
+  claims connectivity: a live session is suspended (status
+  `Offline - not connected`) and reconnects are only offered online.
+- `test/pwa-offline.ts` + `pwa/cache-audit.snapshot.json` - service-worker
+  upgrade, cache audit, and clear-session-data E2E with a byte-identical
+  regenerable snapshot.
+
 ## Tests
 
 - `test/e2e.ts` - critical-path E2E (headless, deterministic): responsive
   layout, host select, gateway handshake to ready, terminal render, input
   byte encoding, resize, mobile switch, disconnect.
+- `test/pwa-offline.ts` - service-worker upgrade + purge, cache policy +
+  audit, offline connectivity (no connectivity claim while offline).
 - `test/screenshot-matrix.ts` - regenerates the browser-engine screenshot
   matrix (`screenshots/*.svg`) for Chromium / Firefox / Safari desktop and
   mobile viewports. Regenerate with `node --experimental-strip-types
@@ -38,5 +56,7 @@ Layer: Web/PWA (Tier 2). Browser shell that connects through the gateway
 ## Gates
 
 - `npm run typecheck` (strict `tsc --noEmit`).
-- `scripts/test-web-shell.mjs` runs the type gate, the E2E critical paths,
-  and the screenshot-matrix snapshot check.
+- `scripts/test-web-shell.mjs` - type gate + critical-path E2E +
+  screenshot-matrix snapshot check (T139).
+- `scripts/test-pwa-offline.mjs` - type gate + service-worker/cache-audit
+  E2E + cache-audit snapshot check (T140).
