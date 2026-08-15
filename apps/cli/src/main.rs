@@ -17,7 +17,7 @@ fn main() {
 
 fn print_usage() {
     println!(
-        "usage: ssh-cli [--version] [--help]\n       ssh-cli config --check <path>\n       ssh-cli --config <path> <alias> exec <command>"
+        "usage: ssh-cli [--json] [--version] [--help]\n       ssh-cli [--json] config --check <path>\n       ssh-cli cap forward --listen <ip:port> --target <host:port>\n       ssh-cli cap sftp\n       ssh-cli cap proxy --chain <spec> --target <host> [--port <port>]\n       ssh-cli --config <path> <alias> exec <command>"
     );
 }
 
