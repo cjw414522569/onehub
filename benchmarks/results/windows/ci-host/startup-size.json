@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "platform": "windows",
+  "device": "ci-host",
+  "startup": {
+    "cold_p95_ms": 3.0121,
+    "hot_p95_ms": 2.883,
+    "repeats": 30
+  },
+  "package_size": {
+    "cli_release_bytes": 212480,
+    "cli_gzip_bytes": 106908,
+    "wasm_bytes": 176008,
+    "wasm_gzip_bytes": 64216
+  },
+  "blocked": {
+    "desktop_packages": "blocked_unavailable_toolchain (no installers built)",
+    "mobile_power": "blocked_unavailable_toolchain (needs a mobile device)",
+    "mobile_packages": "blocked_unavailable_toolchain (no mobile builds)"
+  }
+}
