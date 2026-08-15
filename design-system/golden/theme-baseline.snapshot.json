@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "theme": "semantic",
+  "resolved": {
+    "accent": "#2563eb",
+    "background": "#ffffff",
+    "border": "#e5e7eb",
+    "danger": "#dc2626",
+    "focus": "#3b82f6",
+    "success": "#16a34a",
+    "surface": "#f9fafb",
+    "surface.alt": "#f3f4f6",
+    "text.on.accent": "#ffffff",
+    "text.primary": "#111827",
+    "text.secondary": "#4b5563"
+  }
+}
