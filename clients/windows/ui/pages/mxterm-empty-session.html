@@ -1,0 +1,6052 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>mXterm Empty Session Prototype</title>
+  <style>
+    :root {
+      --mx-bg: #f5f6f8;
+      --mx-panel: #ffffff;
+      --mx-panel-soft: #f8f9fb;
+      --mx-panel-muted: #f1f4f8;
+      --mx-line: #dde1e7;
+      --mx-line-soft: #edf0f4;
+      --mx-line-strong: #c9ced6;
+      --mx-text: #20242a;
+      --mx-muted: #69727d;
+      --mx-subtle: #8a8f96;
+      --mx-active: rgba(0, 0, 0, 0.045);
+      --mx-active-strong: rgba(100, 116, 139, 0.16);
+      --mx-primary: #2563eb;
+      --mx-primary-soft: rgba(37, 99, 235, 0.1);
+      --mx-success: #15803d;
+      --mx-warning: #b7791f;
+      --mx-danger: #dc2626;
+      --font-ui: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+      --font-mono: "Cascadia Mono", Consolas, "Microsoft YaHei UI", monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+    }
+
+    body {
+      margin: 0;
+      min-width: 1100px;
+      min-height: 720px;
+      overflow: hidden;
+      color: var(--mx-text);
+      background: var(--mx-bg);
+      font-family: var(--font-ui);
+      letter-spacing: 0;
+    }
+
+    button,
+    input,
+    select,
+    textarea {
+      font: inherit;
+    }
+
+    button {
+      cursor: pointer;
+    }
+
+    button:focus-visible,
+    input:focus-visible {
+      outline: 2px solid var(--mx-primary);
+      outline-offset: 2px;
+    }
+
+    .ui-icon {
+      width: 16px;
+      height: 16px;
+      stroke: currentColor;
+      stroke-width: 1.55;
+      fill: none;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      flex: 0 0 auto;
+    }
+
+    .app-shell {
+      --left-pane-width: 336px;
+      width: 100vw;
+      height: 100vh;
+      display: grid;
+      grid-template-rows: 36px minmax(0, 1fr);
+      overflow: hidden;
+      background: var(--mx-panel);
+    }
+
+    .custom-titlebar {
+      min-width: 0;
+      display: grid;
+      grid-template-columns: var(--left-pane-width) minmax(0, 1fr) auto;
+      align-items: stretch;
+      border-bottom: 1px solid var(--mx-line);
+      background: rgba(255, 255, 255, 0.92);
+      user-select: none;
+    }
+
+    .title-leading {
+      min-width: 0;
+      display: grid;
+      grid-template-columns: 44px minmax(0, 1fr);
+      border-right: 1px solid rgba(221, 225, 231, 0.72);
+      background: rgba(248, 249, 251, 0.68);
+    }
+
+    .title-pane-toggle,
+    .icon-button,
+    .mini-action,
+    .window-control,
+    .icon-action {
+      border: 0;
+      display: grid;
+      place-items: center;
+      padding: 0;
+      color: var(--mx-subtle);
+      background: transparent;
+    }
+
+    .title-pane-toggle,
+    .icon-button,
+    .icon-action {
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+    }
+
+    .title-pane-toggle {
+      align-self: center;
+      justify-self: center;
+    }
+
+    .title-pane-toggle:hover,
+    .icon-button:hover,
+    .mini-action:hover,
+    .icon-action:hover,
+    .quick-link:hover,
+    .tree-root-row:hover,
+    .file-row:hover,
+    .tree-folder-row:hover,
+    .connection-row:hover {
+      color: #595f66;
+      background: var(--mx-active);
+    }
+
+    .title-session-tabs {
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 0 10px;
+      overflow: hidden;
+    }
+
+    .title-session-tab,
+    .title-session-placeholder {
+      height: 26px;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 0 9px;
+      border-radius: 8px;
+      color: var(--mx-muted);
+      background: transparent;
+      font-size: 12px;
+      font-weight: 650;
+    }
+
+    .title-session-tab {
+      max-width: 190px;
+      border: 1px solid transparent;
+    }
+
+    .title-session-tab.active,
+    .title-session-tab:hover {
+      border-color: rgba(15, 23, 42, 0.06);
+      color: var(--mx-text);
+      background: rgba(15, 23, 42, 0.065);
+    }
+
+    .title-session-tab span {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .title-session-close {
+      width: 14px;
+      height: 14px;
+      border: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+      color: var(--mx-subtle);
+      background: transparent;
+    }
+
+    .window-controls {
+      display: flex;
+      align-items: stretch;
+      margin-left: 2px;
+    }
+
+    .window-control {
+      width: 46px;
+      height: 100%;
+      border-radius: 0;
+      color: #5f6873;
+    }
+
+    .window-control:hover {
+      background: rgba(15, 23, 42, 0.06);
+    }
+
+    .window-control.close:hover {
+      color: #ffffff;
+      background: #d83b3b;
+    }
+
+    .workspace-shell {
+      --right-pane-width: 336px;
+      min-height: 0;
+      display: grid;
+      grid-template-columns: var(--left-pane-width) minmax(0, 1fr) var(--right-pane-width);
+      overflow: hidden;
+      background: var(--mx-panel);
+    }
+
+    .connection-pane {
+      min-width: 0;
+      min-height: 0;
+      display: grid;
+      grid-template-rows: minmax(0, 1fr) 44px;
+      border-right: 1px solid var(--mx-line);
+      background: var(--mx-panel-soft);
+    }
+
+    .toolbar-actions {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .pane-scroll {
+      min-height: 0;
+      overflow: auto;
+      padding: 10px 8px 16px;
+    }
+
+    .tree-root-row {
+      width: 100%;
+      height: 30px;
+      border: 0;
+      border-radius: 7px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 7px;
+      color: var(--mx-text);
+      background: transparent;
+      font-size: 13px;
+    }
+
+    .tree-section-head {
+      height: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-top: 8px;
+      color: var(--mx-subtle);
+      font-size: 12px;
+      font-weight: 680;
+    }
+
+    .tree-block {
+      display: grid;
+      gap: 3px;
+      margin-top: 4px;
+    }
+
+    .file-row,
+    .tree-folder-row {
+      width: 100%;
+      height: 30px;
+      border: 0;
+      border-radius: 8px;
+      display: grid;
+      grid-template-columns: 18px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 6px;
+      padding: 0 7px;
+      color: #68727e;
+      background: transparent;
+      text-align: left;
+      font-size: 13px;
+    }
+
+    .file-row.active {
+      color: var(--mx-text);
+      background: rgba(156, 163, 175, 0.12);
+      font-weight: 650;
+    }
+
+    .file-row span:nth-child(2),
+    .tree-folder-row span:nth-child(2) {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .tree-children {
+      position: relative;
+      display: grid;
+      gap: 2px;
+      margin-left: 20px;
+      padding-left: 12px;
+    }
+
+    .tree-children::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      bottom: 8px;
+      left: 0;
+      width: 1px;
+      background: var(--mx-line);
+    }
+
+    .count {
+      color: var(--mx-subtle);
+      font-size: 12px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .mini-action {
+      width: 24px;
+      height: 24px;
+      border-radius: 7px;
+    }
+
+    .connection-pane .ui-icon,
+    .title-session-placeholder .ui-icon,
+    .primary-button .ui-icon {
+      width: 15px;
+      height: 15px;
+      stroke-width: 1.5;
+    }
+
+    .settings-foot {
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+      padding: 0 8px;
+      border-top: 1px solid var(--mx-line);
+    }
+
+    .main-workbench {
+      min-width: 0;
+      min-height: 0;
+      display: grid;
+      grid-template-rows: minmax(0, 1fr);
+      background: var(--mx-panel);
+    }
+
+    .session-workspace {
+      min-width: 0;
+      min-height: 0;
+      display: grid;
+      grid-template-rows: 34px minmax(0, 1fr) auto;
+      overflow: hidden;
+      background: var(--mx-panel);
+    }
+
+    .session-tabs,
+    .file-panel-tabs {
+      min-width: 0;
+      height: 34px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      border-bottom: 1px solid var(--mx-line);
+      background: #fbfcfe;
+    }
+
+    .session-tabs {
+      padding: 0 12px 0 18px;
+    }
+
+    .subtab-label {
+      flex: 0 0 auto;
+      margin-right: 2px;
+      color: var(--mx-subtle);
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .session-tab,
+    .file-panel-tab,
+    .add-session-tab,
+    .right-collapse-button {
+      height: 28px;
+      border: 0;
+      border-radius: 7px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 0 10px;
+      color: var(--mx-muted);
+      background: transparent;
+      font-size: 13px;
+    }
+
+    .session-tab.active,
+    .file-panel-tab.active,
+    .session-tab:hover,
+    .file-panel-tab:hover,
+    .add-session-tab:hover,
+    .right-collapse-button:hover {
+      color: var(--mx-text);
+      background: rgba(156, 163, 175, 0.12);
+    }
+
+    .session-tab {
+      max-width: 178px;
+      min-width: 0;
+      padding-right: 7px;
+    }
+
+    .session-tab span {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .add-session-tab,
+    .right-collapse-button {
+      width: 28px;
+      padding: 0;
+      flex: 0 0 28px;
+    }
+
+    .session-tabs-spacer {
+      flex: 1 1 auto;
+      min-width: 8px;
+    }
+
+    .terminal-mode-button {
+      height: 28px;
+      border: 1px solid transparent;
+      border-radius: 7px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 0 9px;
+      color: var(--mx-muted);
+      background: transparent;
+      font-size: 12px;
+      font-weight: 650;
+    }
+
+    .terminal-mode-button.sync-input-trigger {
+      margin-right: 4px;
+      color: rgba(100, 116, 139, 0.76);
+      font-weight: 600;
+    }
+
+    .terminal-mode-button:hover,
+    .terminal-mode-button.active {
+      border-color: rgba(37, 99, 235, 0.16);
+      color: #1d4ed8;
+      background: rgba(37, 99, 235, 0.075);
+    }
+
+    .terminal-mode-button.sync-input-trigger:hover {
+      border-color: rgba(15, 23, 42, 0.08);
+      color: var(--mx-muted);
+      background: rgba(15, 23, 42, 0.045);
+    }
+
+    .terminal-mode-button.syncing {
+      border-color: rgba(21, 128, 61, 0.2);
+      color: #166534;
+      background: rgba(220, 252, 231, 0.52);
+    }
+
+    .terminal-mode-button .ui-icon {
+      width: 14px;
+      height: 14px;
+    }
+
+    .terminal-tool-button {
+      width: 28px;
+      height: 28px;
+      border: 1px solid transparent;
+      border-radius: 7px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--mx-muted);
+      background: transparent;
+    }
+
+    .terminal-tool-button:hover,
+    .terminal-tool-button.active {
+      border-color: rgba(37, 99, 235, 0.16);
+      color: #1d4ed8;
+      background: rgba(37, 99, 235, 0.075);
+    }
+
+    .terminal-tool-button .ui-icon {
+      width: 14px;
+      height: 14px;
+    }
+
+    .command-sender-panel {
+      display: none;
+      min-width: 0;
+      border-top: 1px solid rgba(15, 23, 42, 0.12);
+      padding: 8px 12px 10px;
+      background:
+        linear-gradient(180deg, rgba(248, 250, 252, 0.97), #ffffff 56%);
+    }
+
+    .command-sender-panel.open {
+      display: block;
+    }
+
+    .command-sender-console {
+      container-type: inline-size;
+      min-width: 0;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      overflow: hidden;
+      border: 1px solid rgba(15, 23, 42, 0.14);
+      border-radius: 12px;
+      background: #ffffff;
+      box-shadow: 0 10px 28px rgba(15, 23, 42, 0.08);
+    }
+
+    .command-sender-console-head {
+      min-width: 0;
+      display: grid;
+      grid-template-columns: auto auto minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 10px;
+      min-height: 42px;
+      border-bottom: 1px solid rgba(15, 23, 42, 0.12);
+      padding: 0 10px 0 14px;
+      background: rgba(248, 248, 246, 0.96);
+    }
+
+    .command-sender-title {
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border-right: 1px solid rgba(15, 23, 42, 0.14);
+      padding-right: 10px;
+      color: var(--mx-text);
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .command-sender-title::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: #22c55e;
+    }
+
+    .command-sender-title small {
+      color: var(--mx-subtle);
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .command-target-count,
+    .command-last-sent {
+      color: var(--mx-subtle);
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .command-sender-head-actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 12px;
+      white-space: nowrap;
+    }
+
+    .command-console-toggle {
+      width: 30px;
+      height: 30px;
+      border: 1px solid rgba(15, 23, 42, 0.18);
+      border-radius: 8px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+      color: var(--mx-text);
+      background: #ffffff;
+    }
+
+    .command-console-toggle:hover {
+      color: var(--mx-text);
+      background: var(--mx-panel-soft);
+    }
+
+    .command-console-toggle .ui-icon {
+      width: 15px;
+      height: 15px;
+    }
+
+    .command-close-text {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip: rect(0 0 0 0);
+      white-space: nowrap;
+    }
+
+    .command-sender-console-body {
+      min-width: 0;
+      display: grid;
+      grid-template-columns: minmax(320px, 360px) minmax(0, 1fr);
+      min-height: 330px;
+      gap: 0;
+      align-items: stretch;
+    }
+
+    .command-sender-block {
+      min-width: 0;
+      display: grid;
+      align-content: start;
+      gap: 12px;
+      border: 0;
+      border-radius: 0;
+      padding: 0;
+      background: transparent;
+    }
+
+    .command-target-pane {
+      border-right: 1px solid rgba(15, 23, 42, 0.11);
+      padding: 16px 12px 14px;
+      background: rgba(252, 252, 250, 0.65);
+    }
+
+    .command-compose-pane {
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr) auto auto;
+      align-content: stretch;
+      gap: 9px;
+      padding: 12px 14px 0;
+    }
+
+    .command-sender-label {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      color: var(--mx-text);
+      font-size: 12px;
+      font-weight: 680;
+    }
+
+    .command-target-title {
+      display: inline-flex;
+      align-items: baseline;
+      gap: 7px;
+    }
+
+    .command-target-tools {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    .command-target-select-all {
+      position: relative;
+      min-width: 54px;
+      height: 32px;
+      border: 1px solid rgba(15, 23, 42, 0.18);
+      border-radius: 8px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 12px;
+      color: var(--mx-text);
+      background: #ffffff;
+      font-size: 12px;
+      font-weight: 500;
+      white-space: nowrap;
+    }
+
+    .command-target-select-all:hover {
+      color: var(--mx-text);
+      background: var(--mx-panel-soft);
+    }
+
+    .command-target-select-all input {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      opacity: 0;
+      margin: 0;
+    }
+
+    .command-target-list {
+      min-width: 0;
+      display: grid;
+      gap: 8px;
+    }
+
+    .command-target {
+      min-width: 0;
+      min-height: 74px;
+      border: 1px solid rgba(15, 23, 42, 0.08);
+      border-radius: 8px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      align-items: start;
+      gap: 8px;
+      padding: 9px 10px;
+      background: rgba(255, 255, 255, 0.84);
+      transition: border-color 180ms ease, background 180ms ease, opacity 180ms ease;
+    }
+
+    .command-target:hover {
+      border-color: rgba(37, 99, 235, 0.28);
+      background: #ffffff;
+    }
+
+    .command-target:has(.command-target-checkbox:checked) {
+      border-color: rgba(37, 99, 235, 0.82);
+      background: #dbeafe;
+    }
+
+    .command-target:has(.command-target-checkbox:not(:checked)) {
+      opacity: 0.72;
+    }
+
+    .command-target.has-delivery {
+      border-color: rgba(37, 99, 235, 0.16);
+      background: rgba(37, 99, 235, 0.035);
+    }
+
+    .command-target:has(.command-target-checkbox:checked).has-delivery {
+      border-color: rgba(37, 99, 235, 0.82);
+      background: #dbeafe;
+    }
+
+    .command-target.has-failed-delivery {
+      border-color: rgba(220, 38, 38, 0.18);
+      background: rgba(254, 226, 226, 0.34);
+    }
+
+    .command-target input {
+      width: 15px;
+      height: 15px;
+      margin: 0;
+      accent-color: var(--mx-primary);
+    }
+
+    .command-target-select {
+      min-width: 0;
+      display: grid;
+      grid-template-columns: 18px minmax(0, 1fr);
+      align-items: start;
+      gap: 8px;
+    }
+
+    .command-target-copy {
+      min-width: 0;
+      display: grid;
+      gap: 1px;
+    }
+
+    .command-target-copy strong,
+    .command-target-copy span {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .command-target-copy strong {
+      display: block;
+      color: var(--mx-text);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .command-target-copy span {
+      display: block;
+      color: var(--mx-subtle);
+      font-family: var(--font-mono);
+      font-size: 11px;
+    }
+
+    .command-target-copy em {
+      margin-left: 5px;
+      color: #2563eb;
+      font-style: normal;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .command-target-state {
+      height: 22px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      justify-content: center;
+      flex: 0 0 auto;
+      border: 0;
+      padding: 0;
+      color: var(--mx-success);
+      background: transparent;
+      font-size: 12px;
+      font-weight: 500;
+      line-height: 22px;
+    }
+
+    .command-target-state::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: currentColor;
+    }
+
+    .command-target-state.offline {
+      color: var(--mx-danger);
+    }
+
+    .command-target-meta {
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+      gap: 6px;
+      min-width: 0;
+      padding-left: 23px;
+      overflow: visible;
+      white-space: nowrap;
+    }
+
+    .command-target-terminal-shell {
+      flex: 0 0 auto;
+      height: 26px;
+      border: 1px solid var(--mx-line-soft);
+      border-radius: 7px;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 0 7px;
+      color: var(--mx-muted);
+      background: rgba(255, 255, 255, 0.76);
+    }
+
+    .command-target-terminal-shell .ui-icon {
+      width: 13px;
+      height: 13px;
+    }
+
+    .command-target-terminal {
+      width: 66px;
+      height: 24px;
+      border: 0;
+      padding: 0;
+      color: var(--mx-muted);
+      background: transparent;
+      font-size: 11px;
+      font-weight: 650;
+    }
+
+    .command-target-delivery {
+      min-width: 50px;
+      border: 0;
+      border-radius: 7px;
+      height: 24px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex: 0 0 auto;
+      padding: 0 7px;
+      color: var(--mx-subtle);
+      background: rgba(148, 163, 184, 0.12);
+      font-size: 11px;
+      font-weight: 650;
+      line-height: 24px;
+      white-space: nowrap;
+    }
+
+    .command-target-delivery.sent {
+      color: #166534;
+      background: rgba(220, 252, 231, 0.85);
+    }
+
+    .command-target-delivery.failed {
+      color: #991b1b;
+      background: rgba(254, 226, 226, 0.88);
+    }
+
+    .command-target-delivery:not(:disabled):hover {
+      color: var(--mx-text);
+      background: rgba(156, 163, 175, 0.18);
+    }
+
+    .command-select-row {
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .command-toolbar-select {
+      position: relative;
+      height: 30px;
+      border: 1px solid rgba(15, 23, 42, 0.14);
+      border-radius: 8px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 0 24px 0 9px;
+      color: var(--mx-muted);
+      background: #ffffff;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+    }
+
+    .command-toolbar-select::after {
+      content: "";
+      position: absolute;
+      right: 10px;
+      width: 6px;
+      height: 6px;
+      border-right: 1.6px solid currentColor;
+      border-bottom: 1.6px solid currentColor;
+      transform: translateY(-2px) rotate(45deg);
+      pointer-events: none;
+    }
+
+    .command-toolbar-select .ui-icon {
+      width: 14px;
+      height: 14px;
+    }
+
+    .command-select {
+      width: 100%;
+      min-width: 0;
+      height: 28px;
+      border: 0;
+      appearance: none;
+      padding: 0;
+      color: var(--mx-text);
+      background: transparent;
+      font-size: 12px;
+      font-weight: 500;
+    }
+
+    .command-compose-label {
+      color: var(--mx-muted);
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .command-input {
+      width: 100%;
+      min-height: 150px;
+      resize: none;
+      border: 1px solid var(--mx-line);
+      border-radius: 8px;
+      padding: 12px 12px;
+      color: var(--mx-text);
+      background: #fbfcfe;
+      font-family: var(--font-mono);
+      font-size: 13px;
+      line-height: 1.55;
+    }
+
+    .command-input:focus {
+      outline: none;
+      border-color: rgba(37, 99, 235, 0.44);
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.09);
+    }
+
+    .command-options,
+    .sync-input-row {
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      color: var(--mx-muted);
+      font-size: 12px;
+    }
+
+    .command-options input,
+    .sync-input-row input {
+      width: 14px;
+      height: 14px;
+      margin: 0;
+      accent-color: var(--mx-primary);
+    }
+
+    .command-risk-warning,
+    .command-send-result {
+      min-width: 0;
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .command-risk-warning {
+      display: none;
+      border: 1px solid rgba(220, 38, 38, 0.2);
+      color: #991b1b;
+      background: rgba(254, 226, 226, 0.72);
+    }
+
+    .command-risk-warning.show {
+      display: block;
+    }
+
+    .command-send-result {
+      min-height: 34px;
+      border: 1px solid var(--mx-line);
+      display: flex;
+      align-items: center;
+      color: var(--mx-subtle);
+      background: #ffffff;
+      font-size: 12px;
+    }
+
+
+    .command-compose-footer {
+      min-width: 0;
+      display: grid;
+      grid-template-columns: minmax(160px, 0.28fr) auto;
+      align-items: center;
+      gap: 8px;
+      margin: 0 -14px;
+      border-top: 1px solid rgba(15, 23, 42, 0.11);
+      padding: 9px 14px 10px;
+      background: rgba(248, 248, 246, 0.72);
+    }
+
+    .command-actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 7px;
+      flex-wrap: wrap;
+    }
+
+    .command-actions .primary-button,
+    .command-actions .secondary-button {
+      min-width: 96px;
+      height: 30px;
+      border-radius: 7px;
+      font-size: 13px;
+      justify-content: center;
+    }
+
+    .command-actions .clear-command-button {
+      min-width: 76px;
+    }
+
+    .command-actions .ui-icon {
+      width: 14px;
+      height: 14px;
+    }
+
+    @container (max-width: 780px) {
+      .command-sender-console-head {
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        gap: 10px;
+        padding-left: 14px;
+      }
+
+      .command-sender-title {
+        gap: 7px;
+        padding-right: 10px;
+      }
+
+      .command-sender-title small {
+        display: none;
+      }
+
+      .command-select-row {
+        overflow: hidden;
+      }
+
+      .command-toolbar-select {
+        min-width: 0;
+        max-width: 164px;
+        padding-left: 8px;
+        padding-right: 22px;
+      }
+
+      .command-sender-console-head > span {
+        display: none;
+      }
+
+      .command-sender-head-actions {
+        gap: 8px;
+      }
+
+      .command-sender-console-body {
+        grid-template-columns: minmax(286px, 300px) minmax(0, 1fr);
+      }
+
+      .command-target-pane {
+        padding: 16px 10px 12px;
+      }
+
+      .command-target {
+        min-height: 76px;
+        padding: 9px 10px;
+      }
+
+      .command-target-copy strong {
+        font-size: 13px;
+      }
+
+      .command-target-copy span {
+        font-size: 11px;
+      }
+
+      .command-target-copy em {
+        font-size: 12px;
+      }
+
+      .command-target-meta {
+        gap: 6px;
+        padding-left: 28px;
+      }
+
+      .command-target-terminal-shell {
+        padding: 0 6px;
+      }
+
+      .command-target-terminal {
+        width: 58px;
+        font-size: 11px;
+      }
+
+      .command-target-state,
+      .command-target-delivery {
+        font-size: 11px;
+      }
+
+      .command-target-delivery {
+        min-width: 48px;
+      }
+
+      .command-compose-pane {
+        padding: 12px 12px 0;
+      }
+
+      .command-input {
+        min-height: 142px;
+        padding: 11px 12px;
+        font-size: 13px;
+      }
+
+      .command-compose-footer {
+        grid-template-columns: 1fr;
+        align-items: start;
+        margin-right: -12px;
+        margin-left: -12px;
+        padding: 9px 12px 10px;
+      }
+
+      .command-send-result {
+        min-height: 34px;
+        font-size: 12px;
+      }
+
+      .command-actions {
+        justify-content: flex-start;
+        gap: 8px;
+      }
+
+      .command-actions .primary-button,
+      .command-actions .secondary-button {
+        min-width: 88px;
+        height: 30px;
+        border-radius: 8px;
+        font-size: 12px;
+      }
+
+      .command-actions .clear-command-button {
+        min-width: 72px;
+      }
+    }
+
+    .command-actions button:disabled {
+      cursor: default;
+      opacity: 0.48;
+    }
+
+    .sync-input-banner {
+      display: none;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 14px;
+      border-bottom: 1px solid rgba(37, 99, 235, 0.16);
+      color: #1d4ed8;
+      background: rgba(37, 99, 235, 0.08);
+      font-family: var(--font-ui);
+      font-size: 12px;
+      font-weight: 650;
+    }
+
+    .sync-input-banner.show {
+      display: flex;
+    }
+
+    .sync-input-banner .ui-icon {
+      width: 14px;
+      height: 14px;
+    }
+
+    .terminal-preview {
+      min-width: 0;
+      min-height: 0;
+      overflow: hidden;
+      padding: 0;
+      color: #cbd5e1;
+      background: #0f172a;
+      font-family: var(--font-mono);
+      font-size: 14px;
+      line-height: 1.65;
+    }
+
+    .terminal-preview[hidden] {
+      display: none;
+    }
+
+    .terminal-preview pre {
+      margin: 0;
+      padding: 12px 14px;
+      white-space: pre-wrap;
+    }
+
+    .rdp-session-preview {
+      min-width: 0;
+      min-height: 0;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      overflow: hidden;
+      color: var(--mx-text);
+      background: var(--mx-panel-soft);
+    }
+
+    .rdp-session-preview[hidden] {
+      display: none;
+    }
+
+    .rdp-session-head {
+      min-width: 0;
+      min-height: 52px;
+      border-bottom: 1px solid var(--mx-line);
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 12px 8px 14px;
+      background: color-mix(in srgb, var(--mx-panel-soft) 86%, var(--mx-panel));
+    }
+
+    .rdp-session-title {
+      min-width: 0;
+      display: grid;
+      grid-template-columns: 30px minmax(0, 1fr);
+      align-items: center;
+      gap: 8px;
+    }
+
+    .rdp-session-title .ui-icon {
+      width: 30px;
+      height: 30px;
+      border: 1px solid color-mix(in srgb, var(--mx-primary) 22%, var(--mx-line));
+      border-radius: 8px;
+      padding: 6px;
+      color: var(--mx-primary);
+      background: color-mix(in srgb, var(--mx-primary) 8%, var(--mx-panel));
+    }
+
+    .rdp-session-title span {
+      min-width: 0;
+      display: grid;
+      gap: 2px;
+    }
+
+    .rdp-session-title strong,
+    .rdp-session-title small {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .rdp-session-title strong {
+      font-size: 13px;
+      font-weight: 650;
+    }
+
+    .rdp-session-title small {
+      color: var(--mx-subtle);
+      font-family: var(--font-mono);
+      font-size: 11px;
+    }
+
+    .rdp-session-actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .rdp-session-actions button,
+    .rdp-tool-actions button,
+    .rdp-dialog-actions button {
+      height: 28px;
+      border: 1px solid var(--mx-line);
+      border-radius: 7px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      padding: 0 9px;
+      color: var(--mx-muted);
+      background: var(--mx-panel);
+      font-size: 12px;
+      font-weight: 650;
+    }
+
+    .rdp-session-actions button:hover,
+    .rdp-tool-actions button:hover,
+    .rdp-dialog-actions button:hover {
+      border-color: var(--mx-line-strong);
+      color: var(--mx-text);
+      background: var(--mx-panel-soft);
+    }
+
+    .rdp-session-actions .primary,
+    .rdp-tool-actions .primary,
+    .rdp-dialog-actions .primary {
+      border-color: color-mix(in srgb, var(--mx-primary) 56%, var(--mx-line));
+      color: #ffffff;
+      background: var(--mx-primary);
+    }
+
+    .rdp-session-body {
+      min-width: 0;
+      min-height: 0;
+      display: grid;
+      grid-template-columns: minmax(320px, 0.42fr) minmax(0, 1fr);
+      gap: 12px;
+      overflow: auto;
+      padding: 12px;
+    }
+
+    .rdp-state-list {
+      min-width: 0;
+      display: grid;
+      align-content: start;
+      gap: 8px;
+    }
+
+    .rdp-state-card {
+      min-width: 0;
+      border: 1px solid var(--mx-line-soft);
+      border-radius: 8px;
+      display: grid;
+      grid-template-columns: 28px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 8px;
+      padding: 9px;
+      color: var(--mx-muted);
+      background: color-mix(in srgb, var(--mx-panel) 88%, var(--mx-panel-soft));
+      text-align: left;
+    }
+
+    .rdp-state-card.active {
+      border-color: color-mix(in srgb, var(--mx-primary) 42%, var(--mx-line));
+      color: var(--mx-text);
+      background: color-mix(in srgb, var(--mx-primary) 8%, var(--mx-panel));
+    }
+
+    .rdp-state-card.error {
+      border-color: color-mix(in srgb, var(--mx-danger) 22%, var(--mx-line));
+      background: color-mix(in srgb, var(--mx-danger) 7%, var(--mx-panel));
+    }
+
+    .rdp-state-card .ui-icon {
+      width: 18px;
+      height: 18px;
+      color: var(--mx-primary);
+    }
+
+    .rdp-state-card.error .ui-icon {
+      color: var(--mx-danger);
+    }
+
+    .rdp-state-card span {
+      min-width: 0;
+      display: grid;
+      gap: 2px;
+    }
+
+    .rdp-state-card strong,
+    .rdp-state-card small {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .rdp-state-card strong {
+      color: var(--mx-text);
+      font-size: 12px;
+    }
+
+    .rdp-state-card small,
+    .rdp-state-card em {
+      color: var(--mx-subtle);
+      font-size: 11px;
+      font-style: normal;
+    }
+
+    .rdp-display-host {
+      min-width: 0;
+      min-height: 0;
+      border: 1px dashed color-mix(in srgb, var(--mx-primary) 28%, var(--mx-line));
+      border-radius: 8px;
+      display: grid;
+      grid-template-rows: minmax(0, 1fr) auto;
+      overflow: hidden;
+      background: color-mix(in srgb, var(--mx-panel) 80%, var(--mx-primary) 3%);
+    }
+
+    .rdp-screen-placeholder {
+      min-width: 0;
+      min-height: 0;
+      display: grid;
+      place-content: center;
+      justify-items: center;
+      gap: 10px;
+      padding: 24px;
+      text-align: center;
+    }
+
+    .rdp-screen-placeholder .ui-icon {
+      width: 44px;
+      height: 44px;
+      color: var(--mx-primary);
+    }
+
+    .rdp-screen-placeholder strong {
+      font-size: 15px;
+      font-weight: 650;
+    }
+
+    .rdp-screen-placeholder small {
+      max-width: 420px;
+      color: var(--mx-muted);
+      font-size: 12px;
+      line-height: 1.55;
+    }
+
+    .rdp-launch-preview {
+      min-width: 0;
+      border-top: 1px solid var(--mx-line);
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 8px;
+      padding: 9px;
+      background: color-mix(in srgb, var(--mx-panel-soft) 84%, var(--mx-panel));
+    }
+
+    .rdp-preview-block {
+      min-width: 0;
+      border: 1px solid var(--mx-line-soft);
+      border-radius: 8px;
+      display: grid;
+      gap: 5px;
+      padding: 8px;
+      background: var(--mx-panel);
+    }
+
+    .rdp-preview-block strong {
+      font-size: 12px;
+    }
+
+    .rdp-preview-block code,
+    .rdp-preview-block pre {
+      min-width: 0;
+      margin: 0;
+      overflow: auto;
+      color: var(--mx-text);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+    }
+
+    .right-file-pane {
+      min-width: 0;
+      min-height: 0;
+      display: grid;
+      grid-template-rows: 34px minmax(0, 1fr);
+      border-left: 1px solid var(--mx-line);
+      background: var(--mx-panel-soft);
+    }
+
+    .file-panel-tabs {
+      position: relative;
+      padding: 0 8px;
+    }
+
+    .right-collapse-button {
+      z-index: 2;
+      margin-left: auto;
+      border: 0;
+      color: #717986;
+      background: transparent;
+      box-shadow: none;
+    }
+
+    .file-panel-tab .ui-icon,
+    .session-tab .ui-icon,
+    .right-collapse-button .ui-icon,
+    .add-session-tab .ui-icon,
+    .file-panel-actions .ui-icon {
+      width: 14px;
+      height: 14px;
+      stroke-width: 1.55;
+    }
+
+    .file-path-row {
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      padding: 5px 10px;
+      border-bottom: 1px solid var(--mx-line-soft);
+      background: var(--mx-panel);
+    }
+
+    .file-path-input {
+      width: 100%;
+      height: 30px;
+      border: 1px solid var(--mx-line);
+      border-radius: 7px;
+      padding: 0 9px;
+      color: var(--mx-text);
+      background: #ffffff;
+      font-family: var(--font-mono);
+      font-size: 13px;
+    }
+
+    .file-panel-actions {
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 0 8px;
+      border-bottom: 1px solid var(--mx-line);
+      background: var(--mx-panel-soft);
+    }
+
+    .file-panel-actions button,
+    .file-transfer-bar button,
+    .file-transfer-drawer-head button,
+    .file-transfer-row-actions button {
+      height: 26px;
+      border: 1px solid transparent;
+      border-radius: 7px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      padding: 0 8px;
+      color: var(--mx-muted);
+      background: transparent;
+      font-size: 12px;
+      font-weight: 650;
+    }
+
+    .file-panel-actions button:hover,
+    .file-transfer-bar button:hover,
+    .file-transfer-drawer-head button:hover,
+    .file-transfer-row-actions button:hover {
+      border-color: var(--mx-line-soft);
+      color: var(--mx-text);
+      background: var(--mx-active);
+    }
+
+    .file-browser-pane {
+      min-width: 0;
+      min-height: 0;
+      display: grid;
+      grid-template-rows: auto auto minmax(0, 1fr) auto;
+      overflow: hidden;
+      background: var(--mx-panel-soft);
+    }
+
+    .file-browser-pane[hidden],
+    .command-library-pane[hidden],
+    .rdp-tool-pane[hidden],
+    .tool-placeholder-pane[hidden] {
+      display: none;
+    }
+
+    .rdp-tool-pane {
+      min-width: 0;
+      min-height: 0;
+      display: grid;
+      grid-template-rows: auto auto minmax(0, 1fr);
+      gap: 10px;
+      overflow: auto;
+      padding: 10px;
+      background: var(--mx-panel);
+    }
+
+    .rdp-tool-head {
+      min-width: 0;
+      border-bottom: 1px solid var(--mx-line);
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: start;
+      gap: 8px;
+      padding-bottom: 9px;
+    }
+
+    .rdp-tool-head span:first-child {
+      min-width: 0;
+      display: grid;
+      gap: 2px;
+    }
+
+    .rdp-tool-head strong,
+    .rdp-tool-head small {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .rdp-tool-head strong {
+      font-size: 13px;
+      font-weight: 650;
+    }
+
+    .rdp-tool-head small {
+      color: var(--mx-subtle);
+      font-family: var(--font-mono);
+      font-size: 11px;
+    }
+
+    .rdp-status-pill {
+      min-height: 22px;
+      border: 1px solid color-mix(in srgb, var(--mx-success) 22%, var(--mx-line));
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 8px;
+      color: var(--mx-success);
+      background: color-mix(in srgb, var(--mx-success) 8%, var(--mx-panel));
+      font-size: 11px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .rdp-tool-actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .rdp-tool-facts {
+      min-width: 0;
+      border: 1px solid var(--mx-line-soft);
+      border-radius: 8px;
+      display: grid;
+      overflow: hidden;
+      background: color-mix(in srgb, var(--mx-panel-soft) 70%, var(--mx-panel));
+    }
+
+    .rdp-tool-fact {
+      min-width: 0;
+      display: grid;
+      grid-template-columns: 72px minmax(0, 1fr);
+      gap: 8px;
+      border-bottom: 1px solid var(--mx-line-soft);
+      padding: 7px 9px;
+      font-size: 12px;
+    }
+
+    .rdp-tool-fact:last-child {
+      border-bottom: 0;
+    }
+
+    .rdp-tool-fact span:first-child {
+      color: var(--mx-subtle);
+    }
+
+    .rdp-tool-fact span:last-child {
+      min-width: 0;
+      overflow: hidden;
+      color: var(--mx-text);
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .rdp-tool-preview {
+      min-width: 0;
+      border: 1px solid var(--mx-line-soft);
+      border-radius: 8px;
+      display: grid;
+      gap: 7px;
+      padding: 9px;
+      background: color-mix(in srgb, var(--mx-panel) 90%, var(--mx-panel-soft));
+    }
+
+    .rdp-tool-preview strong {
+      font-size: 12px;
+    }
+
+    .rdp-tool-preview code,
+    .rdp-tool-preview pre {
+      min-width: 0;
+      margin: 0;
+      overflow: auto;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+    }
+
+    .file-tree {
+      min-width: 0;
+      min-height: 0;
+      overflow: auto;
+      padding: 6px;
+      background: var(--mx-panel-soft);
+    }
+
+    .file-tree-section {
+      display: grid;
+      gap: 3px;
+    }
+
+    .file-tree-label {
+      height: 24px;
+      display: flex;
+      align-items: center;
+      padding: 0 7px;
+      color: var(--mx-subtle);
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .file-tree .file-row,
+    .file-tree .tree-folder-row {
+      height: 31px;
+      border: 1px solid transparent;
+    }
+
+    .file-row.selected {
+      border: 1px solid color-mix(in srgb, var(--mx-primary) 22%, transparent);
+      color: #123067;
+      background: color-mix(in srgb, var(--mx-primary) 13%, var(--mx-panel));
+      font-weight: 650;
+    }
+
+    .file-row .file-size,
+    .tree-folder-row .file-size {
+      color: var(--mx-subtle);
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .file-transfer-dock {
+      min-width: 0;
+      border-top: 1px solid var(--mx-line);
+      background: color-mix(in srgb, var(--mx-panel) 82%, var(--mx-panel-muted));
+    }
+
+    .file-transfer-bar {
+      min-width: 0;
+      height: 38px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 58px 34px 54px;
+      align-items: center;
+      gap: 6px;
+      padding: 0 9px;
+    }
+
+    .file-transfer-summary {
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      overflow: hidden;
+      color: var(--mx-muted);
+      font-size: 12px;
+      font-weight: 650;
+      white-space: nowrap;
+    }
+
+    .file-transfer-summary strong {
+      color: var(--mx-text);
+      font-size: 12px;
+    }
+
+    .file-transfer-chip {
+      height: 20px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 0 7px;
+      color: var(--mx-muted);
+      background: rgba(100, 116, 139, 0.1);
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .file-transfer-chip.running {
+      color: #1d4ed8;
+      background: var(--mx-primary-soft);
+    }
+
+    .file-transfer-chip.error {
+      color: var(--mx-danger);
+      background: color-mix(in srgb, var(--mx-danger) 10%, var(--mx-panel));
+    }
+
+    .file-transfer-progress-mini {
+      width: 58px;
+      height: 4px;
+      border-radius: 999px;
+      overflow: hidden;
+      background: rgba(100, 116, 139, 0.16);
+    }
+
+    .file-transfer-progress-mini span {
+      display: block;
+      height: 100%;
+      border-radius: inherit;
+      background: var(--mx-primary);
+    }
+
+    .file-transfer-percent {
+      color: var(--mx-muted);
+      font-size: 12px;
+      font-weight: 700;
+      text-align: right;
+      white-space: nowrap;
+    }
+
+    #fileTransferToggle {
+      width: 54px;
+      padding: 0 6px;
+    }
+
+    .file-transfer-drawer {
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      max-height: 0;
+      overflow: hidden;
+      border-top: 1px solid transparent;
+      transition: max-height 180ms ease, border-color 180ms ease;
+    }
+
+    .file-transfer-dock.open .file-transfer-drawer {
+      max-height: 270px;
+      border-top-color: var(--mx-line-soft);
+    }
+
+    .file-transfer-dock.open .file-transfer-toggle-caret {
+      transform: rotate(180deg);
+    }
+
+    .file-transfer-drawer-head {
+      min-width: 0;
+      height: 34px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 8px;
+      padding: 0 9px;
+      background: rgba(248, 250, 252, 0.72);
+    }
+
+    .file-transfer-drawer-head strong {
+      color: var(--mx-text);
+      font-size: 12px;
+    }
+
+    .file-transfer-list {
+      min-width: 0;
+      max-height: 224px;
+      overflow: visible;
+      display: grid;
+      align-content: start;
+      gap: 4px;
+      padding: 7px;
+    }
+
+    .file-transfer-row {
+      position: relative;
+      min-width: 0;
+      display: grid;
+      grid-template-columns: 30px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 8px;
+      border: 1px solid var(--mx-line-soft);
+      border-radius: 8px;
+      padding: 7px 8px 9px;
+      overflow: visible;
+      background: color-mix(in srgb, var(--mx-panel) 88%, var(--mx-panel-soft));
+    }
+
+    .file-transfer-row:hover,
+    .file-transfer-row:focus-within {
+      border-color: color-mix(in srgb, var(--mx-primary) 18%, var(--mx-line));
+      background: var(--mx-panel);
+    }
+
+    .file-transfer-row-icon {
+      width: 28px;
+      height: 28px;
+      border: 1px solid var(--mx-line-soft);
+      border-radius: 7px;
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--mx-muted);
+      background: var(--mx-panel-soft);
+    }
+
+    .file-transfer-row-icon.archive {
+      color: color-mix(in srgb, var(--mx-primary) 72%, var(--mx-muted));
+      background: color-mix(in srgb, var(--mx-primary) 6%, var(--mx-panel-soft));
+    }
+
+    .file-transfer-row-icon.directory {
+      color: var(--mx-muted);
+      background: color-mix(in srgb, var(--mx-panel-muted) 72%, var(--mx-panel));
+    }
+
+    .file-transfer-row-icon.log {
+      color: color-mix(in srgb, var(--mx-muted) 78%, var(--mx-text));
+      background: color-mix(in srgb, var(--mx-panel-muted) 78%, var(--mx-panel));
+    }
+
+    .file-transfer-type-label {
+      position: absolute;
+      inset: auto 2px 2px;
+      overflow: hidden;
+      color: currentColor;
+      font-family: var(--font-ui);
+      font-size: 7px;
+      font-weight: 800;
+      line-height: 1;
+      text-align: center;
+      letter-spacing: 0;
+    }
+
+    .file-transfer-row-main {
+      min-width: 0;
+      display: grid;
+      gap: 4px;
+    }
+
+    .file-transfer-row-title {
+      min-width: 0;
+      display: block;
+      color: var(--mx-text);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .file-transfer-name,
+    .file-transfer-path {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .file-transfer-progress-text {
+      color: var(--mx-primary);
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 700;
+      line-height: 1.35;
+      white-space: nowrap;
+    }
+
+    .file-transfer-meta {
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      overflow: hidden;
+      color: var(--mx-muted);
+      font-size: 11px;
+      white-space: nowrap;
+    }
+
+    .file-transfer-tag {
+      flex: 0 0 auto;
+      height: 20px;
+      border: 1px solid var(--mx-line);
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      padding: 0 6px;
+      color: var(--mx-muted);
+      background: color-mix(in srgb, var(--mx-panel-soft) 76%, var(--mx-panel));
+      font-size: 11px;
+      font-weight: 650;
+    }
+
+    .file-transfer-tag.direction {
+      border-color: color-mix(in srgb, var(--mx-primary) 22%, var(--mx-line));
+      color: var(--mx-primary);
+      background: var(--mx-primary-soft);
+    }
+
+    .file-transfer-status-dot {
+      flex: 0 0 auto;
+      width: 6px;
+      height: 6px;
+      border-radius: 999px;
+      background: var(--mx-success);
+    }
+
+    .file-transfer-size-text {
+      flex: 1 1 auto;
+      min-width: 0;
+      overflow: hidden;
+      color: var(--mx-subtle);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .file-transfer-speed-text {
+      flex: 0 1 auto;
+      max-width: 76px;
+      overflow: hidden;
+      color: var(--mx-muted);
+      font-family: var(--font-mono);
+      font-size: 10px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .file-transfer-path {
+      color: var(--mx-subtle);
+      font-family: var(--font-mono);
+      font-size: 11px;
+    }
+
+    .file-transfer-progress {
+      min-width: 0;
+      height: 4px;
+      border-radius: 999px;
+      overflow: hidden;
+      background: rgba(100, 116, 139, 0.14);
+    }
+
+    .file-transfer-progress-line {
+      grid-column: 1 / -1;
+      min-width: 0;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 7px;
+    }
+
+    .file-transfer-progress span {
+      display: block;
+      height: 100%;
+      border-radius: inherit;
+      background: var(--mx-primary);
+    }
+
+    .file-transfer-row.error {
+      border-color: color-mix(in srgb, var(--mx-danger) 22%, var(--mx-line));
+    }
+
+    .file-transfer-row.error::after,
+    .file-transfer-row.error .file-transfer-progress span {
+      background: var(--mx-danger);
+    }
+
+    .file-transfer-row.error .file-transfer-row-icon {
+      border-color: color-mix(in srgb, var(--mx-danger) 26%, var(--mx-line));
+      color: var(--mx-danger);
+      background: color-mix(in srgb, var(--mx-danger) 9%, var(--mx-panel));
+    }
+
+    .file-transfer-row.error .file-transfer-status-dot {
+      background: var(--mx-danger);
+    }
+
+    .file-transfer-row-actions {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      opacity: 0.72;
+      transition: opacity 140ms ease;
+    }
+
+    .file-transfer-row-actions button {
+      width: 26px;
+      padding: 0;
+    }
+
+    .file-transfer-row:hover .file-transfer-row-actions,
+    .file-transfer-row:focus-within .file-transfer-row-actions {
+      opacity: 1;
+    }
+
+    .file-transfer-detail-card {
+      position: absolute;
+      z-index: 12;
+      top: calc(100% + 6px);
+      right: 6px;
+      width: min(292px, calc(100% - 12px));
+      border: 1px solid var(--mx-line);
+      border-radius: 9px;
+      display: grid;
+      gap: 7px;
+      padding: 9px;
+      color: var(--mx-text);
+      background: color-mix(in srgb, var(--mx-panel) 94%, var(--mx-panel-soft));
+      box-shadow: 0 14px 34px rgb(15 23 42 / 14%);
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(4px);
+      transition: opacity 140ms ease, transform 140ms ease;
+    }
+
+    .file-transfer-row:nth-last-child(-n + 2) .file-transfer-detail-card {
+      top: auto;
+      bottom: calc(100% + 6px);
+      transform: translateY(-4px);
+    }
+
+    .file-transfer-row:hover .file-transfer-detail-card,
+    .file-transfer-row:focus-within .file-transfer-detail-card {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .file-transfer-detail-card div {
+      min-width: 0;
+      display: grid;
+      grid-template-columns: 52px minmax(0, 1fr);
+      gap: 8px;
+      align-items: baseline;
+    }
+
+    .file-transfer-detail-card span {
+      color: var(--mx-subtle);
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .file-transfer-detail-card strong,
+    .file-transfer-detail-card code {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 12px;
+    }
+
+    .file-transfer-detail-card code {
+      color: var(--mx-muted);
+      font-family: var(--font-mono);
+      font-size: 11px;
+    }
+
+    .tool-placeholder-pane {
+      min-width: 0;
+      min-height: 0;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      color: var(--mx-muted);
+      background: var(--mx-panel-soft);
+      font-size: 13px;
+      text-align: center;
+    }
+
+    .tool-tab-strip {
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 0 8px;
+      overflow: hidden;
+    }
+
+    .tool-tab-strip .file-panel-tab {
+      padding: 0 8px;
+      font-size: 12px;
+    }
+
+    .tool-tab-strip .file-panel-tab.active {
+      font-weight: 700;
+    }
+
+    .tool-pane-spacer {
+      flex: 1 1 auto;
+      min-width: 10px;
+    }
+
+    .command-library-pane {
+      min-width: 0;
+      min-height: 0;
+      display: grid;
+      grid-template-rows: auto auto minmax(0, 1fr) auto;
+      background: var(--mx-panel-soft);
+    }
+
+    .command-library-head {
+      min-width: 0;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 10px 8px;
+      border-bottom: 1px solid var(--mx-line-soft);
+      background: linear-gradient(180deg, #fbfcfe, #f7f9fc);
+    }
+
+    .command-library-title {
+      min-width: 0;
+      display: grid;
+      gap: 3px;
+    }
+
+    .command-library-title strong {
+      color: var(--mx-text);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .command-library-title span {
+      color: var(--mx-subtle);
+      font-size: 11px;
+      line-height: 1.35;
+    }
+
+    .command-library-segments {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px;
+      border: 1px solid var(--mx-line);
+      border-radius: 9px;
+      background: rgba(255, 255, 255, 0.86);
+    }
+
+    .command-segment {
+      height: 28px;
+      border: 0;
+      border-radius: 7px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 12px;
+      color: var(--mx-muted);
+      background: transparent;
+      font-size: 12px;
+      font-weight: 650;
+    }
+
+    .command-segment.active,
+    .command-segment:hover {
+      color: var(--mx-text);
+      background: rgba(148, 163, 184, 0.14);
+    }
+
+    .command-library-search-row {
+      min-width: 0;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--mx-line-soft);
+      background: var(--mx-panel-soft);
+    }
+
+    .command-library-toolbar-actions {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+    }
+
+    .command-library-search {
+      min-width: 0;
+      height: 30px;
+      border: 1px solid var(--mx-line);
+      border-radius: 8px;
+      display: grid;
+      grid-template-columns: 14px minmax(0, 1fr);
+      align-items: center;
+      gap: 7px;
+      padding: 0 9px;
+      color: var(--mx-muted);
+      background: rgba(255, 255, 255, 0.9);
+    }
+
+    .command-library-search input {
+      min-width: 0;
+      border: 0;
+      padding: 0;
+      color: var(--mx-text);
+      background: transparent;
+      font-size: 12px;
+    }
+
+    .command-library-search input:focus {
+      outline: none;
+    }
+
+    .command-library-result-meta {
+      color: var(--mx-subtle);
+      font-size: 11px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .command-library-body {
+      min-width: 0;
+      min-height: 0;
+      overflow: auto;
+      padding: 10px;
+      display: grid;
+      align-content: start;
+      gap: 10px;
+      background: var(--mx-panel-soft);
+    }
+
+    .command-group {
+      min-width: 0;
+      display: grid;
+      gap: 7px;
+    }
+
+    .command-group-head {
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 0 2px;
+    }
+
+    .command-group-head strong {
+      color: var(--mx-text);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .command-group-head span {
+      color: var(--mx-subtle);
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .command-library-list {
+      display: grid;
+      gap: 7px;
+    }
+
+    .command-snippet-tree {
+      min-width: 0;
+      border: 1px solid var(--mx-line-soft);
+      border-radius: 9px;
+      overflow: hidden;
+      background: rgba(255, 255, 255, 0.72);
+    }
+
+    .command-tree-group {
+      min-width: 0;
+      border-bottom: 1px solid var(--mx-line-soft);
+    }
+
+    .command-tree-group:last-child {
+      border-bottom: 0;
+    }
+
+    .command-tree-group-head {
+      width: 100%;
+      min-width: 0;
+      height: 34px;
+      border: 0;
+      display: grid;
+      grid-template-columns: 16px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 6px;
+      padding: 0 9px;
+      color: var(--mx-text);
+      background: rgba(248, 250, 252, 0.88);
+      text-align: left;
+    }
+
+    .command-tree-group-head:hover {
+      background: rgba(241, 245, 249, 0.96);
+    }
+
+    .command-tree-caret {
+      color: var(--mx-subtle);
+      font-size: 11px;
+      line-height: 1;
+    }
+
+    .command-tree-group-title {
+      min-width: 0;
+      overflow: hidden;
+      color: var(--mx-text);
+      font-size: 12px;
+      font-weight: 700;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .command-tree-group-count {
+      color: var(--mx-subtle);
+      font-size: 11px;
+      font-weight: 650;
+    }
+
+    .command-tree-list {
+      display: grid;
+      background: rgba(255, 255, 255, 0.82);
+    }
+
+    .command-tree-row {
+      position: relative;
+      min-width: 0;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 7px 8px 26px;
+      border-top: 1px solid var(--mx-line-soft);
+      background: transparent;
+    }
+
+    .command-tree-row:hover {
+      background: rgba(15, 23, 42, 0.035);
+    }
+
+    .command-tree-main {
+      min-width: 0;
+      display: grid;
+      gap: 4px;
+    }
+
+    .command-tree-title-line {
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .command-tree-title-line strong {
+      min-width: 0;
+      overflow: hidden;
+      color: var(--mx-text);
+      font-size: 12px;
+      font-weight: 700;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .command-tree-code {
+      min-width: 0;
+      overflow: hidden;
+      color: #334155;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      line-height: 1.35;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .command-tree-meta {
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      color: var(--mx-subtle);
+      font-size: 11px;
+      line-height: 1.3;
+      white-space: nowrap;
+    }
+
+    .command-tree-actions {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding-right: 2px;
+    }
+
+    .command-icon-button {
+      width: 30px;
+      height: 30px;
+      border: 1px solid var(--mx-line);
+      border-radius: 8px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--mx-muted);
+      background: rgba(255, 255, 255, 0.92);
+    }
+
+    .command-icon-button:hover {
+      color: var(--mx-text);
+      border-color: rgba(100, 116, 139, 0.24);
+      background: #ffffff;
+    }
+
+    .command-icon-button.primary:hover {
+      color: var(--mx-primary);
+      border-color: rgba(37, 99, 235, 0.22);
+      background: rgba(37, 99, 235, 0.075);
+    }
+
+    .command-icon-button.danger {
+      color: var(--mx-danger);
+    }
+
+    .command-icon-button.danger:hover {
+      border-color: rgba(239, 68, 68, 0.22);
+      background: rgba(239, 68, 68, 0.075);
+    }
+
+    .command-item {
+      min-width: 0;
+      border: 1px solid var(--mx-line-soft);
+      border-radius: 8px;
+      display: grid;
+      gap: 8px;
+      padding: 9px;
+      background: rgba(255, 255, 255, 0.92);
+    }
+
+    .command-item:hover {
+      border-color: var(--mx-line);
+      background: #ffffff;
+    }
+
+    .command-item-title {
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .command-item-title strong {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--mx-text);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .command-item-badge {
+      height: 18px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      padding: 0 6px;
+      color: var(--mx-primary);
+      background: rgba(37, 99, 235, 0.1);
+      font-size: 10px;
+      font-weight: 700;
+    }
+
+    .command-item-note {
+      color: var(--mx-subtle);
+      font-size: 11px;
+      line-height: 1.45;
+    }
+
+    .command-item-code {
+      margin: 0;
+      border: 1px solid rgba(226, 232, 240, 0.7);
+      border-radius: 7px;
+      padding: 7px 8px;
+      color: #1f2937;
+      background: #f8fafc;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .command-item-meta {
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--mx-subtle);
+      font-size: 11px;
+      line-height: 1.35;
+      flex-wrap: wrap;
+    }
+
+    .command-item-actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .command-history-list {
+      border-top: 1px solid var(--mx-line-soft);
+      border-bottom: 1px solid var(--mx-line-soft);
+      display: grid;
+      background: rgba(255, 255, 255, 0.72);
+    }
+
+    .command-history-row {
+      min-width: 0;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 2px 8px 8px;
+      border-bottom: 1px solid var(--mx-line-soft);
+    }
+
+    .command-history-row:last-child {
+      border-bottom: 0;
+    }
+
+    .command-history-row:hover {
+      background: rgba(15, 23, 42, 0.035);
+    }
+
+    .command-history-main {
+      min-width: 0;
+      display: grid;
+      gap: 4px;
+    }
+
+    .command-history-code {
+      min-width: 0;
+      overflow: hidden;
+      color: #1f2937;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      line-height: 1.45;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .command-history-meta {
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      color: var(--mx-subtle);
+      font-size: 11px;
+      line-height: 1.3;
+      white-space: nowrap;
+    }
+
+    .command-history-actions {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding-right: 4px;
+    }
+
+    .command-history-actions .command-mini-button {
+      height: 24px;
+      padding: 0 7px;
+      font-size: 11px;
+    }
+
+    .command-mini-button {
+      height: 28px;
+      border: 1px solid var(--mx-line);
+      border-radius: 7px;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 0 9px;
+      color: var(--mx-muted);
+      background: rgba(255, 255, 255, 0.92);
+      font-size: 12px;
+      font-weight: 650;
+    }
+
+    .command-mini-button:hover {
+      color: var(--mx-text);
+      background: #ffffff;
+    }
+
+    .command-mini-button.primary {
+      border-color: rgba(37, 99, 235, 0.16);
+      color: #1d4ed8;
+      background: rgba(37, 99, 235, 0.075);
+    }
+
+    .command-mini-button.primary:hover {
+      border-color: rgba(37, 99, 235, 0.24);
+      background: rgba(37, 99, 235, 0.11);
+    }
+
+    .command-library-footer {
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 10px;
+      border-top: 1px solid var(--mx-line-soft);
+      background: linear-gradient(180deg, rgba(248, 250, 252, 0.85), #fbfcfe);
+    }
+
+    .command-library-footer-status {
+      color: var(--mx-subtle);
+      font-size: 11px;
+      line-height: 1.35;
+    }
+
+    .command-library-footer-actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .command-library-empty {
+      min-height: 180px;
+      border: 1px dashed var(--mx-line);
+      border-radius: 9px;
+      display: grid;
+      place-items: center;
+      padding: 18px;
+      color: var(--mx-subtle);
+      background: rgba(255, 255, 255, 0.62);
+      text-align: center;
+      font-size: 12px;
+      line-height: 1.55;
+    }
+
+    .command-dialog-backdrop {
+      position: fixed;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 28px;
+      background: rgba(15, 23, 42, 0.18);
+      backdrop-filter: blur(5px);
+    }
+
+    .command-dialog-backdrop.open {
+      display: flex;
+    }
+
+    .rdp-dialog-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 30;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 28px;
+      background: rgba(15, 23, 42, 0.22);
+      backdrop-filter: blur(5px);
+    }
+
+    .rdp-dialog-backdrop.open {
+      display: flex;
+    }
+
+    .rdp-dialog {
+      width: min(660px, calc(100vw - 56px));
+      max-height: min(760px, calc(100vh - 56px));
+      border: 1px solid var(--mx-line);
+      border-radius: 12px;
+      display: grid;
+      grid-template-rows: auto auto minmax(0, 1fr) auto;
+      overflow: hidden;
+      background: rgba(255, 255, 255, 0.96);
+      box-shadow: 0 18px 40px rgba(15, 23, 42, 0.16);
+    }
+
+    .rdp-dialog-head,
+    .rdp-dialog-actions {
+      min-width: 0;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--mx-line);
+      background: var(--mx-panel-soft);
+    }
+
+    .rdp-dialog-head strong {
+      font-size: 15px;
+      font-weight: 650;
+    }
+
+    .rdp-protocol-switch {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 8px 14px;
+      border-bottom: 1px solid var(--mx-line);
+      background: var(--mx-panel-soft);
+    }
+
+    .rdp-protocol-chip {
+      height: 30px;
+      border: 1px solid var(--mx-line);
+      border-radius: 8px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 0 10px;
+      color: var(--mx-muted);
+      background: var(--mx-panel);
+      font-size: 12px;
+      font-weight: 650;
+    }
+
+    .rdp-protocol-chip.active {
+      border-color: var(--mx-primary);
+      color: #ffffff;
+      background: var(--mx-primary);
+    }
+
+    .rdp-dialog-body {
+      min-width: 0;
+      min-height: 0;
+      display: grid;
+      gap: 12px;
+      overflow: auto;
+      padding: 12px 14px;
+    }
+
+    .rdp-form-section {
+      min-width: 0;
+      border-bottom: 1px solid var(--mx-line-soft);
+      display: grid;
+      gap: 9px;
+      padding-bottom: 12px;
+    }
+
+    .rdp-form-section:last-child {
+      border-bottom: 0;
+      padding-bottom: 0;
+    }
+
+    .rdp-form-title {
+      color: var(--mx-text);
+      font-size: 13px;
+      font-weight: 650;
+    }
+
+    .rdp-form-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .rdp-form-grid label,
+    .rdp-form-section label {
+      min-width: 0;
+      display: grid;
+      gap: 4px;
+      color: var(--mx-muted);
+      font-size: 12px;
+    }
+
+    .rdp-form-grid input,
+    .rdp-form-grid select,
+    .rdp-form-section textarea {
+      width: 100%;
+      border: 1px solid var(--mx-line);
+      border-radius: 7px;
+      padding: 6px 8px;
+      color: var(--mx-text);
+      background: var(--mx-panel);
+      font: inherit;
+      font-size: 13px;
+    }
+
+    .rdp-form-section textarea {
+      min-height: 72px;
+      resize: vertical;
+    }
+
+    .rdp-check-row {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      flex-wrap: wrap;
+    }
+
+    .rdp-check-row label {
+      min-height: 30px;
+      border: 1px solid var(--mx-line);
+      border-radius: 7px;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 0 9px;
+      background: var(--mx-panel);
+    }
+
+    .rdp-check-row input {
+      width: 14px;
+      height: 14px;
+      margin: 0;
+      accent-color: var(--mx-primary);
+    }
+
+    .rdp-dialog-actions {
+      border-top: 1px solid var(--mx-line);
+      border-bottom: 0;
+      grid-template-columns: minmax(0, 1fr) auto auto;
+      background: var(--mx-panel);
+    }
+
+    .command-dialog {
+      width: min(520px, calc(100vw - 56px));
+      max-height: min(740px, calc(100vh - 56px));
+      border: 1px solid var(--mx-line);
+      border-radius: 12px;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr) auto;
+      overflow: hidden;
+      background: rgba(255, 255, 255, 0.96);
+      box-shadow: 0 18px 40px rgba(15, 23, 42, 0.16);
+    }
+
+    .command-dialog-head,
+    .command-dialog-foot {
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 14px 16px;
+      background: #fbfcfe;
+    }
+
+    .command-dialog-head {
+      border-bottom: 1px solid var(--mx-line-soft);
+    }
+
+    .command-dialog-foot {
+      border-top: 1px solid var(--mx-line-soft);
+    }
+
+    .command-dialog-head strong {
+      color: var(--mx-text);
+      font-size: 16px;
+      font-weight: 720;
+    }
+
+    .command-dialog-body {
+      min-width: 0;
+      min-height: 0;
+      overflow: auto;
+      padding: 16px;
+      display: grid;
+      gap: 14px;
+      background: #ffffff;
+    }
+
+    .command-dialog-panel {
+      min-width: 0;
+      display: grid;
+      gap: 14px;
+    }
+
+    .command-dialog-panel[hidden] {
+      display: none;
+    }
+
+    .command-form-row {
+      display: grid;
+      gap: 7px;
+    }
+
+    .command-form-row label {
+      color: var(--mx-text);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .command-form-row input,
+    .command-form-row textarea,
+    .command-form-row select {
+      width: 100%;
+      min-width: 0;
+      border: 1px solid var(--mx-line);
+      border-radius: 8px;
+      padding: 0 10px;
+      color: var(--mx-text);
+      background: #ffffff;
+      font-size: 13px;
+    }
+
+    .command-form-row input,
+    .command-form-row select {
+      height: 36px;
+    }
+
+    .command-form-row textarea {
+      min-height: 110px;
+      padding-top: 9px;
+      padding-bottom: 9px;
+      resize: vertical;
+      font-family: var(--font-mono);
+      line-height: 1.55;
+    }
+
+    .command-form-help {
+      color: var(--mx-subtle);
+      font-size: 11px;
+      line-height: 1.45;
+    }
+
+    .command-form-inline {
+      min-width: 0;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .command-group-select {
+      position: relative;
+      min-width: 0;
+    }
+
+    .command-group-select-trigger {
+      width: 100%;
+      height: 34px;
+      border: 1px solid var(--mx-line);
+      border-radius: 8px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 8px;
+      padding: 0 10px;
+      color: var(--mx-text);
+      background: #ffffff;
+      font-size: 13px;
+      text-align: left;
+    }
+
+    .command-group-select-trigger:hover,
+    .command-group-select-trigger.active {
+      border-color: rgba(37, 99, 235, 0.24);
+      background: #fbfcfe;
+    }
+
+    .command-group-select-label {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .command-group-select-caret {
+      color: var(--mx-subtle);
+      font-size: 11px;
+    }
+
+    .command-group-select-menu {
+      position: absolute;
+      z-index: 30;
+      top: calc(100% + 4px);
+      left: 0;
+      right: 0;
+      max-height: 176px;
+      border: 1px solid var(--mx-line);
+      border-radius: 8px;
+      padding: 4px;
+      overflow: auto;
+      background: rgba(255, 255, 255, 0.98);
+      box-shadow: 0 12px 28px rgba(15, 23, 42, 0.14);
+    }
+
+    .command-group-select-menu[hidden] {
+      display: none;
+    }
+
+    .command-group-option {
+      width: 100%;
+      height: 28px;
+      border: 0;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 0 8px;
+      color: var(--mx-muted);
+      background: transparent;
+      font-size: 12px;
+      text-align: left;
+    }
+
+    .command-group-option:hover,
+    .command-group-option.active {
+      color: var(--mx-text);
+      background: rgba(37, 99, 235, 0.075);
+    }
+
+    .command-group-option-mark {
+      color: var(--mx-primary);
+      font-size: 11px;
+    }
+
+    .command-form-check {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      color: var(--mx-muted);
+      font-size: 12px;
+      font-weight: 650;
+    }
+
+    .command-form-check input {
+      width: 14px;
+      height: 14px;
+      min-width: 14px;
+    }
+
+    .command-group-manager {
+      display: grid;
+      gap: 12px;
+    }
+
+    .command-group-editor {
+      min-width: 0;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto auto;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .command-group-editor input {
+      height: 34px;
+      border: 1px solid var(--mx-line);
+      border-radius: 8px;
+      padding: 0 10px;
+      color: var(--mx-text);
+      background: #ffffff;
+      font-size: 13px;
+    }
+
+    .command-group-manager-list {
+      border: 1px solid var(--mx-line-soft);
+      border-radius: 9px;
+      display: grid;
+      overflow: hidden;
+      background: rgba(248, 250, 252, 0.78);
+    }
+
+    .command-group-manager-row {
+      min-width: 0;
+      display: grid;
+      grid-template-columns: 22px minmax(0, 1fr) auto auto;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 9px;
+      border-bottom: 1px solid var(--mx-line-soft);
+      background: rgba(255, 255, 255, 0.82);
+    }
+
+    .command-group-manager-row:last-child {
+      border-bottom: 0;
+    }
+
+    .command-group-grip {
+      color: var(--mx-subtle);
+      font-family: var(--font-mono);
+      font-size: 12px;
+    }
+
+    .command-group-manager-name {
+      min-width: 0;
+      overflow: hidden;
+      color: var(--mx-text);
+      font-size: 13px;
+      font-weight: 700;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .command-group-manager-count {
+      color: var(--mx-subtle);
+      font-size: 11px;
+      white-space: nowrap;
+    }
+
+    .command-group-manager-actions {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .command-group-manager-actions .command-mini-button {
+      height: 24px;
+      padding: 0 7px;
+      font-size: 11px;
+    }
+
+    .command-dialog-foot .primary-button,
+    .command-dialog-foot .secondary-button {
+      min-width: 84px;
+    }
+
+    .empty-workspace {
+      min-height: 0;
+      overflow: auto;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      background: var(--mx-panel);
+    }
+
+    .empty-workspace[hidden] {
+      display: none;
+    }
+
+    .repository-toolbar {
+      min-width: 0;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 20px;
+      border-bottom: 1px solid var(--mx-line-soft);
+      background: linear-gradient(180deg, #ffffff, #fbfcfe);
+    }
+
+    .toolbar-left,
+    .toolbar-right,
+    .filter-tabs {
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .filter-tab {
+      height: 28px;
+      border: 1px solid transparent;
+      border-radius: 7px;
+      display: inline-flex;
+      align-items: center;
+      padding: 0 10px;
+      color: var(--mx-muted);
+      background: transparent;
+      font-size: 13px;
+    }
+
+    .filter-tab.active {
+      border-color: var(--mx-line);
+      color: var(--mx-text);
+      background: var(--mx-panel);
+      font-weight: 650;
+    }
+
+    .search-box {
+      width: min(360px, 36vw);
+      height: 30px;
+      border: 1px solid var(--mx-line);
+      border-radius: 8px;
+      display: grid;
+      grid-template-columns: 18px minmax(0, 1fr);
+      align-items: center;
+      gap: 6px;
+      padding: 0 9px;
+      color: var(--mx-subtle);
+      background: var(--mx-panel);
+    }
+
+    .search-box input {
+      min-width: 0;
+      width: 100%;
+      border: 0;
+      outline: none;
+      color: var(--mx-text);
+      background: transparent;
+      font-size: 13px;
+    }
+
+    .search-box input::placeholder {
+      color: var(--mx-subtle);
+    }
+
+    .primary-button,
+    .secondary-button,
+    .connect-button,
+    .row-button {
+      height: 30px;
+      border-radius: 7px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      padding: 0 11px;
+      white-space: nowrap;
+      font-size: 13px;
+      font-weight: 650;
+    }
+
+    .primary-button {
+      border: 1px solid rgba(37, 99, 235, 0.22);
+      color: #1d4ed8;
+      background: rgba(37, 99, 235, 0.075);
+      box-shadow: none;
+    }
+
+    .primary-button:hover {
+      border-color: rgba(37, 99, 235, 0.34);
+      color: #1e40af;
+      background: rgba(37, 99, 235, 0.12);
+    }
+
+    .secondary-button,
+    .row-button {
+      border: 1px solid var(--mx-line);
+      color: var(--mx-muted);
+      background: var(--mx-panel);
+    }
+
+    .secondary-button:hover,
+    .row-button:hover {
+      color: var(--mx-text);
+      background: var(--mx-panel-soft);
+    }
+
+    .connect-button {
+      border: 1px solid rgba(37, 99, 235, 0.18);
+      color: var(--mx-primary);
+      background: rgba(37, 99, 235, 0.055);
+      box-shadow: none;
+    }
+
+    .connect-button:hover {
+      border-color: rgba(37, 99, 235, 0.3);
+      color: #1d4ed8;
+      background: rgba(37, 99, 235, 0.1);
+    }
+
+    .workspace-body {
+      min-height: 0;
+      display: grid;
+      grid-template-columns: minmax(620px, 1fr) 284px;
+      gap: 16px;
+      padding: 14px 20px 22px;
+      background: var(--mx-panel);
+    }
+
+    .connection-board {
+      min-width: 0;
+      min-height: 0;
+      border: 1px solid var(--mx-line);
+      border-radius: 8px;
+      overflow-x: auto;
+      overflow-y: hidden;
+      background: var(--mx-panel);
+    }
+
+    .connection-head,
+    .connection-row {
+      display: grid;
+      grid-template-columns: 48px minmax(106px, 0.58fr) 74px minmax(128px, 1fr) minmax(138px, 1fr) minmax(150px, 1.05fr) minmax(112px, 0.68fr) 188px;
+      align-items: center;
+      gap: 12px;
+      min-width: 1052px;
+    }
+
+    .connection-head {
+      height: 40px;
+      padding: 0 12px;
+      border-bottom: 1px solid var(--mx-line);
+      color: var(--mx-subtle);
+      background: #fbfcfe;
+      font-size: 12px;
+      font-weight: 720;
+    }
+
+    .connection-row {
+      min-height: 64px;
+      border: 0;
+      border-bottom: 1px solid var(--mx-line-soft);
+      padding: 8px 12px;
+      color: var(--mx-text);
+      background: var(--mx-panel);
+      text-align: left;
+      transition:
+        background-color 150ms ease,
+        color 150ms ease;
+    }
+
+    .connection-row:last-child {
+      border-bottom: 0;
+    }
+
+    .system-cell,
+    .latency-cell,
+    .name-cell,
+    .address-cell,
+    .remark-cell,
+    .group-cell,
+    .last-cell,
+    .action-head,
+    .action-cell {
+      min-width: 0;
+    }
+
+    .system-cell {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .os-logo {
+      width: 30px;
+      height: 30px;
+      border: 1px solid rgba(203, 213, 225, 0.62);
+      border-radius: 7px;
+      display: grid;
+      place-items: center;
+      background: rgba(255, 255, 255, 0.66);
+      overflow: hidden;
+    }
+
+    .os-logo svg {
+      width: 19px;
+      height: 19px;
+      display: block;
+      opacity: 0.76;
+      filter: saturate(0.78) contrast(0.96);
+    }
+
+    .os-logo.ubuntu {
+      background: rgba(233, 84, 32, 0.035);
+      border-color: rgba(233, 84, 32, 0.14);
+    }
+
+    .os-logo.debian {
+      background: rgba(168, 29, 51, 0.035);
+      border-color: rgba(168, 29, 51, 0.13);
+    }
+
+    .os-logo.macos {
+      background: rgba(15, 23, 42, 0.025);
+      border-color: rgba(15, 23, 42, 0.1);
+    }
+
+    .os-logo.centos {
+      background: rgba(38, 37, 119, 0.035);
+      border-color: rgba(38, 37, 119, 0.13);
+    }
+
+    .os-logo.alinux {
+      background: rgba(255, 106, 0, 0.035);
+      border-color: rgba(255, 106, 0, 0.13);
+    }
+
+    .latency-cell {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--mx-muted);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .latency-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 999px;
+      background: var(--mx-success);
+      flex: 0 0 auto;
+    }
+
+    .latency-dot.warn {
+      background: var(--mx-warning);
+    }
+
+    .connection-name,
+    .address-main {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--mx-text);
+      font-size: 13px;
+      font-weight: 680;
+    }
+
+    .connection-user,
+    .address-sub,
+    .remark-sub {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--mx-subtle);
+      font-family: var(--font-mono);
+      font-size: 11px;
+    }
+
+    .remark-cell {
+      display: grid;
+      gap: 3px;
+    }
+
+    .remark-main {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--mx-text);
+      font-size: 13px;
+      font-weight: 650;
+    }
+
+    .group-pill {
+      width: fit-content;
+      max-width: 100%;
+      height: 24px;
+      border: 1px solid var(--mx-line);
+      border-radius: 7px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 0 8px;
+      color: var(--mx-muted);
+      background: var(--mx-panel-soft);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .last-cell {
+      display: grid;
+      gap: 3px;
+    }
+
+    .last-cell strong {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--mx-text);
+      font-size: 13px;
+      font-weight: 680;
+    }
+
+    .last-cell span {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--mx-subtle);
+      font-size: 11px;
+    }
+
+    .group-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 999px;
+      background: var(--group-color, var(--mx-subtle));
+      flex: 0 0 auto;
+    }
+
+    .action-cell {
+      position: sticky;
+      right: 0;
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+      gap: 8px;
+      align-self: stretch;
+      padding: 0 22px 0 16px;
+      background: inherit;
+      box-shadow: -1px 0 0 rgba(221, 225, 231, 0.58);
+    }
+
+    .action-head {
+      position: sticky;
+      right: 0;
+      z-index: 3;
+      align-self: stretch;
+      display: flex;
+      align-items: center;
+      padding: 0 22px 0 16px;
+      background: inherit;
+      box-shadow: -1px 0 0 rgba(221, 225, 231, 0.58);
+    }
+
+    .text-action {
+      border: 0;
+      display: inline-flex;
+      align-items: center;
+      height: 28px;
+      padding: 0 4px;
+      color: var(--mx-muted);
+      background: transparent;
+      font-size: 13px;
+      font-weight: 620;
+      white-space: nowrap;
+    }
+
+    .text-action:hover {
+      color: var(--mx-text);
+    }
+
+    .side-summary {
+      min-width: 0;
+      display: grid;
+      align-content: start;
+      gap: 14px;
+    }
+
+    .summary-block {
+      border: 1px solid var(--mx-line-soft);
+      border-radius: 8px;
+      display: grid;
+      gap: 10px;
+      padding: 12px;
+      background: #fbfcfe;
+    }
+
+    .summary-title {
+      margin: 0;
+      color: var(--mx-text);
+      font-size: 13px;
+      font-weight: 720;
+    }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .summary-item {
+      min-height: 50px;
+      border: 1px solid rgba(226, 232, 240, 0.72);
+      border-radius: 8px;
+      display: grid;
+      align-content: center;
+      gap: 3px;
+      padding: 8px;
+      background: rgba(255, 255, 255, 0.74);
+    }
+
+    .summary-item strong {
+      color: var(--mx-text);
+      font-family: var(--font-mono);
+      font-size: 18px;
+      line-height: 1;
+    }
+
+    .summary-item span,
+    .quick-link small {
+      color: var(--mx-subtle);
+      font-size: 11px;
+      line-height: 1.35;
+    }
+
+    .quick-links {
+      display: grid;
+      gap: 7px;
+    }
+
+    .quick-link {
+      min-height: 38px;
+      border: 0;
+      border-radius: 8px;
+      display: grid;
+      grid-template-columns: 18px minmax(0, 1fr);
+      align-items: center;
+      gap: 7px;
+      padding: 6px 7px;
+      color: var(--mx-muted);
+      background: transparent;
+      text-align: left;
+    }
+
+    .quick-link strong {
+      display: block;
+      color: var(--mx-text);
+      font-size: 12px;
+      font-weight: 650;
+    }
+
+    .activity-list {
+      display: grid;
+      gap: 7px;
+    }
+
+    .activity-row {
+      min-width: 0;
+      display: grid;
+      grid-template-columns: 7px minmax(0, 1fr);
+      align-items: center;
+      gap: 8px;
+      min-height: 28px;
+      color: var(--mx-muted);
+      font-size: 12px;
+    }
+
+    .activity-row strong {
+      display: block;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--mx-text);
+      font-size: 12px;
+      font-weight: 650;
+    }
+
+    .activity-row span:last-child {
+      display: block;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    @media (max-width: 1280px) {
+      .app-shell {
+        --left-pane-width: 300px;
+      }
+
+      .workspace-body {
+        grid-template-columns: minmax(0, 1fr);
+      }
+
+      .connection-board {
+        overflow-x: auto;
+      }
+
+      .side-summary {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="custom-titlebar">
+      <div class="title-leading">
+        <button class="title-pane-toggle" aria-label="收起连接仓库">
+          <svg class="ui-icon" viewBox="0 0 16 16"><path d="M3.5 3.5h9v9h-9z"/><path d="M6.2 4.6v6.8"/></svg>
+        </button>
+      </div>
+
+      <nav class="title-session-tabs" aria-label="工作区标签">
+        <button class="title-session-tab muted" type="button">
+          <svg class="ui-icon" viewBox="0 0 16 16"><path d="m3 8 5-4.2L13 8"/><path d="M4.4 7.2v5.1h7.2V7.2"/><path d="M6.8 12.3V9.4h2.4v2.9"/></svg>
+          <span>首页</span>
+        </button>
+        <button class="title-session-tab muted" type="button">
+          <svg class="ui-icon" viewBox="0 0 16 16"><path d="M3.5 4.2h9v7.6h-9z"/><path d="m5.4 6.4 1.7 1.6-1.7 1.6"/><path d="M8.4 9.6h3.1"/></svg>
+          <span>终端</span>
+        </button>
+        <button class="title-session-tab" type="button">
+          <span>192.168.10.73[lulu]</span>
+        </button>
+        <button class="title-session-tab" type="button">
+          <span>192.168.10.70</span>
+        </button>
+        <button class="title-session-tab active" type="button">
+          <svg class="ui-icon" viewBox="0 0 16 16"><path d="M3 4.2h10v6.9H3z"/><path d="M6.2 13h3.6"/><path d="M8 11.1V13"/></svg>
+          <span>WinDesk-RDP</span>
+          <span class="title-session-close" aria-hidden="true">×</span>
+        </button>
+        <button class="title-session-tab" type="button">
+          <span>192.168.10.75[Harbor]</span>
+          <span class="title-session-close" aria-hidden="true">×</span>
+        </button>
+        <button class="add-session-tab" type="button" aria-label="新建工作区标签">
+          <svg class="ui-icon" viewBox="0 0 16 16"><path d="M8 3.5v9M3.5 8h9"/></svg>
+        </button>
+      </nav>
+
+      <div class="window-controls" aria-label="窗口操作">
+        <button class="window-control" aria-label="最小化">
+          <svg class="ui-icon" viewBox="0 0 16 16"><path d="M4 8h8"/></svg>
+        </button>
+        <button class="window-control" aria-label="最大化">
+          <svg class="ui-icon" viewBox="0 0 16 16"><path d="M5 5h6v6H5z"/></svg>
+        </button>
+        <button class="window-control close" aria-label="关闭">
+          <svg class="ui-icon" viewBox="0 0 16 16"><path d="m5 5 6 6M11 5l-6 6"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <main class="workspace-shell">
+      <aside class="connection-pane" aria-label="连接仓库">
+        <section class="pane-scroll">
+          <div class="tree-block">
+            <button class="file-row">
+              <svg class="ui-icon" viewBox="0 0 16 16"><path d="m8 2.8 1.5 3 3.3.5-2.4 2.4.6 3.3L8 10.4 5 12l.6-3.3-2.4-2.4 3.3-.5z"/></svg>
+              <span>收藏</span>
+              <span class="count">2</span>
+            </button>
+            <button class="file-row active">
+              <svg class="ui-icon" viewBox="0 0 16 16"><path d="M8 3.2a4.8 4.8 0 1 1 0 9.6 4.8 4.8 0 0 1 0-9.6z"/><path d="M8 5.4V8l1.8 1.2"/></svg>
+              <span>最近</span>
+              <span class="count">6</span>
+            </button>
+            <button class="file-row">
+              <svg class="ui-icon" viewBox="0 0 16 16"><path d="M2.8 4.5h4l1.1 1.4h5.3v7H2.8z"/></svg>
+              <span>常用</span>
+              <span class="count">4</span>
+            </button>
+          </div>
+
+          <div class="tree-section-head">
+            <span>连接</span>
+            <div class="toolbar-actions">
+              <button class="mini-action" aria-label="返回首页">
+                <svg class="ui-icon" viewBox="0 0 16 16"><path d="m3 8 5-4.2L13 8"/><path d="M4.4 7.2v5.1h7.2V7.2"/><path d="M6.8 12.3V9.4h2.4v2.9"/></svg>
+              </button>
+              <button class="mini-action" aria-label="刷新连接">
+                <svg class="ui-icon" viewBox="0 0 16 16"><path d="M13 8a5 5 0 1 1-1.45-3.55"/><path d="M13 3.7v3.2H9.8"/></svg>
+              </button>
+              <button class="mini-action" aria-label="更多">
+                <svg class="ui-icon" viewBox="0 0 16 16"><path d="M4 8h.01M8 8h.01M12 8h.01"/></svg>
+              </button>
+              <button class="mini-action" aria-label="新增分组">
+                <svg class="ui-icon" viewBox="0 0 16 16"><path d="M2.8 4.5h4l1.1 1.4h5.3v7H2.8z"/><path d="M8 7.4v3.4M6.3 9.1h3.4"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <div class="tree-block">
+            <div class="tree-folder">
+              <button class="tree-folder-row">
+                <svg class="ui-icon" viewBox="0 0 16 16"><path d="M2.8 4.5h4l1.1 1.4h5.3v7H2.8z"/></svg>
+                <span>生产环境</span>
+                <span class="count">2</span>
+              </button>
+              <div class="tree-children">
+                <button class="tree-folder-row">
+                  <svg class="ui-icon" viewBox="0 0 16 16"><path d="M2.8 4.5h4l1.1 1.4h5.3v7H2.8z"/></svg>
+                  <span>跳板机</span>
+                  <span class="count">1</span>
+                </button>
+                <button class="tree-folder-row">
+                  <svg class="ui-icon" viewBox="0 0 16 16"><path d="M2.8 4.5h4l1.1 1.4h5.3v7H2.8z"/></svg>
+                  <span>应用服务器</span>
+                  <span class="count">1</span>
+                </button>
+              </div>
+            </div>
+            <button class="tree-folder-row">
+              <svg class="ui-icon" viewBox="0 0 16 16"><path d="M2.8 4.5h4l1.1 1.4h5.3v7H2.8z"/></svg>
+              <span>开发环境</span>
+              <span class="count">3</span>
+            </button>
+            <button class="file-row active" id="rdpConnectionButton" type="button">
+              <svg class="ui-icon" viewBox="0 0 16 16"><path d="M3 4.2h10v6.9H3z"/><path d="M6.2 13h3.6"/><path d="M8 11.1V13"/></svg>
+              <span>WinDesk-RDP</span>
+              <span class="count">RDP</span>
+            </button>
+          </div>
+        </section>
+
+        <footer class="settings-foot">
+          <button class="icon-button" aria-label="设置">
+            <svg class="ui-icon" viewBox="0 0 16 16"><path d="M8 5.2a2.8 2.8 0 1 0 0 5.6 2.8 2.8 0 0 0 0-5.6z"/><path d="M8 2.5v1.3M8 12.2v1.3M3.1 5l1.1.7M11.8 10.3l1.1.7M3.1 11l1.1-.7M11.8 5.7l1.1-.7"/></svg>
+          </button>
+        </footer>
+      </aside>
+
+      <section class="main-workbench" aria-label="会话工作区">
+        <section class="session-workspace" aria-label="终端会话">
+          <nav class="session-tabs" aria-label="当前连接的终端会话">
+            <button class="session-tab active" id="rdpSessionTab" type="button" data-rdp-session="embedded">
+              <svg class="ui-icon" viewBox="0 0 16 16"><path d="M3 4.2h10v6.9H3z"/><path d="M6.2 13h3.6"/><path d="M8 11.1V13"/></svg>
+              <span>RDP</span>
+              <span aria-hidden="true">×</span>
+            </button>
+            <button class="session-tab" type="button" data-session-target="192.168.10.75[Harbor] / 终端 2">
+              <svg class="ui-icon" viewBox="0 0 16 16"><path d="M3.5 4.2h9v7.6h-9z"/><path d="m5.4 6.4 1.7 1.6-1.7 1.6"/><path d="M8.4 9.6h3.1"/></svg>
+              <span>终端 2</span>
+              <span aria-hidden="true">×</span>
+            </button>
+            <button class="session-tab" type="button" data-session-target="192.168.10.75[Harbor] / 终端">
+              <svg class="ui-icon" viewBox="0 0 16 16"><path d="M3.5 4.2h9v7.6h-9z"/><path d="m5.4 6.4 1.7 1.6-1.7 1.6"/><path d="M8.4 9.6h3.1"/></svg>
+              <span>终端 1</span>
+            </button>
+            <button class="session-tab" type="button" data-session-target="App-01 / shell">
+              <svg class="ui-icon" viewBox="0 0 16 16"><path d="M3.5 4.2h9v7.6h-9z"/><path d="m5.4 6.4 1.7 1.6-1.7 1.6"/><path d="M8.4 9.6h3.1"/></svg>
+              <span>App-01</span>
+            </button>
+            <button class="add-session-tab" type="button" aria-label="新建同连接终端">
+              <svg class="ui-icon" viewBox="0 0 16 16"><path d="M8 3.5v9M3.5 8h9"/></svg>
+            </button>
+            <span class="session-tabs-spacer"></span>
+            <button class="terminal-mode-button sync-input-trigger" id="syncInputToggleButton" type="button" aria-pressed="false" title="同步输入会把当前终端键盘输入实时镜像到其他目标，后续真实实现">
+              <svg class="ui-icon" viewBox="0 0 16 16"><path d="M3 5.2h4.2v5.6H3z"/><path d="M8.8 5.2H13v5.6H8.8z"/><path d="M7.2 8h1.6"/></svg>
+              <span id="syncInputToggleLabel">同步输入: 关</span>
+            </button>
+            <button class="terminal-tool-button" id="commandSenderToggle" type="button" aria-label="命令发送器" title="命令发送器" aria-pressed="false" aria-controls="commandSenderPanel">
+              <svg class="ui-icon" viewBox="0 0 16 16"><path d="M2.8 4.2h10.4v7.6H2.8z"/><path d="m5 6.5 1.7 1.5L5 9.5"/><path d="M8.4 9.5h2.8"/></svg>
+            </button>
+            <button class="terminal-tool-button" id="commandLibraryToggle" type="button" aria-label="命令库" title="命令库" aria-pressed="false" aria-controls="commandLibraryPane">
+              <svg class="ui-icon" viewBox="0 0 16 16"><path d="M3.4 3.2h3.1v9.6H3.4z"/><path d="M6.8 3.2h5.8v9.6H6.8z"/><path d="M8.6 5.3h2.2M8.6 8h2.7M8.6 10.7h2"/></svg>
+            </button>
+          </nav>
+
+          <section class="rdp-session-preview" id="rdpSessionPane" aria-label="RDP 会话预览">
+            <header class="rdp-session-head">
+              <div class="rdp-session-title">
+                <svg class="ui-icon" viewBox="0 0 16 16"><path d="M3 4.2h10v6.9H3z"/><path d="M6.2 13h3.6"/><path d="M8 11.1V13"/></svg>
+                <span>
+                  <strong>WinDesk-RDP</strong>
+                  <small>RDP · ops@10.8.4.23:3389</small>
+                </span>
+              </div>
+              <div class="rdp-session-actions">
+                <button class="primary" id="rdpPreviewButton" type="button">预览启动</button>
+                <button id="rdpOpenDialogButton" type="button">编辑配置</button>
+                <button type="button">关闭</button>
+              </div>
+            </header>
+            <div class="rdp-session-body">
+              <div class="rdp-state-list" aria-label="RDP runner 状态">
+                <button class="rdp-state-card active" type="button" data-rdp-state="embedded">
+                  <svg class="ui-icon" viewBox="0 0 16 16"><path d="M3 4.2h10v6.9H3z"/><path d="M6.2 13h3.6"/><path d="M8 11.1V13"/></svg>
+                  <span>
+                    <strong>Windows embedded</strong>
+                    <small>MSTSC ActiveX 宿主，失败时自动外部启动</small>
+                  </span>
+                  <em>可用</em>
+                </button>
+                <button class="rdp-state-card" type="button" data-rdp-state="external">
+                  <svg class="ui-icon" viewBox="0 0 16 16"><path d="M5.2 4H4v8h8v-1.2"/><path d="M8 4h4v4"/><path d="m7.5 8.5 4-4"/></svg>
+                  <span>
+                    <strong>mstsc.exe fallback</strong>
+                    <small>生成临时 .rdp 文件，不写入明文密码</small>
+                  </span>
+                  <em>后备</em>
+                </button>
+                <button class="rdp-state-card" type="button" data-rdp-state="freerdp">
+                  <svg class="ui-icon" viewBox="0 0 16 16"><path d="M3.2 4.4h9.6v7.2H3.2z"/><path d="M5.2 6.6h5.6"/><path d="M5.2 8.8h3.8"/></svg>
+                  <span>
+                    <strong>FreeRDP</strong>
+                    <small>Linux 使用 xfreerdp / wlfreerdp 外部 runner</small>
+                  </span>
+                  <em>跨平台</em>
+                </button>
+                <button class="rdp-state-card error" type="button" data-rdp-state="missing">
+                  <svg class="ui-icon" viewBox="0 0 16 16"><path d="M8 2.8 13.2 12H2.8z"/><path d="M8 6.3v2.8"/><path d="M8 11.1h.01"/></svg>
+                  <span>
+                    <strong>runner 缺失</strong>
+                    <small>无可用客户端时展示安装/配置诊断</small>
+                  </span>
+                  <em>诊断</em>
+                </button>
+              </div>
+              <div class="rdp-display-host">
+                <div class="rdp-screen-placeholder" id="rdpScreenPlaceholder">
+                  <svg class="ui-icon" viewBox="0 0 16 16"><path d="M3 4.2h10v6.9H3z"/><path d="M6.2 13h3.6"/><path d="M8 11.1V13"/></svg>
+                  <strong id="rdpScreenTitle">嵌入式 RDP 会话区域</strong>
+                  <small id="rdpScreenDetail">Windows 可用时在当前标签内承载远程桌面；混合 DPI 多屏、RemoteApp 或初始化失败时会自动切到外部 runner。</small>
+                </div>
+                <div class="rdp-launch-preview">
+                  <div class="rdp-preview-block">
+                    <strong>启动命令</strong>
+                    <code id="rdpPreviewCommand">mstsc.exe "&lt;temp&gt;\\mxterm-rdp-WinDesk.rdp"</code>
+                  </div>
+                  <div class="rdp-preview-block">
+                    <strong>.rdp 预览</strong>
+                    <pre id="rdpPreviewFile">full address:s:10.8.4.23:3389
+username:s:ops
+screen mode id:i:1
+desktopwidth:i:1440
+desktopheight:i:900
+redirectclipboard:i:1
+prompt for credentials:i:1</pre>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="terminal-preview" aria-label="终端预览" hidden>
+            <div class="sync-input-banner" id="syncInputBanner">
+              <svg class="ui-icon" viewBox="0 0 16 16"><path d="M3 5.2h4.2v5.6H3z"/><path d="M8.8 5.2H13v5.6H8.8z"/><path d="M7.2 8h1.6"/></svg>
+              <span id="syncInputBannerText">同步输入中</span>
+            </div>
+            <pre id="terminalOutput">连接 root@192.168.10.75:22 ...
+
+正在建立 SSH TCP 连接...
+
+SSH TCP 已连接。
+
+SSH 认证中...</pre>
+          </section>
+
+          <section class="command-sender-panel" id="commandSenderPanel" aria-label="Command Sender">
+            <div class="command-sender-console">
+              <header class="command-sender-console-head">
+                <div class="command-sender-title">
+                  <span>命令操作台</span>
+                  <small>Command Sender</small>
+                </div>
+                <div class="command-select-row">
+                  <label class="command-toolbar-select">
+                    <svg class="ui-icon" viewBox="0 0 16 16"><path d="m2.5 8.4 10.8-5.2-3.8 10.7-2-4.1z"/><path d="m7.5 9.8 2 4.1"/></svg>
+                    <select class="command-select" id="commandSendMode" aria-label="发送模式">
+                      <option>逐条发送</option>
+                      <option>发送到全部目标</option>
+                      <option>仅预览不发送</option>
+                    </select>
+                  </label>
+                  <label class="command-toolbar-select">
+                    <svg class="ui-icon" viewBox="0 0 16 16"><path d="M8 3.2a4.8 4.8 0 1 1-4.1 2.3"/><path d="M3.2 3.2v2.7h2.7"/><path d="M8 5.6v2.8l1.8 1"/></svg>
+                    <select class="command-select" id="commandHistorySelect" aria-label="最近命令">
+                      <option value="">最近命令</option>
+                      <option value="uptime && df -h">uptime && df -h</option>
+                      <option value="systemctl status nginx">systemctl status nginx</option>
+                      <option value="tail -n 80 /var/log/syslog">tail -n 80 /var/log/syslog</option>
+                    </select>
+                  </label>
+                </div>
+                <span></span>
+                <div class="command-sender-head-actions">
+                  <span class="command-last-sent" id="commandLastSent">上次发送：尚未发送</span>
+                  <button class="command-console-toggle" id="commandSenderPanelToggle" type="button" aria-label="关闭命令操作台">
+                    <svg class="ui-icon" viewBox="0 0 16 16"><path d="m5 5 6 6M11 5l-6 6"/></svg>
+                    <span class="command-close-text" id="commandSenderPanelToggleLabel">关闭</span>
+                  </button>
+                </div>
+              </header>
+
+              <div class="command-sender-console-body" id="commandSenderBody">
+                <div class="command-sender-block command-target-pane">
+                  <div class="command-sender-label">
+                    <span class="command-target-title">
+                      <span>目标</span>
+                      <span class="command-target-count" id="commandTargetCount">已选 2 / 3</span>
+                    </span>
+                    <span class="command-target-tools">
+                      <label class="command-target-select-all">
+                        <input id="commandSelectAllTargets" type="checkbox">
+                        <span>全选</span>
+                      </label>
+                    </span>
+                  </div>
+                  <div class="command-target-list">
+                    <div class="command-target">
+                      <label class="command-target-select">
+                        <input class="command-target-checkbox" data-command-target="192.168.10.75[Harbor] / 终端 2" type="checkbox" checked>
+                        <span class="command-target-copy">
+                          <strong>192.168.10.75 <em>Harbor</em></strong>
+                          <span>root@192.168.10.75</span>
+                        </span>
+                      </label>
+                      <span class="command-target-meta">
+                        <label class="command-target-terminal-shell">
+                          <svg class="ui-icon" viewBox="0 0 16 16"><path d="M2.8 4.2h10.4v7.6H2.8z"/><path d="m5 6.5 1.6 1.5L5 9.5"/><path d="M8.3 9.5h2.8"/></svg>
+                          <select class="command-target-terminal" aria-label="选择 192.168.10.75[Harbor] 子 tab">
+                            <option value="192.168.10.75[Harbor] / 终端 2" selected>终端 2</option>
+                            <option value="192.168.10.75[Harbor] / 终端">终端</option>
+                          </select>
+                        </label>
+                        <span class="command-target-state">在线</span>
+                        <button class="command-target-delivery" data-delivery-jump="192.168.10.75[Harbor] / 终端 2" type="button" aria-label="投递状态：192.168.10.75[Harbor] / 终端 2">未发送</button>
+                      </span>
+                    </div>
+                    <div class="command-target">
+                      <label class="command-target-select">
+                        <input class="command-target-checkbox" data-command-target="192.168.10.70 / 终端" type="checkbox" checked>
+                        <span class="command-target-copy">
+                          <strong>192.168.10.70</strong>
+                          <span>root@192.168.10.70</span>
+                        </span>
+                      </label>
+                      <span class="command-target-meta">
+                        <label class="command-target-terminal-shell">
+                          <svg class="ui-icon" viewBox="0 0 16 16"><path d="M2.8 4.2h10.4v7.6H2.8z"/><path d="m5 6.5 1.6 1.5L5 9.5"/><path d="M8.3 9.5h2.8"/></svg>
+                          <select class="command-target-terminal" aria-label="选择 192.168.10.70 子 tab">
+                            <option value="192.168.10.70 / 终端" selected>终端</option>
+                          </select>
+                        </label>
+                        <span class="command-target-state">在线</span>
+                        <button class="command-target-delivery" data-delivery-jump="192.168.10.70 / 终端" type="button" aria-label="投递状态：192.168.10.70 / 终端">未发送</button>
+                      </span>
+                    </div>
+                    <div class="command-target">
+                      <label class="command-target-select">
+                        <input class="command-target-checkbox" data-command-target="App-01 / shell" type="checkbox">
+                        <span class="command-target-copy">
+                          <strong>App-01 / shell</strong>
+                          <span>deploy@203.0.113.70</span>
+                        </span>
+                      </label>
+                      <span class="command-target-meta">
+                        <label class="command-target-terminal-shell">
+                          <svg class="ui-icon" viewBox="0 0 16 16"><path d="M2.8 4.2h10.4v7.6H2.8z"/><path d="m5 6.5 1.6 1.5L5 9.5"/><path d="M8.3 9.5h2.8"/></svg>
+                          <select class="command-target-terminal" aria-label="选择 App-01 子 tab">
+                            <option value="App-01 / shell" selected>shell</option>
+                          </select>
+                        </label>
+                        <span class="command-target-state offline">断开</span>
+                        <button class="command-target-delivery" data-delivery-jump="App-01 / shell" type="button" aria-label="投递状态：App-01 / shell">未发送</button>
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="command-sender-block command-compose-pane">
+                  <div class="command-compose-label">命令</div>
+                  <textarea class="command-input" id="commandInput" spellcheck="false">uptime && df -h</textarea>
+                  <label class="command-options">
+                    <input id="appendEnterToggle" type="checkbox" checked>
+                    <span>发送时追加回车</span>
+                  </label>
+                  <div class="command-risk-warning" id="commandRiskWarning">检测到高风险片段，请确认目标机器和命令内容。</div>
+                  <div class="command-compose-footer">
+                    <div class="command-send-result" id="commandSendResult">等待输入命令。</div>
+                    <div class="command-actions">
+                      <button class="primary-button" id="sendCommandButton" type="button">
+                        <svg class="ui-icon" viewBox="0 0 16 16"><path d="M6 5.2 3.2 8 6 10.8"/><path d="M3.2 8h7.1a2.5 2.5 0 0 0 0-5H9"/></svg>
+                        <span>发送并回车</span>
+                      </button>
+                      <button class="secondary-button" id="sendNoEnterButton" type="button">发送不回车</button>
+                      <button class="secondary-button clear-command-button" id="clearCommandButton" type="button">
+                        <svg class="ui-icon" viewBox="0 0 16 16"><path d="M3.5 4.5h9"/><path d="M6 4.5V3.2h4v1.3"/><path d="m5 6 0.4 6.3h5.2L11 6"/><path d="M7.1 7.2v3.6M8.9 7.2v3.6"/></svg>
+                        <span>清空</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+        </section>
+
+        <section class="empty-workspace" aria-label="无会话默认页" hidden>
+          <header class="repository-toolbar">
+            <div class="toolbar-left">
+              <div class="filter-tabs" aria-label="连接筛选">
+                <button class="filter-tab active" type="button">最近</button>
+                <button class="filter-tab" type="button">全部</button>
+                <button class="filter-tab" type="button">收藏</button>
+              </div>
+              <label class="search-box">
+                <svg class="ui-icon" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4"/><path d="m10 10 3 3"/></svg>
+                <input aria-label="搜索连接" placeholder="搜索名称、地址、备注">
+              </label>
+            </div>
+
+            <div class="toolbar-right">
+              <button class="primary-button" type="button">
+                <svg class="ui-icon" viewBox="0 0 16 16"><path d="M3 4.2h10v7.6H3z"/><path d="M6 8h4M8 6v4"/></svg>
+                <span>新建连接</span>
+              </button>
+            </div>
+          </header>
+
+          <div class="workspace-body">
+            <section class="connection-board" aria-label="连接表格">
+              <div class="connection-head" role="row">
+                <span>系统</span>
+                <span>最后连接</span>
+                <span>延迟</span>
+                <span>名称</span>
+                <span>地址</span>
+                <span>备注</span>
+                <span>分组</span>
+                <span class="action-head">操作</span>
+              </div>
+
+              <div class="connection-row" role="row">
+                <span class="system-cell">
+                  <span class="os-logo ubuntu" aria-label="Ubuntu">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path fill="#E95420" d="M17.61.455a3.41 3.41 0 0 0-3.41 3.41 3.41 3.41 0 0 0 3.41 3.41 3.41 3.41 0 0 0 3.41-3.41 3.41 3.41 0 0 0-3.41-3.41zM12.92.8C8.923.777 5.137 2.941 3.148 6.451a4.5 4.5 0 0 1 .26-.007 4.92 4.92 0 0 1 2.585.737A8.316 8.316 0 0 1 12.688 3.6 4.944 4.944 0 0 1 13.723.834 11.008 11.008 0 0 0 12.92.8zm9.226 4.994a4.915 4.915 0 0 1-1.918 2.246 8.36 8.36 0 0 1-.273 8.303 4.89 4.89 0 0 1 1.632 2.54 11.156 11.156 0 0 0 .559-13.089zM3.41 7.932A3.41 3.41 0 0 0 0 11.342a3.41 3.41 0 0 0 3.41 3.409 3.41 3.41 0 0 0 3.41-3.41 3.41 3.41 0 0 0-3.41-3.41zm2.027 7.866a4.908 4.908 0 0 1-2.915.358 11.1 11.1 0 0 0 7.991 6.698 11.234 11.234 0 0 0 2.422.249 4.879 4.879 0 0 1-.999-2.85 8.484 8.484 0 0 1-.836-.136 8.304 8.304 0 0 1-5.663-4.32zm11.405.928a3.41 3.41 0 0 0-3.41 3.41 3.41 3.41 0 0 0 3.41 3.41 3.41 3.41 0 0 0 3.41-3.41 3.41 3.41 0 0 0-3.41-3.41z"/>
+                    </svg>
+                  </span>
+                </span>
+                <span class="last-cell"><strong>刚刚</strong><span>最近使用</span></span>
+                <span class="latency-cell"><span class="latency-dot"></span>4 ms</span>
+                <span class="name-cell">
+                  <span class="connection-name">203.0.113.70</span>
+                  <span class="connection-user">root</span>
+                </span>
+                <span class="address-cell">
+                  <span class="address-main">203.0.113.70</span>
+                  <span class="address-sub">22 / SSH</span>
+                </span>
+                <span class="remark-cell">
+                  <span class="remark-main">生产入口</span>
+                  <span class="remark-sub">常用 root 登录</span>
+                </span>
+                <span class="group-cell">
+                  <span class="group-pill" style="--group-color: #2563eb"><span class="group-dot"></span>生产环境</span>
+                </span>
+                <span class="action-cell">
+                  <button class="connect-button" type="button">连接</button>
+                  <button class="text-action" type="button">编辑</button>
+                  <button class="text-action" type="button">更多</button>
+                </span>
+              </div>
+
+              <div class="connection-row" role="row">
+                <span class="system-cell">
+                  <span class="os-logo debian" aria-label="Debian">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path fill="#A81D33" d="M13.88 12.685c-.4 0 .08.2.601.28.14-.1.27-.22.39-.33a3.001 3.001 0 01-.99.05m2.14-.53c.23-.33.4-.69.47-1.06-.06.27-.2.5-.33.73-.75.47-.07-.27 0-.56-.8 1.01-.11.6-.14.89m.781-2.05c.05-.721-.14-.501-.2-.221.07.04.13.5.2.22M12.38.31c.2.04.45.07.42.12.23-.05.28-.1-.43-.12m.43.12l-.15.03.14-.01V.43m6.633 9.944c.02.64-.2.95-.38 1.5l-.35.181c-.28.54.03.35-.17.78-.44.39-1.34 1.22-1.62 1.301-.201 0 .14-.25.19-.34-.591.4-.481.6-1.371.85l-.03-.06c-2.221 1.04-5.303-1.02-5.253-3.842-.03.17-.07.13-.12.2a3.551 3.552 0 012.001-3.501 3.361 3.362 0 013.732.48 3.341 3.342 0 00-2.721-1.3c-1.18.01-2.281.76-2.651 1.57-.6.38-.67 1.47-.93 1.661-.361 2.601.66 3.722 2.38 5.042.27.19.08.21.12.35a4.702 4.702 0 01-1.53-1.16c.23.33.47.66.8.91-.55-.18-1.27-1.3-1.48-1.35.93 1.66 3.78 2.921 5.261 2.3a6.203 6.203 0 01-2.33-.28c-.33-.16-.77-.51-.7-.57a5.802 5.803 0 005.902-.84c.44-.35.93-.94 1.07-.95-.2.32.04.16-.12.44.44-.72-.2-.3.46-1.24l.24.33c-.09-.6.74-1.321.66-2.262.19-.3.2.3 0 .97.29-.74.08-.85.15-1.46.08.2.18.42.23.63-.18-.7.2-1.2.28-1.6-.09-.05-.28.3-.32-.53 0-.37.1-.2.14-.28-.08-.05-.26-.32-.38-.861.08-.13.22.33.34.34-.08-.42-.2-.75-.2-1.08-.34-.68-.12.1-.4-.3-.34-1.091.3-.25.34-.74.54.77.84 1.96.981 2.46-.1-.6-.28-1.2-.49-1.76.16.07-.26-1.241.21-.37A7.823 7.824 0 0017.702 1.6c.18.17.42.39.33.42-.75-.45-.62-.48-.73-.67-.61-.25-.65.02-1.06 0C15.082.73 14.862.8 13.8.4l.05.23c-.77-.25-.9.1-1.73 0-.05-.04.27-.14.53-.18-.741.1-.701-.14-1.431.03.17-.13.36-.21.55-.32-.6.04-1.44.35-1.18.07C9.6.68 7.847 1.3 6.867 2.22L6.838 2c-.45.54-1.96 1.611-2.08 2.311l-.131.03c-.23.4-.38.85-.57 1.261-.3.52-.45.2-.4.28-.6 1.22-.9 2.251-1.16 3.102.18.27 0 1.65.07 2.76-.3 5.463 3.84 10.776 8.363 12.006.67.23 1.65.23 2.49.25-.99-.28-1.12-.15-2.08-.49-.7-.32-.85-.7-1.34-1.13l.2.35c-.971-.34-.57-.42-1.361-.67l.21-.27c-.31-.03-.83-.53-.97-.81l-.34.01c-.41-.501-.63-.871-.61-1.161l-.111.2c-.13-.21-1.52-1.901-.8-1.511-.13-.12-.31-.2-.5-.55l.14-.17c-.35-.44-.64-1.02-.62-1.2.2.24.32.3.45.33-.88-2.172-.93-.12-1.601-2.202l.15-.02c-.1-.16-.18-.34-.26-.51l.06-.6c-.63-.74-.18-3.102-.09-4.402.07-.54.53-1.1.88-1.981l-.21-.04c.4-.71 2.341-2.872 3.241-2.761.43-.55-.09 0-.18-.14.96-.991 1.26-.7 1.901-.88.7-.401-.6.16-.27-.151 1.2-.3.85-.7 2.421-.85.16.1-.39.14-.52.26 1-.49 3.151-.37 4.562.27 1.63.77 3.461 3.011 3.531 5.132l.08.02c-.04.85.13 1.821-.17 2.711l.2-.42M9.54 13.236l-.05.28c.26.35.47.73.8 1.01-.24-.47-.42-.66-.75-1.3m.62-.02c-.14-.15-.22-.34-.31-.52.08.32.26.6.43.88l-.12-.36m10.945-2.382l-.07.15c-.1.76-.34 1.511-.69 2.212.4-.73.65-1.541.75-2.362M12.45.12c.27-.1.66-.05.95-.12-.37.03-.74.05-1.1.1l.15.02M3.006 5.142c.07.57-.43.8.11.42.3-.66-.11-.18-.1-.42m-.64 2.661c.12-.39.15-.62.2-.84-.35.44-.17.53-.2.83"/>
+                    </svg>
+                  </span>
+                </span>
+                <span class="last-cell"><strong>12 分钟前</strong><span>最近使用</span></span>
+                <span class="latency-cell"><span class="latency-dot"></span>5 ms</span>
+                <span class="name-cell">
+                  <span class="connection-name">K8s-node2</span>
+                  <span class="connection-user">root</span>
+                </span>
+                <span class="address-cell">
+                  <span class="address-main">203.0.113.16</span>
+                  <span class="address-sub">22 / SSH</span>
+                </span>
+                <span class="remark-cell">
+                  <span class="remark-main">K8s node</span>
+                  <span class="remark-sub">集群节点 2</span>
+                </span>
+                <span class="group-cell">
+                  <span class="group-pill" style="--group-color: #15803d"><span class="group-dot"></span>开发环境</span>
+                </span>
+                <span class="action-cell">
+                  <button class="connect-button" type="button">连接</button>
+                  <button class="text-action" type="button">编辑</button>
+                  <button class="text-action" type="button">更多</button>
+                </span>
+              </div>
+
+              <div class="connection-row" role="row">
+                <span class="system-cell">
+                  <span class="os-logo macos" aria-label="macOS">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path fill="#111827" d="M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701"/>
+                    </svg>
+                  </span>
+                </span>
+                <span class="last-cell"><strong>昨天</strong><span>慢连接</span></span>
+                <span class="latency-cell"><span class="latency-dot warn"></span>38 ms</span>
+                <span class="name-cell">
+                  <span class="connection-name">M4-TS 跳板</span>
+                  <span class="connection-user">admin</span>
+                </span>
+                <span class="address-cell">
+                  <span class="address-main">100.93.140.33</span>
+                  <span class="address-sub">22 / SSH</span>
+                </span>
+                <span class="remark-cell">
+                  <span class="remark-main">跳板入口</span>
+                  <span class="remark-sub">Tailscale 内网</span>
+                </span>
+                <span class="group-cell">
+                  <span class="group-pill" style="--group-color: #7c3aed"><span class="group-dot"></span>跳板机</span>
+                </span>
+                <span class="action-cell">
+                  <button class="connect-button" type="button">连接</button>
+                  <button class="text-action" type="button">编辑</button>
+                  <button class="text-action" type="button">更多</button>
+                </span>
+              </div>
+
+              <div class="connection-row" role="row">
+                <span class="system-cell">
+                  <span class="os-logo centos" aria-label="CentOS">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path fill="#262577" d="M12.076.066L8.883 3.28H3.348v5.434L0 12.01l3.349 3.298v5.39h5.374l3.285 3.236 3.285-3.236h5.43v-5.374L24 12.026l-3.232-3.252V3.321H15.31zm0 .749l2.49 2.506h-1.69v6.441l-.8.805-.81-.815V3.28H9.627zm-8.2 2.991h4.483L6.485 5.692l4.253 4.279v.654H9.94L5.674 6.423l-1.798 1.77zm5.227 0h1.635v5.415l-3.509-3.53zm4.302.043h1.687l1.83 1.842-3.517 3.539zm2.431 0h4.404v4.394l-1.83-1.842-4.241 4.267h-.764v-.69l4.261-4.287zm2.574 3.3l1.83 1.843v1.676h-5.327zm-12.735.013l3.515 3.462H3.876v-1.69zM3.348 9.454v1.697h6.377l.871.858-.782.77H3.35v1.786L.753 12.01zm17.42.068l2.488 2.503-2.533 2.55v-1.796h-6.41l-.75-.754.825-.83h6.38zm-9.502.978l.81.815.186-.188.614-.618v.686h.768l-.825.83.75.754h-.719v.808l-.842-.83-.741.73v-.707h-.7l.781-.77-.188-.186-.682-.672h.788zm-7.39 2.807h5.402l-3.603 3.55-1.798-1.772zm6.154 0h.708v.7l-4.404 4.338 1.852 1.824h-4.31v-4.342l1.798 1.77zm3.348 0h.715l4.317 4.343.186-.187 1.599-1.61v4.316h-4.366l1.853-1.825-.188-.185-4.116-4.054zm1.46 0h5.357v1.798l-1.785 1.796zm-2.83.191l.842.829v6.37h1.691l-2.532 2.495-2.533-2.495h1.79V14.23zm-1.27 1.251v5.42H8.939l-1.852-1.823zm2.64.097l3.552 3.499-1.853 1.825h-1.7z"/>
+                    </svg>
+                  </span>
+                </span>
+                <span class="last-cell"><strong>2 天前</strong><span>最近使用</span></span>
+                <span class="latency-cell"><span class="latency-dot"></span>6 ms</span>
+                <span class="name-cell">
+                  <span class="connection-name">lulu</span>
+                  <span class="connection-user">root</span>
+                </span>
+                <span class="address-cell">
+                  <span class="address-main">203.0.113.73</span>
+                  <span class="address-sub">22 / SSH</span>
+                </span>
+                <span class="remark-cell">
+                  <span class="remark-main">lulu</span>
+                  <span class="remark-sub">应用服务</span>
+                </span>
+                <span class="group-cell">
+                  <span class="group-pill" style="--group-color: #0f766e"><span class="group-dot"></span>应用服务器</span>
+                </span>
+                <span class="action-cell">
+                  <button class="connect-button" type="button">连接</button>
+                  <button class="text-action" type="button">编辑</button>
+                  <button class="text-action" type="button">更多</button>
+                </span>
+              </div>
+
+              <div class="connection-row" role="row">
+                <span class="system-cell">
+                  <span class="os-logo alinux" aria-label="Alibaba Cloud Linux">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path fill="#FF6A00" d="M3.996 4.517h5.291L8.01 6.324 4.153 7.506a1.668 1.668 0 0 0-1.165 1.601v5.786a1.668 1.668 0 0 0 1.165 1.6l3.857 1.183 1.277 1.807H3.996A3.996 3.996 0 0 1 0 15.487V8.513a3.996 3.996 0 0 1 3.996-3.996m16.008 0h-5.291l1.277 1.807 3.857 1.182c.715.227 1.17.889 1.165 1.601v5.786a1.668 1.668 0 0 1-1.165 1.6l-3.857 1.183-1.277 1.807h5.291A3.996 3.996 0 0 0 24 15.487V8.513a3.996 3.996 0 0 0-3.996-3.996m-4.007 8.345H8.002v-1.804h7.995Z"/>
+                    </svg>
+                  </span>
+                </span>
+                <span class="last-cell"><strong>3 天前</strong><span>最近使用</span></span>
+                <span class="latency-cell"><span class="latency-dot"></span>23 ms</span>
+                <span class="name-cell">
+                  <span class="connection-name">192.168.31.190</span>
+                  <span class="connection-user">root</span>
+                </span>
+                <span class="address-cell">
+                  <span class="address-main">192.168.31.190</span>
+                  <span class="address-sub">22 / SSH</span>
+                </span>
+                <span class="remark-cell">
+                  <span class="remark-main">本地测试</span>
+                  <span class="remark-sub">内网机器</span>
+                </span>
+                <span class="group-cell">
+                  <span class="group-pill" style="--group-color: #b7791f"><span class="group-dot"></span>本地网络</span>
+                </span>
+                <span class="action-cell">
+                  <button class="connect-button" type="button">连接</button>
+                  <button class="text-action" type="button">编辑</button>
+                  <button class="text-action" type="button">更多</button>
+                </span>
+              </div>
+            </section>
+
+            <aside class="side-summary" aria-label="连接概览和仓库维护">
+              <section class="summary-block">
+                <p class="summary-title">仓库概览</p>
+                <div class="summary-grid">
+                  <div class="summary-item">
+                    <strong>9</strong>
+                    <span>连接</span>
+                  </div>
+                  <div class="summary-item">
+                    <strong>3</strong>
+                    <span>分组</span>
+                  </div>
+                  <div class="summary-item">
+                    <strong>2</strong>
+                    <span>收藏</span>
+                  </div>
+                  <div class="summary-item">
+                    <strong>18</strong>
+                    <span>本周连接</span>
+                  </div>
+                </div>
+              </section>
+
+              <section class="summary-block">
+                <p class="summary-title">仓库维护</p>
+                <div class="quick-links">
+                  <button class="quick-link">
+                    <svg class="ui-icon" viewBox="0 0 16 16"><path d="M3 3.5h10v9H3z"/><path d="M5.3 6.1h7.1M5.3 8h7.1M5.3 9.9h4.5"/></svg>
+                    <span>
+                      <strong>导入连接</strong>
+                      <small>批量迁移时使用</small>
+                    </span>
+                  </button>
+                </div>
+              </section>
+
+              <section class="summary-block">
+                <p class="summary-title">最近活动</p>
+                <div class="activity-list">
+                  <div class="activity-row">
+                    <span class="latency-dot"></span>
+                    <span><strong>203.0.113.70</strong><span>刚刚连接过</span></span>
+                  </div>
+                  <div class="activity-row">
+                    <span class="latency-dot warn"></span>
+                    <span><strong>M4-TS 跳板</strong><span>昨天有一次慢连接</span></span>
+                  </div>
+                </div>
+              </section>
+            </aside>
+          </div>
+        </section>
+      </section>
+
+      <aside class="right-file-pane" aria-label="右侧工具面板">
+        <header class="file-panel-tabs">
+          <div class="tool-tab-strip" aria-label="右侧工具">
+            <button class="file-panel-tab" type="button" data-tool-tab="files">
+              <svg class="ui-icon" viewBox="0 0 16 16"><path d="M2.8 4.5h4l1.1 1.4h5.3v7H2.8z"/></svg>
+              <span>文件</span>
+            </button>
+            <button class="file-panel-tab" type="button" data-tool-tab="monitor">
+              <svg class="ui-icon" viewBox="0 0 16 16"><path d="M2.8 11.8h10.4"/><path d="M4.3 9.2 6.1 7l1.7 1.6 3-3.6"/></svg>
+              <span>监控</span>
+            </button>
+            <button class="file-panel-tab" type="button" data-tool-tab="tunnels">
+              <svg class="ui-icon" viewBox="0 0 16 16"><path d="M5.1 5.2a2.3 2.3 0 1 0 0 5.6"/><path d="M10.9 5.2a2.3 2.3 0 1 1 0 5.6"/><path d="M5.9 8h4.2"/></svg>
+              <span>隧道</span>
+            </button>
+            <button class="file-panel-tab" type="button" data-tool-tab="command">
+              <svg class="ui-icon" viewBox="0 0 16 16"><path d="M2.8 4.2h10.4v7.6H2.8z"/><path d="m5 6.5 1.7 1.5L5 9.5"/><path d="M8.4 9.5h2.8"/></svg>
+              <span>命令</span>
+            </button>
+            <button class="file-panel-tab active" type="button" data-tool-tab="rdp">
+              <svg class="ui-icon" viewBox="0 0 16 16"><path d="M3 4.2h10v6.9H3z"/><path d="M6.2 13h3.6"/><path d="M8 11.1V13"/></svg>
+              <span>RDP</span>
+            </button>
+            <span class="tool-pane-spacer"></span>
+            <button class="right-collapse-button" type="button" aria-label="收起右侧工具面板">
+              <svg class="ui-icon" viewBox="0 0 16 16"><rect x="3.3" y="3.4" width="9.4" height="9.2" rx="1.5"/><path d="M9.8 3.6v8.8"/></svg>
+            </button>
+          </div>
+        </header>
+
+        <section class="file-browser-pane" id="fileBrowserPane" aria-label="远程文件" hidden>
+          <div class="file-path-row">
+            <input class="file-path-input" value="/opt/app" aria-label="远程路径">
+          </div>
+          <div class="file-panel-actions" aria-label="文件操作">
+            <button type="button">
+              <svg class="ui-icon" viewBox="0 0 16 16"><path d="M8 3.2v9.6"/><path d="M3.2 8h9.6"/></svg>
+              新建
+            </button>
+            <button type="button">
+              <svg class="ui-icon" viewBox="0 0 16 16"><path d="M8 2.8v7.7"/><path d="m5.6 7.8 2.4 2.7 2.4-2.7"/><path d="M3.4 12.5h9.2"/></svg>
+              上传
+            </button>
+            <button type="button">
+              <svg class="ui-icon" viewBox="0 0 16 16"><path d="M13 8a5 5 0 1 1-1.45-3.55"/><path d="M13 3.7v3.2H9.8"/></svg>
+              刷新
+            </button>
+            <span class="tool-pane-spacer"></span>
+            <button type="button">
+              <svg class="ui-icon" viewBox="0 0 16 16"><path d="M3 4.3h10"/><path d="M5.2 8h5.6"/><path d="M6.7 11.7h2.6"/></svg>
+              隐藏文件
+            </button>
+          </div>
+          <div class="file-tree" aria-label="文件树">
+            <div class="file-tree-section">
+              <div class="file-tree-label">/opt/app</div>
+              <button class="tree-folder-row" type="button">
+                <svg class="ui-icon" viewBox="0 0 16 16"><path d="M2.8 4.5h4l1.1 1.4h5.3v7H2.8z"/></svg>
+                <span>config</span>
+                <span class="file-size">4 项</span>
+              </button>
+              <div class="tree-children">
+                <button class="file-row selected" type="button">
+                  <svg class="ui-icon" viewBox="0 0 16 16"><path d="M4.3 2.8h5.2l2.2 2.2v8.2H4.3z"/><path d="M9.5 2.8V5h2.2"/></svg>
+                  <span>app.conf</span>
+                  <span class="file-size">3 KB</span>
+                </button>
+                <button class="file-row" type="button">
+                  <svg class="ui-icon" viewBox="0 0 16 16"><path d="M4.3 2.8h5.2l2.2 2.2v8.2H4.3z"/><path d="M9.5 2.8V5h2.2"/></svg>
+                  <span>nginx.conf</span>
+                  <span class="file-size">6 KB</span>
+                </button>
+              </div>
+              <button class="tree-folder-row" type="button">
+                <svg class="ui-icon" viewBox="0 0 16 16"><path d="M2.8 4.5h4l1.1 1.4h5.3v7H2.8z"/></svg>
+                <span>logs</span>
+                <span class="file-size">12 项</span>
+              </button>
+              <button class="file-row selected" type="button">
+                <svg class="ui-icon" viewBox="0 0 16 16"><path d="M4.3 2.8h5.2l2.2 2.2v8.2H4.3z"/><path d="M9.5 2.8V5h2.2"/></svg>
+                <span>release.tar.gz</span>
+                <span class="file-size">48 MB</span>
+              </button>
+              <button class="file-row" type="button">
+                <svg class="ui-icon" viewBox="0 0 16 16"><path d="M4.3 2.8h5.2l2.2 2.2v8.2H4.3z"/><path d="M9.5 2.8V5h2.2"/></svg>
+                <span>README.md</span>
+                <span class="file-size">9 KB</span>
+              </button>
+              <button class="file-row" type="button">
+                <svg class="ui-icon" viewBox="0 0 16 16"><path d="M4.3 2.8h5.2l2.2 2.2v8.2H4.3z"/><path d="M9.5 2.8V5h2.2"/></svg>
+                <span>deploy.sh</span>
+                <span class="file-size">2 KB</span>
+              </button>
+            </div>
+          </div>
+          <section class="file-transfer-dock" id="fileTransferDock" aria-label="文件传输">
+            <div class="file-transfer-bar">
+              <div class="file-transfer-summary">
+                <strong>传输</strong>
+                <span class="file-transfer-chip running">2 进行中</span>
+                <span class="file-transfer-chip error">1 失败</span>
+              </div>
+              <div class="file-transfer-progress-mini" aria-hidden="true"><span style="width: 64%"></span></div>
+              <span class="file-transfer-percent">64%</span>
+              <button type="button" id="fileTransferToggle" aria-expanded="false">
+                <span>展开</span>
+                <svg class="ui-icon file-transfer-toggle-caret" viewBox="0 0 16 16"><path d="m4.5 6.4 3.5 3.5 3.5-3.5"/></svg>
+              </button>
+            </div>
+            <div class="file-transfer-drawer">
+              <div class="file-transfer-drawer-head">
+                <strong>传输队列</strong>
+                <button type="button">清理完成项</button>
+              </div>
+              <div class="file-transfer-list">
+                <article class="file-transfer-row">
+                  <span class="file-transfer-row-icon archive">
+                    <svg class="ui-icon" viewBox="0 0 16 16"><path d="M4 3.1h8v2.3H4z"/><path d="M4.6 5.4h6.8v7.5H4.6z"/><path d="M6.7 7.4h2.6"/></svg>
+                    <span class="file-transfer-type-label">TGZ</span>
+                  </span>
+                  <div class="file-transfer-row-main">
+                    <div class="file-transfer-row-title">
+                      <span class="file-transfer-name">release.tar.gz</span>
+                    </div>
+                    <div class="file-transfer-meta">
+                      <span class="file-transfer-tag direction">下载</span>
+                      <span class="file-transfer-status-dot"></span>
+                      <span class="file-transfer-size-text">48 MB / 76 MB</span>
+                      <span class="file-transfer-speed-text">8.4 MB/s</span>
+                    </div>
+                  </div>
+                  <div class="file-transfer-row-actions">
+                    <button type="button" aria-label="打开">
+                      <svg class="ui-icon" viewBox="0 0 16 16"><path d="M7 4.2H4.1v7.7h7.7V9"/><path d="M8.6 4.1h3.3v3.3"/><path d="m7.8 8.2 4-4"/></svg>
+                    </button>
+                    <button type="button" aria-label="定位">
+                      <svg class="ui-icon" viewBox="0 0 16 16"><path d="M2.8 5h4l1 1.2h5.4v5.9H2.8z"/></svg>
+                    </button>
+                    <button type="button" aria-label="取消">
+                      <svg class="ui-icon" viewBox="0 0 16 16"><path d="m5 5 6 6M11 5l-6 6"/></svg>
+                    </button>
+                  </div>
+                  <div class="file-transfer-progress-line">
+                    <div class="file-transfer-progress"><span style="width: 64%"></span></div>
+                    <span class="file-transfer-progress-text">64%</span>
+                  </div>
+                  <div class="file-transfer-detail-card" role="tooltip">
+                    <div><span>状态</span><strong>下载中</strong></div>
+                    <div><span>阶段</span><strong>下载文件 · 64%</strong></div>
+                    <div><span>大小</span><strong>48 MB / 76 MB</strong></div>
+                    <div><span>速度</span><strong>8.4 MB/s</strong></div>
+                    <div><span>时间</span><strong>06/23 22:47</strong></div>
+                    <div><span>来源</span><code>/opt/app/release.tar.gz</code></div>
+                    <div><span>目标</span><code>D:\Downloads\Harbor\release.tar.gz</code></div>
+                    <div><span>策略</span><strong>同名文件自动重命名</strong></div>
+                  </div>
+                </article>
+                <article class="file-transfer-row">
+                  <span class="file-transfer-row-icon directory">
+                    <svg class="ui-icon" viewBox="0 0 16 16"><path d="M2.8 4.5h4l1.1 1.4h5.3v7H2.8z"/></svg>
+                  </span>
+                  <div class="file-transfer-row-main">
+                    <div class="file-transfer-row-title">
+                      <span class="file-transfer-name">config</span>
+                    </div>
+                    <div class="file-transfer-meta">
+                      <span class="file-transfer-tag direction">上传</span>
+                      <span class="file-transfer-status-dot"></span>
+                      <span class="file-transfer-size-text">92 MB / 328 MB</span>
+                      <span class="file-transfer-speed-text">压缩中</span>
+                    </div>
+                  </div>
+                  <div class="file-transfer-row-actions">
+                    <button type="button" aria-label="定位">
+                      <svg class="ui-icon" viewBox="0 0 16 16"><path d="M2.8 5h4l1 1.2h5.4v5.9H2.8z"/></svg>
+                    </button>
+                    <button type="button" aria-label="取消">
+                      <svg class="ui-icon" viewBox="0 0 16 16"><path d="m5 5 6 6M11 5l-6 6"/></svg>
+                    </button>
+                  </div>
+                  <div class="file-transfer-progress-line">
+                    <div class="file-transfer-progress"><span style="width: 28%"></span></div>
+                    <span class="file-transfer-progress-text">28%</span>
+                  </div>
+                  <div class="file-transfer-detail-card" role="tooltip">
+                    <div><span>状态</span><strong>压缩中</strong></div>
+                    <div><span>阶段</span><strong>目录打包中 · 28%</strong></div>
+                    <div><span>大小</span><strong>92 MB / 328 MB</strong></div>
+                    <div><span>速度</span><strong>压缩中</strong></div>
+                    <div><span>时间</span><strong>06/23 22:46</strong></div>
+                    <div><span>来源</span><code>D:\work\config</code></div>
+                    <div><span>目标</span><code>/opt/app/config</code></div>
+                    <div><span>策略</span><strong>目录使用 tar.gz 压缩传输</strong></div>
+                  </div>
+                </article>
+                <article class="file-transfer-row error">
+                  <span class="file-transfer-row-icon log">
+                    <svg class="ui-icon" viewBox="0 0 16 16"><path d="M4.3 2.8h5.2l2.2 2.2v8.2H4.3z"/><path d="M9.5 2.8V5h2.2"/><path d="M6.1 7.6h3.8"/><path d="M6.1 9.7h2.8"/></svg>
+                    <span class="file-transfer-type-label">LOG</span>
+                  </span>
+                  <div class="file-transfer-row-main">
+                    <div class="file-transfer-row-title">
+                      <span class="file-transfer-name">app.log</span>
+                    </div>
+                    <div class="file-transfer-meta">
+                      <span class="file-transfer-tag direction">下载</span>
+                      <span class="file-transfer-status-dot"></span>
+                      <span class="file-transfer-size-text">12 MB / 29 MB</span>
+                      <span class="file-transfer-speed-text">0 B/s</span>
+                    </div>
+                  </div>
+                  <div class="file-transfer-row-actions">
+                    <button type="button" aria-label="重试">
+                      <svg class="ui-icon" viewBox="0 0 16 16"><path d="M13 8a5 5 0 1 1-1.45-3.55"/><path d="M13 3.7v3.2H9.8"/></svg>
+                    </button>
+                    <button type="button" aria-label="定位">
+                      <svg class="ui-icon" viewBox="0 0 16 16"><path d="M2.8 5h4l1 1.2h5.4v5.9H2.8z"/></svg>
+                    </button>
+                    <button type="button" aria-label="移除">
+                      <svg class="ui-icon" viewBox="0 0 16 16"><path d="M5.2 4.4h5.6"/><path d="M6 4.4l.4-1h3.2l.4 1"/><path d="M6 6.2v5.4M8 6.2v5.4M10 6.2v5.4"/><path d="M4.2 4.4h7.6l-.5 8.4H4.7z"/></svg>
+                    </button>
+                  </div>
+                  <div class="file-transfer-progress-line">
+                    <div class="file-transfer-progress"><span style="width: 42%"></span></div>
+                    <span class="file-transfer-progress-text">42%</span>
+                  </div>
+                  <div class="file-transfer-detail-card" role="tooltip">
+                    <div><span>状态</span><strong>失败，可重试</strong></div>
+                    <div><span>阶段</span><strong>连接中断 · 42%</strong></div>
+                    <div><span>大小</span><strong>12 MB / 29 MB</strong></div>
+                    <div><span>速度</span><strong>0 B/s</strong></div>
+                    <div><span>时间</span><strong>06/23 22:44</strong></div>
+                    <div><span>来源</span><code>/opt/app/logs/app.log</code></div>
+                    <div><span>目标</span><code>D:\Downloads\Harbor\logs\app.log</code></div>
+                    <div><span>错误</span><strong>SFTP 通道被远端关闭</strong></div>
+                  </div>
+                </article>
+              </div>
+            </div>
+          </section>
+        </section>
+
+        <section class="rdp-tool-pane" id="rdpToolPane" aria-label="RDP 工具">
+          <header class="rdp-tool-head">
+            <span>
+              <strong>WinDesk-RDP</strong>
+              <small>ops@10.8.4.23:3389 · embedded 优先</small>
+            </span>
+            <span class="rdp-status-pill" id="rdpToolStatus">启动中</span>
+          </header>
+          <div class="rdp-tool-actions">
+            <button type="button"><svg class="ui-icon" viewBox="0 0 16 16"><path d="M3 4.2h10v6.9H3z"/><path d="M6.2 13h3.6"/><path d="M8 11.1V13"/></svg>预览</button>
+            <button type="button"><svg class="ui-icon" viewBox="0 0 16 16"><path d="M2.8 4.2h10.4v7.6H2.8z"/><path d="m5 6.5 1.7 1.5L5 9.5"/><path d="M8.4 9.5h2.8"/></svg>复制命令</button>
+            <button type="button"><svg class="ui-icon" viewBox="0 0 16 16"><path d="M3 4.2h10v6.9H3z"/><path d="M6.2 13h3.6"/><path d="M8 11.1V13"/></svg>复制 .rdp</button>
+            <button type="button"><svg class="ui-icon" viewBox="0 0 16 16"><path d="M13 8a5 5 0 1 1-1.45-3.55"/><path d="M13 3.7v3.2H9.8"/></svg>重试</button>
+          </div>
+          <dl class="rdp-tool-facts">
+            <div class="rdp-tool-fact"><span>Runner</span><span>Windows embedded</span></div>
+            <div class="rdp-tool-fact"><span>模式</span><span>embedded 优先</span></div>
+            <div class="rdp-tool-fact"><span>显示</span><span>1440 x 900 · 动态尺寸</span></div>
+            <div class="rdp-tool-fact"><span>资源</span><span>剪贴板 · 音频本机 · 磁盘</span></div>
+          </dl>
+          <section class="rdp-tool-preview">
+            <strong>启动材料</strong>
+            <code>mstsc.exe "&lt;temp&gt;\\mxterm-rdp-WinDesk.rdp"</code>
+            <small>预览内容会隐藏密码；外部 runner 只保留临时 .rdp 和启动参数。</small>
+            <small>Windows 宿主不可用时，会切到外部客户端并给出原因。</small>
+          </section>
+        </section>
+
+        <section class="tool-placeholder-pane" id="toolPlaceholderPane" hidden>
+          <span id="toolPlaceholderText">这个工具在真实项目中保持原面板，这里只验证文件与传输融合后的结构。</span>
+        </section>
+
+        <section class="command-library-pane" id="commandLibraryPane" aria-label="命令" hidden>
+          <div class="command-library-head">
+            <div class="command-library-title">
+              <strong>命令</strong>
+              <span>右侧收纳片段与主动发送历史，保持终端左侧连接区干净。</span>
+            </div>
+            <div class="command-library-segments" aria-label="命令视图切换">
+              <button class="command-segment active" type="button" data-command-mode="snippets">片段</button>
+              <button class="command-segment" type="button" data-command-mode="history">历史</button>
+            </div>
+          </div>
+
+          <div class="command-library-search-row">
+            <label class="command-library-search" aria-label="搜索命令">
+              <svg class="ui-icon" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4"/><path d="m10 10 3 3"/></svg>
+              <input id="commandLibrarySearchInput" placeholder="搜索标题、命令或备注" spellcheck="false">
+            </label>
+            <div class="command-library-toolbar-actions">
+              <span class="command-library-result-meta" id="commandLibraryResultMeta">3 条片段</span>
+              <button class="command-mini-button primary" id="commandNewSnippetButton" type="button">+ 命令</button>
+              <button class="command-mini-button" id="commandNewGroupButton" type="button">+ 分组</button>
+            </div>
+          </div>
+
+          <div class="command-library-body" id="commandLibraryBody"></div>
+
+          <div class="command-library-footer">
+            <span class="command-library-footer-status" id="commandLibraryFooterStatus">插入会写入下方命令操作台，执行会直接模拟投递到当前终端。</span>
+          </div>
+        </section>
+      </aside>
+    </main>
+  </div>
+  <div class="rdp-dialog-backdrop" id="rdpDialogBackdrop" aria-hidden="true">
+    <section class="rdp-dialog" role="dialog" aria-modal="true" aria-labelledby="rdpDialogTitle">
+      <div class="rdp-dialog-head">
+        <strong id="rdpDialogTitle">编辑连接</strong>
+        <button class="command-mini-button" id="rdpDialogCloseButton" type="button">关闭</button>
+      </div>
+      <div class="rdp-protocol-switch" aria-label="协议">
+        <button class="rdp-protocol-chip" type="button">SSH</button>
+        <button class="rdp-protocol-chip active" type="button">RDP</button>
+        <button class="rdp-protocol-chip" type="button">VNC</button>
+        <button class="rdp-protocol-chip" type="button">Telnet</button>
+      </div>
+      <div class="rdp-dialog-body">
+        <section class="rdp-form-section">
+          <div class="rdp-form-title">基础</div>
+          <div class="rdp-form-grid">
+            <label>
+              <span>名称</span>
+              <input value="WinDesk-RDP">
+            </label>
+            <label>
+              <span>主机</span>
+              <input value="10.8.4.23">
+            </label>
+            <label>
+              <span>端口</span>
+              <input value="3389">
+            </label>
+            <label>
+              <span>用户名</span>
+              <input value="ops">
+            </label>
+          </div>
+        </section>
+        <section class="rdp-form-section">
+          <div class="rdp-form-title">显示与 runner</div>
+          <div class="rdp-form-grid">
+            <label>
+              <span>显示模式</span>
+              <select>
+                <option selected>嵌入式优先</option>
+                <option>窗口</option>
+                <option>全屏</option>
+                <option>全屏多显示器</option>
+              </select>
+            </label>
+            <label>
+              <span>Runner</span>
+              <select>
+                <option selected>自动选择</option>
+                <option>Windows embedded RDP</option>
+                <option>mstsc.exe</option>
+                <option>FreeRDP</option>
+                <option>自定义客户端</option>
+              </select>
+            </label>
+            <label>
+              <span>宽度</span>
+              <input value="1440">
+            </label>
+            <label>
+              <span>高度</span>
+              <input value="900">
+            </label>
+          </div>
+          <div class="rdp-check-row">
+            <label><input type="checkbox" checked>动态尺寸</label>
+            <label><input type="checkbox">多显示器</label>
+            <label><input type="checkbox" checked>剪贴板</label>
+            <label><input type="checkbox" checked>本机音频</label>
+            <label><input type="checkbox">磁盘重定向</label>
+          </div>
+        </section>
+        <section class="rdp-form-section">
+          <div class="rdp-form-title">安全与高级</div>
+          <div class="rdp-form-grid">
+            <label>
+              <span>凭据</span>
+              <select>
+                <option selected>客户端提示</option>
+                <option>保存凭据引用</option>
+                <option>系统凭据存储</option>
+              </select>
+            </label>
+            <label>
+              <span>NLA</span>
+              <select>
+                <option selected>自动</option>
+                <option>启用</option>
+                <option>禁用</option>
+              </select>
+            </label>
+            <label>
+              <span>证书</span>
+              <select>
+                <option selected>警告后可继续</option>
+                <option>信任证书错误</option>
+                <option>严格校验</option>
+              </select>
+            </label>
+          </div>
+          <label>
+            <span>原始 .rdp 设置</span>
+            <textarea>authentication level:i:2
+enablecredsspsupport:i:1</textarea>
+          </label>
+        </section>
+      </div>
+      <div class="rdp-dialog-actions">
+        <span>保存后会走协议化连接模型，SSH-only 工具不会接收 RDP 连接。</span>
+        <button id="rdpDialogTestButton" type="button">测试 runner</button>
+        <button class="primary" id="rdpDialogSaveButton" type="button">保存</button>
+      </div>
+    </section>
+  </div>
+  <div class="command-dialog-backdrop" id="commandDialogBackdrop" aria-hidden="true">
+    <section class="command-dialog" role="dialog" aria-modal="true" aria-labelledby="commandDialogTitle">
+      <div class="command-dialog-head">
+        <strong id="commandDialogTitle">新建命令</strong>
+        <button class="command-mini-button" id="commandDialogCloseButton" type="button">关闭</button>
+      </div>
+      <div class="command-dialog-body">
+        <section class="command-dialog-panel" id="commandSnippetFormPanel">
+          <div class="command-form-row">
+            <label>分组</label>
+            <div class="command-form-inline">
+              <div class="command-group-select" id="commandSnippetGroupSelect">
+                <button class="command-group-select-trigger" id="commandSnippetGroupTrigger" type="button" aria-expanded="false">
+                  <span class="command-group-select-label" id="commandSnippetGroupLabel">未分组</span>
+                  <span class="command-group-select-caret">v</span>
+                </button>
+                <div class="command-group-select-menu" id="commandSnippetGroupMenu" hidden></div>
+              </div>
+              <button class="command-mini-button" id="commandInlineNewGroupButton" type="button">+</button>
+            </div>
+            <input id="commandSnippetGroupInput" type="hidden">
+          </div>
+          <div class="command-form-row">
+            <label for="commandSnippetTitleInput">名称 *</label>
+            <input id="commandSnippetTitleInput" placeholder="例如：查看集群 Pod">
+          </div>
+          <div class="command-form-row">
+            <label for="commandSnippetCommandInput">命令 *</label>
+            <textarea id="commandSnippetCommandInput" placeholder="输入命令内容"></textarea>
+            <span class="command-form-help">这里先按纯文本片段处理，不引入变量模板。</span>
+          </div>
+          <div class="command-form-row">
+            <label for="commandSnippetNoteInput">备注</label>
+            <textarea id="commandSnippetNoteInput" placeholder="记录用途、环境或执行前提醒"></textarea>
+          </div>
+          <label class="command-form-check">
+            <input id="commandSnippetFavoriteInput" type="checkbox">
+            <span>收藏置顶</span>
+          </label>
+        </section>
+
+        <section class="command-dialog-panel" id="commandGroupPanel" hidden>
+          <div class="command-form-row">
+            <label for="commandGroupNameInput">分组名称</label>
+            <input id="commandGroupNameInput" placeholder="例如：日志排查">
+            <span class="command-form-help">当前原型只做一层文件夹分组；真正存在片段后会在树里显示。</span>
+          </div>
+        </section>
+      </div>
+      <div class="command-dialog-foot">
+        <button class="secondary-button" id="commandDialogCancelButton" type="button">取消</button>
+        <button class="primary-button" id="commandDialogSaveButton" type="button">保存</button>
+      </div>
+    </section>
+  </div>
+  <script>
+    const commandSenderToggle = document.getElementById("commandSenderToggle");
+    const commandLibraryToggle = document.getElementById("commandLibraryToggle");
+    const commandSenderPanelToggle = document.getElementById("commandSenderPanelToggle");
+    const commandSenderPanel = document.getElementById("commandSenderPanel");
+    const sessionTabs = Array.from(document.querySelectorAll(".session-tab[data-session-target]"));
+    const rightToolTabs = Array.from(document.querySelectorAll("[data-tool-tab]"));
+    const fileBrowserPane = document.getElementById("fileBrowserPane");
+    const commandLibraryPane = document.getElementById("commandLibraryPane");
+    const toolPlaceholderPane = document.getElementById("toolPlaceholderPane");
+    const toolPlaceholderText = document.getElementById("toolPlaceholderText");
+    const fileTransferDock = document.getElementById("fileTransferDock");
+    const fileTransferToggle = document.getElementById("fileTransferToggle");
+    const terminalOutput = document.getElementById("terminalOutput");
+    const terminalPreviewPane = terminalOutput.closest(".terminal-preview");
+    const rdpConnectionButton = document.getElementById("rdpConnectionButton");
+    const rdpSessionTab = document.getElementById("rdpSessionTab");
+    const rdpSessionPane = document.getElementById("rdpSessionPane");
+    const rdpToolPane = document.getElementById("rdpToolPane");
+    const rdpToolStatus = document.getElementById("rdpToolStatus");
+    const rdpStateButtons = Array.from(document.querySelectorAll("[data-rdp-state]"));
+    const rdpScreenTitle = document.getElementById("rdpScreenTitle");
+    const rdpScreenDetail = document.getElementById("rdpScreenDetail");
+    const rdpPreviewCommand = document.getElementById("rdpPreviewCommand");
+    const rdpPreviewFile = document.getElementById("rdpPreviewFile");
+    const rdpPreviewButton = document.getElementById("rdpPreviewButton");
+    const rdpOpenDialogButton = document.getElementById("rdpOpenDialogButton");
+    const rdpDialogBackdrop = document.getElementById("rdpDialogBackdrop");
+    const rdpDialogCloseButton = document.getElementById("rdpDialogCloseButton");
+    const rdpDialogTestButton = document.getElementById("rdpDialogTestButton");
+    const rdpDialogSaveButton = document.getElementById("rdpDialogSaveButton");
+    const commandTargetCheckboxes = Array.from(document.querySelectorAll(".command-target-checkbox"));
+    const commandTargetTerminalSelects = Array.from(document.querySelectorAll(".command-target-terminal"));
+    const commandTargetCount = document.getElementById("commandTargetCount");
+    const commandSelectAllTargets = document.getElementById("commandSelectAllTargets");
+    const commandInput = document.getElementById("commandInput");
+    const appendEnterToggle = document.getElementById("appendEnterToggle");
+    const commandRiskWarning = document.getElementById("commandRiskWarning");
+    const commandSendResult = document.getElementById("commandSendResult");
+    const commandLastSent = document.getElementById("commandLastSent");
+    const commandHistorySelect = document.getElementById("commandHistorySelect");
+    const clearCommandButton = document.getElementById("clearCommandButton");
+    const sendCommandButton = document.getElementById("sendCommandButton");
+    const sendNoEnterButton = document.getElementById("sendNoEnterButton");
+    const syncInputToggleButton = document.getElementById("syncInputToggleButton");
+    const syncInputToggleLabel = document.getElementById("syncInputToggleLabel");
+    const syncInputBanner = document.getElementById("syncInputBanner");
+    const syncInputBannerText = document.getElementById("syncInputBannerText");
+    const commandModeButtons = Array.from(document.querySelectorAll("[data-command-mode]"));
+    const commandLibrarySearchInput = document.getElementById("commandLibrarySearchInput");
+    const commandLibraryBody = document.getElementById("commandLibraryBody");
+    const commandLibraryResultMeta = document.getElementById("commandLibraryResultMeta");
+    const commandLibraryFooterStatus = document.getElementById("commandLibraryFooterStatus");
+    const commandNewSnippetButton = document.getElementById("commandNewSnippetButton");
+    const commandNewGroupButton = document.getElementById("commandNewGroupButton");
+    const commandDialogBackdrop = document.getElementById("commandDialogBackdrop");
+    const commandDialogTitle = document.getElementById("commandDialogTitle");
+    const commandDialogCloseButton = document.getElementById("commandDialogCloseButton");
+    const commandDialogCancelButton = document.getElementById("commandDialogCancelButton");
+    const commandDialogSaveButton = document.getElementById("commandDialogSaveButton");
+    const commandSnippetFormPanel = document.getElementById("commandSnippetFormPanel");
+    const commandGroupPanel = document.getElementById("commandGroupPanel");
+    const commandSnippetGroupSelect = document.getElementById("commandSnippetGroupSelect");
+    const commandSnippetGroupTrigger = document.getElementById("commandSnippetGroupTrigger");
+    const commandSnippetGroupLabel = document.getElementById("commandSnippetGroupLabel");
+    const commandSnippetGroupMenu = document.getElementById("commandSnippetGroupMenu");
+    const commandSnippetGroupInput = document.getElementById("commandSnippetGroupInput");
+    const commandInlineNewGroupButton = document.getElementById("commandInlineNewGroupButton");
+    const commandSnippetTitleInput = document.getElementById("commandSnippetTitleInput");
+    const commandSnippetCommandInput = document.getElementById("commandSnippetCommandInput");
+    const commandSnippetNoteInput = document.getElementById("commandSnippetNoteInput");
+    const commandSnippetFavoriteInput = document.getElementById("commandSnippetFavoriteInput");
+    const commandGroupNameInput = document.getElementById("commandGroupNameInput");
+    let syncInputEnabled = false;
+    let sendCount = 0;
+    let activeSessionTarget = "192.168.10.75[Harbor] / 终端 2";
+    let activeCommandMode = "snippets";
+    let commandDialogMode = "snippet";
+    let editingSnippetId = null;
+    let groupDialogReturnToSnippet = false;
+    let groupSelectOpen = false;
+    let collapsedCommandGroups = new Set(["日志"]);
+    let footerStatusOverride = "";
+
+    function minutesAgo(minutes) {
+      return new Date(Date.now() - minutes * 60 * 1000).toISOString();
+    }
+
+    let commandSnippetGroups = [
+      { name: "常用巡检" },
+      { name: "K8s" },
+      { name: "日志" },
+    ];
+
+    let commandSnippets = [
+      {
+        id: "snippet-1",
+        group: "常用巡检",
+        title: "查看磁盘与负载",
+        command: "uptime && df -h",
+        note: "适合先看整机压力与磁盘使用。",
+        favorite: true,
+        useCount: 18,
+        lastUsedAt: minutesAgo(42),
+        updatedAt: minutesAgo(42),
+      },
+      {
+        id: "snippet-2",
+        group: "K8s",
+        title: "查看全部 Pod",
+        command: "kubectl get pods -A -o wide",
+        note: "排查集群状态时常用。",
+        favorite: false,
+        useCount: 9,
+        lastUsedAt: minutesAgo(170),
+        updatedAt: minutesAgo(170),
+      },
+      {
+        id: "snippet-3",
+        group: "日志",
+        title: "追踪 Nginx 错误日志",
+        command: "tail -n 120 /var/log/nginx/error.log",
+        note: "快速确认最近一轮错误。",
+        favorite: false,
+        useCount: 5,
+        lastUsedAt: minutesAgo(420),
+        updatedAt: minutesAgo(420),
+      },
+    ];
+
+    let commandHistory = [
+      {
+        id: "history-1",
+        command: "systemctl status nginx",
+        note: "最近从 Harbor 终端发送",
+        useCount: 6,
+        lastUsedAt: minutesAgo(18),
+        sourceLabel: "主动发送",
+      },
+      {
+        id: "history-2",
+        command: "journalctl -u docker --since '10 min ago'",
+        note: "最近从 App-01 shell 发送",
+        useCount: 2,
+        lastUsedAt: minutesAgo(95),
+        sourceLabel: "主动发送",
+      },
+    ];
+
+    const terminalOutputByTarget = {
+      "192.168.10.75[Harbor] / 终端 2": "连接 root@192.168.10.75:22 ...\n\n正在建立 SSH TCP 连接...\n\nSSH TCP 已连接。\n\nSSH 认证中...",
+      "192.168.10.75[Harbor] / 终端": "root@192.168.10.75:~#\n最近输出：systemctl status nginx\n服务状态等待刷新...",
+      "192.168.10.70 / 终端": "root@192.168.10.70:~#\n最近输出：uptime && df -h\n等待新的批量命令...",
+      "App-01 / shell": "deploy@203.0.113.70:~#\n会话已断开，命令无法写入。\n请重新连接后再发送。",
+    };
+
+    const terminalPromptByTarget = {
+      "192.168.10.75[Harbor] / 终端 2": "root@192.168.10.75:~#",
+      "192.168.10.75[Harbor] / 终端": "root@192.168.10.75:~#",
+      "192.168.10.70 / 终端": "root@192.168.10.70:~#",
+      "App-01 / shell": "deploy@203.0.113.70:~#",
+    };
+
+    function escapeHtml(value) {
+      return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll("\"", "&quot;")
+        .replaceAll("'", "&#39;");
+    }
+
+    function parseTime(value) {
+      const time = Date.parse(value || "");
+      return Number.isFinite(time) ? time : 0;
+    }
+
+    function formatDateTime(value) {
+      if (!value) {
+        return "未使用";
+      }
+      return new Date(value).toLocaleString("zh-CN", {
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      });
+    }
+
+    function deriveSnippetTitle(command) {
+      const firstLine = command.split(/\r?\n/).find((line) => line.trim()) || "未命名片段";
+      return firstLine.trim().slice(0, 32);
+    }
+
+    function normalizeSnippetGroupName(value) {
+      return value.trim() || "未分组";
+    }
+
+    function orderedSnippetGroups(includeUngrouped = true) {
+      const ordered = commandSnippetGroups.map((group) => group.name);
+      commandSnippets.forEach((snippet) => {
+        const groupName = normalizeSnippetGroupName(snippet.group || "");
+        if (groupName !== "未分组" && !ordered.includes(groupName)) {
+          ordered.push(groupName);
+        }
+      });
+      if (includeUngrouped && !ordered.includes("未分组")) {
+        ordered.push("未分组");
+      }
+      return ordered;
+    }
+
+    function snippetCountByGroup(groupName, snippets = commandSnippets) {
+      return snippets.filter((snippet) => normalizeSnippetGroupName(snippet.group || "") === groupName).length;
+    }
+
+    function setSnippetFormGroup(groupName) {
+      const normalized = normalizeSnippetGroupName(groupName || "");
+      commandSnippetGroupInput.value = normalized;
+      renderSnippetGroupSelect(normalized);
+    }
+
+    function ensureSnippetGroupExists(groupName) {
+      const normalized = normalizeSnippetGroupName(groupName || "");
+      if (normalized !== "未分组" && !commandSnippetGroups.some((group) => group.name === normalized)) {
+        commandSnippetGroups.push({ name: normalized });
+      }
+      return normalized;
+    }
+
+    function renderSnippetGroupSelect(selectedGroup = commandSnippetGroupInput.value || "未分组") {
+      const selected = normalizeSnippetGroupName(selectedGroup || "");
+      commandSnippetGroupInput.value = selected;
+      commandSnippetGroupLabel.textContent = selected;
+      commandSnippetGroupTrigger.classList.toggle("active", groupSelectOpen);
+      commandSnippetGroupTrigger.setAttribute("aria-expanded", String(groupSelectOpen));
+      commandSnippetGroupMenu.hidden = !groupSelectOpen;
+      commandSnippetGroupMenu.innerHTML = orderedSnippetGroups(true)
+        .map((groupName) => `
+          <button class="command-group-option ${groupName === selected ? "active" : ""}" type="button" data-snippet-form-group="${escapeHtml(groupName)}">
+            <span>${escapeHtml(groupName)}</span>
+            ${groupName === selected ? '<span class="command-group-option-mark">✓</span>' : ""}
+          </button>
+        `)
+        .join("");
+    }
+
+    function compareSnippets(left, right) {
+      if (left.favorite !== right.favorite) {
+        return left.favorite ? -1 : 1;
+      }
+      return parseTime(right.lastUsedAt || right.updatedAt) - parseTime(left.lastUsedAt || left.updatedAt);
+    }
+
+    function compareHistory(left, right) {
+      return parseTime(right.lastUsedAt) - parseTime(left.lastUsedAt);
+    }
+
+    function setFooterStatus(message, duration = 0) {
+      footerStatusOverride = message;
+      renderCommandLibraryFooterStatus();
+      if (duration > 0) {
+        window.clearTimeout(setFooterStatus.timer);
+        setFooterStatus.timer = window.setTimeout(() => {
+          footerStatusOverride = "";
+          renderCommandLibraryFooterStatus();
+        }, duration);
+      }
+    }
+
+    function renderCommandLibraryFooterStatus() {
+      if (footerStatusOverride) {
+        commandLibraryFooterStatus.textContent = footerStatusOverride;
+        return;
+      }
+      commandLibraryFooterStatus.textContent = activeCommandMode === "snippets"
+        ? "插入会写入下方命令操作台，执行会直接模拟投递到当前终端。"
+        : "历史来自命令面板执行或命令操作台成功发送，不监听普通终端输入。";
+    }
+
+    function commandSearchQuery() {
+      return commandLibrarySearchInput.value.trim().toLowerCase();
+    }
+
+    function snippetMatchesQuery(item, query) {
+      if (!query) {
+        return true;
+      }
+      return [item.group, item.title, item.command, item.note]
+        .filter(Boolean)
+        .some((field) => field.toLowerCase().includes(query));
+    }
+
+    function historyMatchesQuery(item, query) {
+      if (!query) {
+        return true;
+      }
+      return [item.command, item.note, item.sourceLabel]
+        .filter(Boolean)
+        .some((field) => field.toLowerCase().includes(query));
+    }
+
+    function groupedSnippets(snippets, includeEmptyGroups) {
+      const groups = new Map(orderedSnippetGroups(true).map((groupName) => [groupName, []]));
+      snippets.forEach((item) => {
+        const group = item.group || "未分组";
+        if (!groups.has(group)) {
+          groups.set(group, []);
+        }
+        groups.get(group).push(item);
+      });
+      return Array.from(groups.entries()).filter(([, items]) => includeEmptyGroups || items.length > 0);
+    }
+
+    function renderSnippetItem(item) {
+      return `
+        <article class="command-tree-row">
+          <div class="command-tree-main">
+            <div class="command-tree-title-line">
+              <strong title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</strong>
+              ${item.favorite ? '<span class="command-item-badge">常用</span>' : ""}
+            </div>
+            <code class="command-tree-code" title="${escapeHtml(item.command)}">${escapeHtml(item.command)}</code>
+            <div class="command-tree-meta">
+              <span>使用 ${item.useCount} 次</span>
+              <span>${escapeHtml(formatDateTime(item.lastUsedAt || item.updatedAt))}</span>
+            </div>
+          </div>
+          <div class="command-tree-actions" aria-label="片段操作">
+            <button class="command-icon-button" type="button" data-command-action="copy-snippet" data-command-id="${item.id}" title="复制命令" aria-label="复制命令">
+              <svg class="ui-icon" viewBox="0 0 16 16"><rect x="5.4" y="4.4" width="7" height="8" rx="1.2"/><path d="M3.4 10.4V3.8c0-.7.4-1.2 1.2-1.2h5.8"/></svg>
+            </button>
+            <button class="command-icon-button" type="button" data-command-action="insert-snippet" data-command-id="${item.id}" title="插入到命令操作台" aria-label="插入到命令操作台">
+              <svg class="ui-icon" viewBox="0 0 16 16"><path d="M10.8 4.4v5.1H4.4"/><path d="m6.6 7.3-2.2 2.2 2.2 2.2"/></svg>
+            </button>
+            <button class="command-icon-button primary" type="button" data-command-action="run-snippet" data-command-id="${item.id}" title="发送到当前终端" aria-label="发送到当前终端">
+              <svg class="ui-icon" viewBox="0 0 16 16"><path d="M5.4 3.8v8.4l6.9-4.2z"/></svg>
+            </button>
+            <button class="command-icon-button" type="button" data-command-action="edit-snippet" data-command-id="${item.id}" title="编辑" aria-label="编辑">
+              <svg class="ui-icon" viewBox="0 0 16 16"><path d="M3.8 11.8 4.4 9l5.9-5.9 2.5 2.5L6.9 11.5z"/><path d="M9.4 4l2.5 2.5"/><path d="M3.4 12.6h9.2"/></svg>
+            </button>
+            <button class="command-icon-button danger" type="button" data-command-action="delete-snippet" data-command-id="${item.id}" title="删除" aria-label="删除">
+              <svg class="ui-icon" viewBox="0 0 16 16"><path d="M3.6 4.6h8.8"/><path d="M6.4 4.6V3.3h3.2v1.3"/><path d="M5 6.2l.4 6.1h5.2l.4-6.1"/><path d="M6.9 7.4v3.4M9.1 7.4v3.4"/></svg>
+            </button>
+          </div>
+        </article>
+      `;
+    }
+
+    function renderSnippetGroup(group, items) {
+      const collapsed = collapsedCommandGroups.has(group);
+      const rows = items.length > 0
+        ? items.map(renderSnippetItem).join("")
+        : '<div class="command-tree-row"><div class="command-tree-main"><span class="command-form-help">空分组，保存命令时可选择。</span></div></div>';
+      return `
+        <section class="command-tree-group">
+          <button class="command-tree-group-head" type="button" data-command-group-toggle="${escapeHtml(group)}" aria-expanded="${String(!collapsed)}">
+            <span class="command-tree-caret">${collapsed ? ">" : "v"}</span>
+            <span class="command-tree-group-title">${escapeHtml(group)}</span>
+            <span class="command-tree-group-count">${items.length} 条</span>
+          </button>
+          ${collapsed ? "" : `<div class="command-tree-list">${rows}</div>`}
+        </section>
+      `;
+    }
+
+    function renderHistoryItem(item) {
+      return `
+        <article class="command-history-row">
+          <div class="command-history-main">
+            <code class="command-history-code" title="${escapeHtml(item.command)}">${escapeHtml(item.command)}</code>
+            <div class="command-history-meta">
+              <span>${escapeHtml(item.sourceLabel)}</span>
+              <span>发送 ${item.useCount} 次</span>
+              <span>${escapeHtml(formatDateTime(item.lastUsedAt))}</span>
+            </div>
+          </div>
+          <div class="command-history-actions">
+            <button class="command-mini-button" type="button" data-command-action="copy-history" data-command-id="${item.id}">复制</button>
+            <button class="command-mini-button" type="button" data-command-action="insert-history" data-command-id="${item.id}">插入</button>
+            <button class="command-mini-button primary" type="button" data-command-action="run-history" data-command-id="${item.id}">执行</button>
+            <button class="command-mini-button" type="button" data-command-action="history-to-snippet" data-command-id="${item.id}">存为片段</button>
+          </div>
+        </article>
+      `;
+    }
+
+    function renderCommandLibrary() {
+      const query = commandSearchQuery();
+      commandModeButtons.forEach((button) => {
+        button.classList.toggle("active", button.dataset.commandMode === activeCommandMode);
+      });
+      const isSnippetMode = activeCommandMode === "snippets";
+      commandNewSnippetButton.hidden = !isSnippetMode;
+      commandNewGroupButton.hidden = !isSnippetMode;
+
+      if (isSnippetMode) {
+        const snippets = [...commandSnippets]
+          .sort(compareSnippets)
+          .filter((item) => snippetMatchesQuery(item, query));
+        const includeEmptyGroups = query.length === 0;
+        commandLibraryResultMeta.textContent = `${snippets.length} 条片段`;
+
+        if (snippets.length === 0 && query.length > 0) {
+          commandLibraryBody.innerHTML = '<div class="command-library-empty">没有匹配到片段。<br>可以调整搜索词，或直接新建一个常用命令。</div>';
+          renderCommandLibraryFooterStatus();
+          return;
+        }
+
+        commandLibraryBody.innerHTML = `
+          <div class="command-snippet-tree">
+            ${groupedSnippets(snippets, includeEmptyGroups).map(([group, items]) => renderSnippetGroup(group, items)).join("")}
+          </div>
+        `;
+      } else {
+        const history = [...commandHistory]
+          .sort(compareHistory)
+          .filter((item) => historyMatchesQuery(item, query));
+        commandLibraryResultMeta.textContent = `${history.length} 条历史`;
+
+        if (history.length === 0) {
+          commandLibraryBody.innerHTML = '<div class="command-library-empty">还没有主动发送历史。<br>执行片段或通过命令操作台发送后，这里会出现记录。</div>';
+          renderCommandLibraryFooterStatus();
+          return;
+        }
+
+        commandLibraryBody.innerHTML = `
+          <section class="command-group">
+            <div class="command-group-head">
+              <strong>最近发送</strong>
+              <span>仅主动发送</span>
+            </div>
+            <div class="command-history-list">
+              ${history.map(renderHistoryItem).join("")}
+            </div>
+          </section>
+        `;
+      }
+
+      renderCommandLibraryFooterStatus();
+    }
+
+    function setCommandDialogMode(mode) {
+      commandDialogMode = mode;
+      const isSnippetMode = mode === "snippet";
+      commandSnippetFormPanel.hidden = !isSnippetMode;
+      commandGroupPanel.hidden = isSnippetMode;
+      commandDialogTitle.textContent = isSnippetMode
+        ? (editingSnippetId ? "编辑命令" : "新建命令")
+        : "新建分组";
+    }
+
+    function openSnippetDialog(snippet = null) {
+      editingSnippetId = snippet?.id || null;
+      groupDialogReturnToSnippet = false;
+      renderCommandLibrary();
+      commandSnippetTitleInput.value = snippet?.title || "";
+      commandSnippetCommandInput.value = snippet?.command || "";
+      commandSnippetNoteInput.value = snippet?.note || "";
+      commandSnippetFavoriteInput.checked = Boolean(snippet?.favorite);
+      groupSelectOpen = false;
+      renderSnippetGroupSelect(snippet?.group || "未分组");
+      commandDialogBackdrop.classList.add("open");
+      commandDialogBackdrop.setAttribute("aria-hidden", "false");
+      setCommandDialogMode("snippet");
+      commandSnippetTitleInput.focus();
+    }
+
+    function openGroupDialog(returnToSnippet = false) {
+      groupDialogReturnToSnippet = returnToSnippet;
+      renderCommandLibrary();
+      commandGroupNameInput.value = "";
+      commandDialogBackdrop.classList.add("open");
+      commandDialogBackdrop.setAttribute("aria-hidden", "false");
+      setCommandDialogMode("group");
+      commandGroupNameInput.focus();
+    }
+
+    function closeSnippetDialog() {
+      commandDialogBackdrop.classList.remove("open");
+      commandDialogBackdrop.setAttribute("aria-hidden", "true");
+      editingSnippetId = null;
+      groupDialogReturnToSnippet = false;
+    }
+
+    function saveGroupFromDialog() {
+      const rawName = commandGroupNameInput.value.trim();
+      if (!rawName) {
+        setFooterStatus("请输入分组名称。", 2200);
+        commandGroupNameInput.focus();
+        return;
+      }
+      const nextName = normalizeSnippetGroupName(rawName);
+      if (nextName === "未分组") {
+        setFooterStatus("未分组是系统默认分组，不能作为自定义分组名称。", 2600);
+        commandGroupNameInput.focus();
+        return;
+      }
+      if (commandSnippetGroups.some((group) => group.name === nextName)) {
+        setFooterStatus("这个分组已经存在。", 2200);
+        commandGroupNameInput.focus();
+        return;
+      }
+
+      commandSnippetGroups.push({ name: nextName });
+      collapsedCommandGroups.delete(nextName);
+      setSnippetFormGroup(nextName);
+      activeCommandMode = "snippets";
+      renderCommandLibrary();
+
+      if (groupDialogReturnToSnippet) {
+        groupDialogReturnToSnippet = false;
+        setCommandDialogMode("snippet");
+        commandSnippetTitleInput.focus();
+        setFooterStatus("分组已添加，可以继续保存命令。", 2200);
+        return;
+      }
+
+      closeSnippetDialog();
+      setFooterStatus("分组已新建。", 2200);
+    }
+
+    function deleteSnippet(id) {
+      const snippet = findSnippetById(id);
+      if (!snippet) {
+        return;
+      }
+      commandSnippets = commandSnippets.filter((item) => item.id !== id);
+      renderCommandLibrary();
+      setFooterStatus(`已删除片段“${snippet.title}”。`, 2200);
+    }
+
+    function findSnippetById(id) {
+      return commandSnippets.find((item) => item.id === id) || null;
+    }
+
+    function findHistoryById(id) {
+      return commandHistory.find((item) => item.id === id) || null;
+    }
+
+    function insertCommandIntoComposer(command, sourceLabel) {
+      commandInput.value = command;
+      setCommandSenderExpanded(true);
+      updateCommandSenderState();
+      commandSendResult.textContent = `已将 ${sourceLabel} 写入命令操作台，可继续编辑后发送。`;
+      commandInput.focus();
+      setFooterStatus(`已把 ${sourceLabel} 插入到下方命令操作台。`, 2200);
+    }
+
+    function markSnippetUsed(snippet) {
+      const now = new Date().toISOString();
+      snippet.useCount += 1;
+      snippet.lastUsedAt = now;
+      snippet.updatedAt = now;
+    }
+
+    function recordHistory(command, sourceLabel) {
+      const normalized = command.trim();
+      if (!normalized) {
+        return;
+      }
+      const now = new Date().toISOString();
+      const existing = commandHistory.find((item) => item.command === normalized);
+      if (existing) {
+        existing.useCount += 1;
+        existing.lastUsedAt = now;
+        existing.note = `最近从 ${activeSessionTarget} 发送`;
+        existing.sourceLabel = sourceLabel;
+        return;
+      }
+      commandHistory.unshift({
+        id: `history-${Math.random().toString(36).slice(2, 8)}`,
+        command: normalized,
+        note: `最近从 ${activeSessionTarget} 发送`,
+        useCount: 1,
+        lastUsedAt: now,
+        sourceLabel,
+      });
+    }
+
+    function appendCommandToTerminal(command, sourceLabel) {
+      const prompt = terminalPromptByTarget[activeSessionTarget] || `${activeSessionTarget} $`;
+      const current = terminalOutputByTarget[activeSessionTarget] || `${prompt}\n等待终端输出...`;
+      terminalOutputByTarget[activeSessionTarget] = `${current}\n\n${prompt} ${command}\n# ${sourceLabel} 已模拟投递`;
+      activateSession(activeSessionTarget);
+    }
+
+    function executeLibraryCommand(command, label, sourceLabel) {
+      appendCommandToTerminal(command, sourceLabel);
+      recordHistory(command, "主动发送");
+      commandLastSent.textContent = `上次执行：${new Date().toLocaleTimeString("zh-CN", { hour12: false })}`;
+      commandSendResult.textContent = `${label} 已模拟投递到当前终端：${activeSessionTarget}`;
+      setFooterStatus(`${label} 已发送到当前终端，历史列表已更新。`, 2400);
+      renderCommandLibrary();
+    }
+
+    function saveSnippetFromDialog() {
+      const group = ensureSnippetGroupExists(commandSnippetGroupInput.value.trim());
+      const title = commandSnippetTitleInput.value.trim();
+      const command = commandSnippetCommandInput.value.trim();
+      const note = commandSnippetNoteInput.value.trim();
+      const favorite = commandSnippetFavoriteInput.checked;
+
+      if (!title || !command) {
+        setFooterStatus("名称和命令为必填项。", 2600);
+        if (!title) {
+          commandSnippetTitleInput.focus();
+        } else {
+          commandSnippetCommandInput.focus();
+        }
+        return;
+      }
+
+      const now = new Date().toISOString();
+      if (editingSnippetId) {
+        const snippet = findSnippetById(editingSnippetId);
+        if (!snippet) {
+          closeSnippetDialog();
+          return;
+        }
+        snippet.group = group;
+        snippet.title = title;
+        snippet.command = command;
+        snippet.note = note;
+        snippet.favorite = favorite;
+        snippet.updatedAt = now;
+      } else {
+        commandSnippets.unshift({
+          id: `snippet-${Math.random().toString(36).slice(2, 8)}`,
+          group,
+          title,
+          command,
+          note,
+          favorite,
+          useCount: 0,
+          lastUsedAt: "",
+          updatedAt: now,
+        });
+      }
+
+      closeSnippetDialog();
+      activeCommandMode = "snippets";
+      collapsedCommandGroups.delete(group);
+      renderCommandLibrary();
+      setFooterStatus("命令已保存。", 2200);
+    }
+
+    function saveCommandDialog() {
+      if (commandDialogMode === "group") {
+        saveGroupFromDialog();
+        return;
+      }
+      saveSnippetFromDialog();
+    }
+
+    function commandTargetForCheckbox(checkbox) {
+      const row = checkbox.closest(".command-target");
+      const terminalSelect = row?.querySelector(".command-target-terminal");
+      return terminalSelect?.value || checkbox.dataset.commandTarget || "未命名终端";
+    }
+
+    function selectedCommandTargets() {
+      return commandTargetCheckboxes
+        .filter((checkbox) => checkbox.checked)
+        .map(commandTargetForCheckbox);
+    }
+
+    function commandLooksRisky(command) {
+      return /\b(rm\s+-rf|sudo|mkfs|shutdown|reboot|curl\s+[^|]+\|\s*sh|wget\s+[^|]+\|\s*sh)\b/i.test(command);
+    }
+
+    function activateRdpWorkspace() {
+      activeSessionTarget = "WinDesk-RDP / RDP";
+      rdpSessionTab?.classList.add("active");
+      sessionTabs.forEach((tab) => tab.classList.remove("active"));
+      if (rdpSessionPane) {
+        rdpSessionPane.hidden = false;
+      }
+      if (terminalPreviewPane) {
+        terminalPreviewPane.hidden = true;
+      }
+      setRightTool("rdp");
+    }
+
+    function setRdpState(state) {
+      rdpStateButtons.forEach((button) => {
+        button.classList.toggle("active", button.dataset.rdpState === state);
+      });
+      const states = {
+        embedded: {
+          status: "嵌入式",
+          title: "嵌入式 RDP 会话区域",
+          detail: "Windows 可用时在当前标签内承载远程桌面；混合 DPI 多屏、RemoteApp 或初始化失败时会自动切到外部 runner。",
+          command: "mstscax.dll host=10.8.4.23 user=ops",
+        },
+        external: {
+          status: "外部客户端",
+          title: "mstsc.exe fallback 已准备",
+          detail: "外部模式会生成临时 .rdp 文件并启动 mstsc.exe，凭据仍由系统客户端提示。",
+          command: "mstsc.exe \"<temp>\\mxterm-rdp-WinDesk.rdp\"",
+        },
+        freerdp: {
+          status: "FreeRDP",
+          title: "FreeRDP runner 预览",
+          detail: "Linux 会优先探测 wlfreerdp / xfreerdp，不通过命令行传递明文密码。",
+          command: "xfreerdp /v:10.8.4.23:3389 /u:ops /dynamic-resolution /clipboard",
+        },
+        missing: {
+          status: "缺少 runner",
+          title: "没有可用 RDP 客户端",
+          detail: "当前平台未探测到可用 runner，需要安装 FreeRDP、配置 macOS 客户端或使用自定义 runner。",
+          command: "runner probe failed: no compatible RDP client",
+        },
+      };
+      const next = states[state] || states.embedded;
+      rdpToolStatus.textContent = next.status;
+      rdpScreenTitle.textContent = next.title;
+      rdpScreenDetail.textContent = next.detail;
+      rdpPreviewCommand.textContent = next.command;
+      if (rdpPreviewFile) {
+        rdpPreviewFile.textContent =
+          state === "external"
+            ? `full address:s:10.8.4.23:3389\nusername:s:ops\nscreen mode id:i:1\ndesktopwidth:i:1440\ndesktopheight:i:900\nredirectclipboard:i:1\nprompt for credentials:i:1`
+            : state === "freerdp"
+              ? `xfreerdp /v:10.8.4.23:3389 /u:ops /dynamic-resolution /clipboard`
+              : `screen mode id:i:1\nfull address:s:10.8.4.23:3389\nusername:s:ops\nredirectclipboard:i:1\naudiomode:i:0\nprompt for credentials:i:1`;
+      }
+    }
+
+    function openRdpDialog() {
+      rdpDialogBackdrop.classList.add("open");
+      rdpDialogBackdrop.setAttribute("aria-hidden", "false");
+    }
+
+    function closeRdpDialog() {
+      rdpDialogBackdrop.classList.remove("open");
+      rdpDialogBackdrop.setAttribute("aria-hidden", "true");
+    }
+
+    function activateSession(target) {
+      activeSessionTarget = target;
+      rdpSessionTab?.classList.remove("active");
+      if (rdpSessionPane) {
+        rdpSessionPane.hidden = true;
+      }
+      if (terminalPreviewPane) {
+        terminalPreviewPane.hidden = false;
+      }
+      sessionTabs.forEach((tab) => {
+        tab.classList.toggle("active", tab.dataset.sessionTarget === target);
+      });
+      setRightTool("files");
+      terminalOutput.textContent = terminalOutputByTarget[target] || `${target}\n等待终端输出...`;
+    }
+
+    function deliveryResultForTarget(target) {
+      if (target.includes("App-01")) {
+        return { icon: "x", status: "发送失败", detail: "会话已断开", failed: true };
+      }
+      return { icon: "✓", status: "已写入", detail: "输入已投递", failed: false };
+    }
+
+    function deliveryBadgeForCheckbox(checkbox) {
+      return checkbox.closest(".command-target")?.querySelector(".command-target-delivery");
+    }
+
+    function updateDeliveryBadgeForCheckbox(checkbox, result) {
+      const badge = deliveryBadgeForCheckbox(checkbox);
+      const row = checkbox.closest(".command-target");
+      const target = commandTargetForCheckbox(checkbox);
+      if (!badge || !row) {
+        return;
+      }
+      row.classList.toggle("has-delivery", !result.failed);
+      row.classList.toggle("has-failed-delivery", result.failed);
+      badge.classList.toggle("sent", !result.failed);
+      badge.classList.toggle("failed", result.failed);
+      badge.dataset.deliveryJump = target;
+      badge.setAttribute("aria-label", `投递状态：${target}`);
+      badge.textContent = result.status;
+      badge.title = `${target}：${result.detail}`;
+    }
+
+    function resetDeliveryBadgeForCheckbox(checkbox) {
+      const badge = deliveryBadgeForCheckbox(checkbox);
+      const row = checkbox.closest(".command-target");
+      const target = commandTargetForCheckbox(checkbox);
+      if (!badge || !row) {
+        return;
+      }
+      row.classList.remove("has-delivery", "has-failed-delivery");
+      badge.classList.remove("sent", "failed");
+      badge.dataset.deliveryJump = target;
+      badge.setAttribute("aria-label", `投递状态：${target}`);
+      badge.textContent = "未发送";
+      badge.title = `${target}：点击切换到该会话`;
+    }
+
+    function updateCommandSenderState() {
+      const selectedTargets = selectedCommandTargets();
+      const command = commandInput.value.trim();
+      const mirrorTargets = Math.max(0, selectedTargets.length - 1);
+      commandTargetCount.textContent = `已选 ${selectedTargets.length} / ${commandTargetCheckboxes.length}`;
+      commandSelectAllTargets.checked = selectedTargets.length === commandTargetCheckboxes.length;
+      commandSelectAllTargets.indeterminate = selectedTargets.length > 0 && selectedTargets.length < commandTargetCheckboxes.length;
+      commandTargetCheckboxes.forEach(resetDeliveryBadgeForCheckbox);
+      sendCommandButton.disabled = selectedTargets.length === 0 || command.length === 0;
+      sendNoEnterButton.disabled = selectedTargets.length === 0 || command.length === 0;
+      commandRiskWarning.classList.toggle("show", commandLooksRisky(command));
+
+      if (selectedTargets.length < 2 && syncInputEnabled) {
+        syncInputEnabled = false;
+      }
+
+      const syncing = syncInputEnabled && selectedTargets.length >= 2;
+      syncInputToggleButton.classList.toggle("syncing", syncing);
+      syncInputToggleButton.setAttribute("aria-pressed", String(syncing));
+      syncInputToggleButton.disabled = selectedTargets.length < 2;
+      syncInputToggleLabel.textContent = syncing
+        ? `同步输入: ${mirrorTargets} 个目标 · 开`
+        : "同步输入: 关";
+      syncInputBanner.classList.toggle("show", syncing);
+      syncInputBannerText.textContent = syncing
+        ? `同步输入中：${selectedTargets.slice(1).join("、")}`
+        : "同步输入中";
+    }
+
+    function setCommandSenderExpanded(nextExpanded) {
+      commandSenderPanel.classList.toggle("open", nextExpanded);
+      commandSenderToggle.classList.toggle("active", nextExpanded);
+      commandSenderToggle.setAttribute("aria-pressed", String(nextExpanded));
+    }
+
+    commandSenderToggle.addEventListener("click", () => {
+      setCommandSenderExpanded(!commandSenderPanel.classList.contains("open"));
+    });
+
+    commandSenderPanelToggle.addEventListener("click", () => {
+      setCommandSenderExpanded(false);
+    });
+
+    commandLibraryToggle.addEventListener("click", () => {
+      setRightTool("command");
+      commandLibraryToggle.classList.add("active");
+      setFooterStatus("命令面板入口保留在终端工具区，正文集中在右侧。", 2200);
+      commandLibrarySearchInput.focus();
+    });
+
+    commandTargetCheckboxes.forEach((checkbox) => {
+      checkbox.addEventListener("change", updateCommandSenderState);
+    });
+
+    commandTargetTerminalSelects.forEach((select) => {
+      select.addEventListener("change", updateCommandSenderState);
+    });
+
+    commandSelectAllTargets.addEventListener("change", () => {
+      commandTargetCheckboxes.forEach((checkbox) => {
+        checkbox.checked = commandSelectAllTargets.checked;
+      });
+      updateCommandSenderState();
+    });
+
+    rdpSessionTab?.addEventListener("click", activateRdpWorkspace);
+    rdpConnectionButton?.addEventListener("click", () => {
+      activateRdpWorkspace();
+      openRdpDialog();
+    });
+    rdpPreviewButton?.addEventListener("click", () => setRdpState("external"));
+    rdpOpenDialogButton?.addEventListener("click", openRdpDialog);
+    rdpDialogCloseButton?.addEventListener("click", closeRdpDialog);
+    rdpDialogBackdrop?.addEventListener("click", (event) => {
+      if (event.target === rdpDialogBackdrop) {
+        closeRdpDialog();
+      }
+    });
+    rdpDialogTestButton?.addEventListener("click", () => setRdpState("freerdp"));
+    rdpDialogSaveButton?.addEventListener("click", closeRdpDialog);
+    rdpStateButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        setRdpState(button.dataset.rdpState || "embedded");
+      });
+    });
+
+    sessionTabs.forEach((tab) => {
+      tab.addEventListener("click", () => {
+        activateSession(tab.dataset.sessionTarget || "192.168.10.75[Harbor] / 终端 2");
+      });
+    });
+
+    commandInput.addEventListener("input", updateCommandSenderState);
+
+    commandHistorySelect.addEventListener("change", () => {
+      if (!commandHistorySelect.value) {
+        return;
+      }
+      commandInput.value = commandHistorySelect.value;
+      commandHistorySelect.value = "";
+      updateCommandSenderState();
+      commandInput.focus();
+    });
+
+    clearCommandButton.addEventListener("click", () => {
+      commandInput.value = "";
+      commandSendResult.textContent = "命令已清空。";
+      updateCommandSenderState();
+      commandInput.focus();
+    });
+
+    function simulateCommandSend(appendEnter) {
+      const selectedTargets = selectedCommandTargets();
+      const command = commandInput.value.trim();
+      const now = new Date();
+      const time = now.toLocaleTimeString("zh-CN", { hour12: false });
+      sendCount += 1;
+      const results = selectedTargets.map(deliveryResultForTarget);
+      const successCount = results.filter((result) => !result.failed).length;
+      const failureCount = results.length - successCount;
+      commandSendResult.textContent = `第 ${sendCount} 次投递：${successCount} 个已写入，${failureCount} 个失败；${appendEnter ? "已追加回车" : "未追加回车"}。`;
+      commandLastSent.textContent = `上次发送：${time}`;
+      commandTargetCheckboxes.forEach(resetDeliveryBadgeForCheckbox);
+      commandTargetCheckboxes.filter((checkbox) => checkbox.checked).forEach((checkbox) => {
+        const target = commandTargetForCheckbox(checkbox);
+        updateDeliveryBadgeForCheckbox(checkbox, deliveryResultForTarget(target));
+      });
+      if (successCount > 0) {
+        recordHistory(command, "主动发送");
+        renderCommandLibrary();
+      }
+    }
+
+    sendCommandButton.addEventListener("click", () => {
+      simulateCommandSend(appendEnterToggle.checked);
+    });
+
+    sendNoEnterButton.addEventListener("click", () => {
+      simulateCommandSend(false);
+    });
+
+    syncInputToggleButton.addEventListener("click", () => {
+      syncInputEnabled = !syncInputEnabled;
+      commandSendResult.textContent = syncInputEnabled
+        ? "Sync Input 已开启，实时输入会镜像到选中的其他终端。"
+        : "Sync Input 已关闭，Command Sender 保持可连续发送。";
+      updateCommandSenderState();
+    });
+
+    document.querySelectorAll("[data-delivery-jump]").forEach((button) => {
+      button.addEventListener("click", () => {
+        activateSession(button.dataset.deliveryJump || activeSessionTarget);
+      });
+    });
+
+    function setRightTool(tab) {
+      rightToolTabs.forEach((item) => {
+        item.classList.toggle("active", item.dataset.toolTab === tab);
+      });
+      fileBrowserPane.hidden = tab !== "files";
+      commandLibraryPane.hidden = tab !== "command";
+      rdpToolPane.hidden = tab !== "rdp";
+      toolPlaceholderPane.hidden = tab === "files" || tab === "command" || tab === "rdp";
+      commandLibraryToggle.classList.toggle("active", tab === "command");
+      commandLibraryToggle.setAttribute("aria-pressed", String(tab === "command"));
+      if (tab !== "files") {
+        fileTransferDock.classList.remove("open");
+        fileTransferToggle?.setAttribute("aria-expanded", "false");
+        fileTransferToggle?.querySelector("span")?.replaceChildren("展开");
+      }
+      if (tab === "monitor") {
+        toolPlaceholderText.textContent = "监控保留独立工具面板；文件传输反馈已收进文件页底部。";
+      }
+      if (tab === "tunnels") {
+        toolPlaceholderText.textContent = "隧道保留独立工具面板；它不是文件操作的后续状态。";
+      }
+      if (tab === "rdp") {
+        setRdpState("embedded");
+      }
+    }
+
+    rightToolTabs.forEach((button) => {
+      button.addEventListener("click", () => {
+        setRightTool(button.dataset.toolTab || "files");
+      });
+    });
+
+    fileTransferToggle.addEventListener("click", () => {
+      const expanded = !fileTransferDock.classList.contains("open");
+      fileTransferDock.classList.toggle("open", expanded);
+      fileTransferToggle.setAttribute("aria-expanded", String(expanded));
+      fileTransferToggle.querySelector("span")?.replaceChildren(expanded ? "收起" : "展开");
+    });
+
+    commandModeButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        activeCommandMode = button.dataset.commandMode || "snippets";
+        renderCommandLibrary();
+      });
+    });
+
+    commandLibrarySearchInput.addEventListener("input", renderCommandLibrary);
+
+    commandLibraryBody.addEventListener("click", (event) => {
+      const groupTrigger = event.target.closest("[data-command-group-toggle]");
+      if (groupTrigger) {
+        const groupName = groupTrigger.dataset.commandGroupToggle || "";
+        if (collapsedCommandGroups.has(groupName)) {
+          collapsedCommandGroups.delete(groupName);
+        } else {
+          collapsedCommandGroups.add(groupName);
+        }
+        renderCommandLibrary();
+        return;
+      }
+
+      const trigger = event.target.closest("[data-command-action]");
+      if (!trigger) {
+        return;
+      }
+      const action = trigger.dataset.commandAction;
+      const id = trigger.dataset.commandId;
+
+      if (action === "insert-snippet") {
+        const snippet = findSnippetById(id);
+        if (snippet) {
+          insertCommandIntoComposer(snippet.command, `片段“${snippet.title}”`);
+          renderCommandLibrary();
+        }
+        return;
+      }
+
+      if (action === "run-snippet") {
+        const snippet = findSnippetById(id);
+        if (snippet) {
+          markSnippetUsed(snippet);
+          executeLibraryCommand(snippet.command, `片段“${snippet.title}”`, "片段执行");
+        }
+        return;
+      }
+
+      if (action === "edit-snippet") {
+        const snippet = findSnippetById(id);
+        if (snippet) {
+          openSnippetDialog(snippet);
+        }
+        return;
+      }
+
+      if (action === "delete-snippet") {
+        deleteSnippet(id);
+        return;
+      }
+
+      if (action === "insert-history") {
+        const historyItem = findHistoryById(id);
+        if (historyItem) {
+          insertCommandIntoComposer(historyItem.command, "历史命令");
+        }
+        return;
+      }
+
+      if (action === "run-history") {
+        const historyItem = findHistoryById(id);
+        if (historyItem) {
+          executeLibraryCommand(historyItem.command, "历史命令", "主动发送");
+        }
+        return;
+      }
+
+      if (action === "history-to-snippet") {
+        const historyItem = findHistoryById(id);
+        if (historyItem) {
+          openSnippetDialog({
+            group: "未分组",
+            title: deriveSnippetTitle(historyItem.command),
+            command: historyItem.command,
+            note: historyItem.note,
+          });
+        }
+      }
+    });
+
+    commandNewSnippetButton.addEventListener("click", () => {
+      openSnippetDialog({
+        group: "未分组",
+        title: deriveSnippetTitle(commandInput.value.trim() || "新建片段"),
+        command: commandInput.value.trim(),
+        note: "",
+        favorite: false,
+      });
+    });
+
+    commandNewGroupButton.addEventListener("click", () => {
+      openGroupDialog(false);
+    });
+
+    commandDialogCloseButton.addEventListener("click", closeSnippetDialog);
+    commandDialogCancelButton.addEventListener("click", closeSnippetDialog);
+    commandDialogSaveButton.addEventListener("click", saveCommandDialog);
+
+    commandSnippetGroupTrigger.addEventListener("click", () => {
+      groupSelectOpen = !groupSelectOpen;
+      renderSnippetGroupSelect(commandSnippetGroupInput.value || "未分组");
+    });
+
+    commandSnippetGroupMenu.addEventListener("click", (event) => {
+      const trigger = event.target.closest("[data-snippet-form-group]");
+      if (!trigger) {
+        return;
+      }
+      groupSelectOpen = false;
+      setSnippetFormGroup(trigger.dataset.snippetFormGroup || "未分组");
+    });
+
+    commandInlineNewGroupButton.addEventListener("click", () => {
+      openGroupDialog(true);
+    });
+
+    commandDialogBackdrop.addEventListener("click", (event) => {
+      if (event.target === commandDialogBackdrop) {
+        closeSnippetDialog();
+      }
+    });
+
+    document.addEventListener("click", (event) => {
+      if (!groupSelectOpen || commandSnippetGroupSelect.contains(event.target)) {
+        return;
+      }
+      groupSelectOpen = false;
+      renderSnippetGroupSelect(commandSnippetGroupInput.value || "未分组");
+    });
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && commandDialogBackdrop.classList.contains("open")) {
+        closeSnippetDialog();
+      }
+    });
+
+    updateCommandSenderState();
+    renderCommandLibrary();
+  </script>
+</body>
+</html>
