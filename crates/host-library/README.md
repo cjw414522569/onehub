@@ -381,3 +381,14 @@
   checkpoint (never past the bytes actually completed).
 - Real background time-limit / system-termination tests run on mobile
   devices.
+
+## T132: secure ssh:// deep-link parsing and explicit confirmation
+
+`crates/host-library/src/deep_link.rs`:
+
+- `parse_secure` - rejects plaintext passwords in the userinfo, validates the
+  host strictly (no whitespace / control / embedded `@` / scheme), strips
+  path / query / fragment, and validates the port.
+- `DeepLinkPolicy` - external sources require explicit confirmation by
+  default (never auto-connect); in-app links do not.
+- A fuzz corpus of malformed / injection URIs is rejected or sanitized.

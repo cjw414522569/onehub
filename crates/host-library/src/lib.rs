@@ -11,6 +11,7 @@ pub mod android_security;
 pub mod auth_prompt;
 pub mod backend_gate;
 pub mod command_palette;
+pub mod deep_link;
 pub mod diagnostics;
 pub mod editor;
 pub mod file_manager;
