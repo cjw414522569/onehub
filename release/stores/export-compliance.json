@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "encryption": {
+    "uses_encryption": true,
+    "encryption_in_transit": true,
+    "encryption_at_rest": true,
+    "standard": "TLS 1.2+ / SSH E2E (keys client-side); SQLite + field encryption (T093-T095)",
+    "restricted_crypto": false,
+    "export_classification": "mass-market / no restricted cryptography"
+  },
+  "compliance_notes": [
+    "All traffic is encrypted (SSH/TLS); the app qualifies as mass-market encryption.",
+    "Telemetry is default-off; the privacy manifest and data-safety form match the actual collection (T147).",
+    "Export documentation accompanies every store submission."
+  ]
+}

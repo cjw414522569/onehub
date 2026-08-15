@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "platforms": {
+    "ios": {
+      "NSPrivacyTracking": false,
+      "NSPrivacyCollectedDataTypes": [
+        { "type": "CrashData", "linked": false, "purpose": "Diagnostics - crash upload is consent-gated and sanitized (no terminal/command/host content)" },
+        { "type": "DiagnosticsData", "linked": false, "purpose": "Performance diagnostics - numeric aggregates only; telemetry is default-off and explicit-consent (T147)" }
+      ],
+      "NSPrivacyAccessedAPITypes": [],
+      "NSPrivacyTrackingDomains": []
+    },
+    "android": {
+      "data_safety": {
+        "data_collected": [
+          { "category": "Crash logs", "collected": true, "shared": false, "purpose": "Crash diagnostics with consent, sanitized" },
+          { "category": "Diagnostics", "collected": true, "shared": false, "purpose": "Numeric performance metrics with consent" }
+        ],
+        "data_not_collected": ["Location", "Personal info", "Financial info", "Health", "Messages", "Photos", "Contacts", "Device IDs"],
+        "encryption_in_transit": true,
+        "deletion_request": "supported"
+      }
+    }
+  },
+  "note": "Telemetry is default-off and explicit-consent; no terminal content, commands, identity, or host data is ever collected (T147)."
+}

@@ -1,0 +1,36 @@
+{
+  "task": "T167",
+  "status": "pass",
+  "verified_at_utc": "2026-08-15T07:23:45Z",
+  "kit": [
+    "privacy-manifest.json",
+    "permissions.md",
+    "export-compliance.json",
+    "store-materials.md"
+  ],
+  "internal_track_acceptance": [
+    {
+      "step": "install",
+      "from": null,
+      "to": "1.0.0",
+      "status": "pass"
+    },
+    {
+      "step": "upgrade",
+      "from": "1.0.0",
+      "to": "1.1.0",
+      "status": "pass"
+    },
+    {
+      "step": "rollback",
+      "from": "1.1.0",
+      "to": "1.0.0",
+      "status": "pass"
+    }
+  ],
+  "stores": [
+    "Google Play",
+    "App Store",
+    "TestFlight"
+  ]
+}
