@@ -342,3 +342,16 @@
   read grant and no raw path (minimal permission).
 - `ShareSheet` - shares text without leaking secrets.
 - Real multi-vendor / API device matrix runs on Android devices.
+
+## T129: iOS / iPadOS lifecycle, scenes, multi-window, suspension
+
+`crates/host-library/src/ios_integration.rs`:
+
+- `SceneCollection` - multi-scene (multi-window) collection with activate /
+  close.
+- `SuspensionModel` - system suspension limits are truthful: the UI never
+  claims an active session while iOS would suspend the app (background
+  without a background task); a running background task makes the claim
+  truthful.
+- `RecoveryState` - restored sessions match the saved state after relaunch.
+- Real simulator + device lifecycle tests run on Apple hosts.

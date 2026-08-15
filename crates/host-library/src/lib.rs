@@ -17,6 +17,7 @@ pub mod file_manager;
 pub mod fingerprint;
 pub mod gestures;
 pub mod host;
+pub mod ios_integration;
 pub mod keyboard;
 pub mod linux_integration;
 pub mod macos_entitlements;
@@ -70,6 +71,7 @@ pub use gestures::{
 pub use host::{
     GroupSummary, HostLibrary, HostRecord, SelectionModel, SortField, SortOrder, TagSummary,
 };
+pub use ios_integration::{RecoveryState, Scene, SceneCollection, SceneState, SuspensionModel};
 pub use keyboard::{
     key_label, parse_key, Chord, Direction, KeyAction, KeyBindingConfig, KeyCode, KeyEvent, KeyMap,
     ModifierKey, Modifiers, Platform, PlatformSemantics, PrimaryModifier,
