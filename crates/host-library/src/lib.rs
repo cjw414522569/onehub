@@ -5,10 +5,15 @@
 //!
 //! Host library model: list, grouping, tags, search, and sorting (T102).
 
+pub mod auth_prompt;
 pub mod editor;
 pub mod fingerprint;
 pub mod host;
 
+pub use auth_prompt::{
+    AuthPrompt, ConfirmState, HardwareConfirmation, KeyOption, KeySelection, PromptError,
+    PromptKind, PromptState, SelectionError, SelectionState,
+};
 pub use editor::{
     default_spec, state_map, AccessibilityReport, FieldKind, FieldSpec, FieldState, HostEditorForm,
     ReviewRow, SectionReview, SectionSpec, SectionState, PASSWORD_MASK,

@@ -43,3 +43,18 @@
   (high risk with a change notice). Approve / reject drive the review state.
 - `ReviewView` - the UI shows algorithm, SHA-256 fingerprint, source, risk,
   and an explicit change notice for a key change.
+
+## T105: authentication prompts, key selection, hardware confirmation
+
+`crates/host-library/src/auth_prompt.rs`:
+
+- `AuthPrompt` - password / passphrase / key-selection / hardware-confirmation
+  prompts. Sensitive input is transient: `submit` moves the value out and
+  clears the model (never cached), and `cancel` clears it immediately and
+  terminates authentication (a later submit is refused).
+- `KeySelection` - select a key by id, confirm, or cancel (unknown ids are
+  rejected).
+- `HardwareConfirmation` - confirm / cancel a hardware touch (YubiKey /
+  Windows Hello).
+- The authentication interaction matrix test covers submit / cancel /
+  cancel-then-submit for every prompt kind.
