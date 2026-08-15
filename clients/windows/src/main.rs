@@ -42,16 +42,17 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     GetMessageW, GetWindowLongPtrW, GetWindowRect, GetWindowTextLengthW, GetWindowTextW, IsWindow,
     KillTimer, LoadCursorW, PostMessageW, PostQuitMessage, RegisterClassW, SendMessageW, SetTimer,
     SetWindowLongPtrW, ShowWindow, TranslateMessage, BS_PUSHBUTTON, CS_HREDRAW, CS_VREDRAW,
-    CW_USEDEFAULT, ES_AUTOHSCROLL, GWLP_USERDATA, HMENU, IDCANCEL, IDC_ARROW, IDOK, MSG, SW_SHOW,
-    SW_SHOWDEFAULT, WM_CHAR, WM_CLOSE, WM_COMMAND, WM_CREATE, WM_DESTROY, WM_KEYDOWN,
-    WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_PAINT, WM_SETFONT, WM_SIZE, WM_TIMER, WNDCLASSW,
-    WS_CAPTION, WS_CHILD, WS_EX_CLIENTEDGE, WS_OVERLAPPEDWINDOW, WS_POPUP, WS_SYSMENU, WS_TABSTOP,
-    WS_VISIBLE,
+    CW_USEDEFAULT, ES_AUTOHSCROLL, GWLP_USERDATA, HMENU, IDCANCEL, IDC_ARROW, IDOK, MSG,
+    SW_MAXIMIZE, SW_MINIMIZE, SW_SHOW, SW_SHOWDEFAULT, WM_CHAR, WM_CLOSE, WM_COMMAND, WM_CREATE,
+    WM_DESTROY, WM_KEYDOWN, WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_PAINT, WM_SETFONT, WM_SIZE,
+    WM_TIMER, WNDCLASSW, WS_CAPTION, WS_CHILD, WS_EX_CLIENTEDGE, WS_OVERLAPPEDWINDOW, WS_POPUP,
+    WS_SYSMENU, WS_TABSTOP, WS_VISIBLE,
 };
 
 use webview2_com::Microsoft::Web::WebView2::Win32::{ICoreWebView2, ICoreWebView2Controller};
 use windows::Win32::System::Com::{CoInitializeEx, COINIT_APARTMENTTHREADED};
 
+mod bridge;
 mod httpserver;
 mod webview2;
 
@@ -501,6 +502,62 @@ unsafe fn handle_key(state: &mut AppState, hwnd: HWND, wparam: WPARAM) {
     InvalidateRect(hwnd, std::ptr::null(), 1);
 }
 
+/// Handles a WebView2 postMessage invoke request via the bridge and applies
+/// any window-control action.
+fn on_web_message(hwnd: HWND, message: &str) -> Option<String> {
+    let raw = unsafe { GetWindowLongPtrW(hwnd, GWLP_USERDATA) };
+    if raw == 0 {
+        return None;
+    }
+    let state = unsafe { &mut *(raw as *mut AppState) };
+    let (reply, action) = bridge::handle_message(&mut state.model, message)?;
+    match action {
+        bridge::WindowAction::Minimize => unsafe {
+            ShowWindow(hwnd, SW_MINIMIZE);
+        },
+        bridge::WindowAction::Maximize => unsafe {
+            ShowWindow(hwnd, SW_MAXIMIZE);
+        },
+        bridge::WindowAction::Close => unsafe {
+            DestroyWindow(hwnd);
+        },
+        bridge::WindowAction::None => {}
+    }
+    Some(reply)
+}
+
+/// End-to-end bridge check (--bridge-check): verifies the shim is injected
+/// and an invoke round-trip through chrome.webview postMessage works.
+unsafe fn bridge_check(webview: &webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2) {
+    std::thread::sleep(std::time::Duration::from_millis(1200));
+    let probe = "window.__bridgeProbe='pending'; function tryInvoke(){ if(window.__TAURI_INTERNALS__){ window.__TAURI_INTERNALS__.invoke('get_status',{}).then(function(r){window.__bridgeProbe=(r&&r.ok)?'PASS':'FAIL';},function(){window.__bridgeProbe='ERR';}); } else { setTimeout(tryInvoke, 200); } } tryInvoke();";
+    if webview2::execute_script(webview, probe).is_err() {
+        eprintln!("[bridge-check] probe injection failed");
+        std::process::exit(1);
+    }
+    for _ in 0..20 {
+        std::thread::sleep(std::time::Duration::from_millis(250));
+        if let Ok(result) = webview2::execute_script(webview, "window.__bridgeProbe") {
+            eprintln!("[bridge-check] raw={result:?}");
+            let value = result.trim_matches('"').to_string();
+            if value == "pending" {
+                continue;
+            }
+            println!("[bridge-check] result={value}");
+            if value == "PASS" {
+                println!(
+                    "[bridge-check] PASS: shim injected and webmessage invoke round-trip works"
+                );
+                std::process::exit(0);
+            }
+            eprintln!("[bridge-check] FAIL: {value}");
+            std::process::exit(1);
+        }
+    }
+    eprintln!("[bridge-check] TIMEOUT");
+    std::process::exit(1);
+}
+
 /// Creates the WebView2 controller and hosts it over the client area.
 unsafe fn init_webview(hwnd: HWND) {
     let raw = GetWindowLongPtrW(hwnd, GWLP_USERDATA);
@@ -546,12 +603,20 @@ unsafe fn init_webview(hwnd: HWND) {
                 );
             }
             if let Some(webview) = &state.webview {
+                let _ = webview2::inject_shim(webview, webview2::SHIM_JS);
+                let _ = webview2::add_message_handler(hwnd, webview);
                 let _ = webview2::navigate(webview, &url);
             }
             InvalidateRect(hwnd, std::ptr::null(), 1);
         }
         Err(error) => {
             eprintln!("PC GUI: WebView2 init failed: {error}");
+        }
+    }
+    if std::env::args().any(|argument| argument == "--bridge-check") {
+        let probe_webview = state_of(hwnd).and_then(|state| state.webview.clone());
+        if let Some(webview) = probe_webview {
+            bridge_check(&webview);
         }
     }
 }

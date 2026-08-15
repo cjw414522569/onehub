@@ -219,6 +219,7 @@ name = "clients-windows"
 version = "0.1.0"
 dependencies = [
  "abi-c",
+ "serde_json",
  "tiny_http",
  "webview2-com",
  "windows",

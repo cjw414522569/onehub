@@ -93,6 +93,17 @@ if (!selfCheckOk) {
   errors.push(`ssh-gui --check failed:\n${selfCheck.stdout}\n${selfCheck.stderr}`);
 }
 
+const bridgeCheck = spawnSync(
+  'cargo',
+  ['run', '-p', 'clients-windows', '--locked', '--', '--bridge-check'],
+  { cwd: ROOT, encoding: 'utf8', timeout: 600000 }
+);
+const bridgeOk = bridgeCheck.status === 0 && (bridgeCheck.stdout ?? '').includes('[bridge-check] PASS');
+results.push({ label: 'ssh-gui --bridge-check', status: bridgeOk ? 'pass' : 'fail' });
+if (!bridgeOk) {
+  errors.push(`ssh-gui --bridge-check failed:\n${bridgeCheck.stdout}\n${bridgeCheck.stderr}`);
+}
+
 if (errors.length > 0) {
   console.error(`pc-gui contract failed with ${errors.length} error(s):`);
   for (const error of errors) console.error(`- ${error}`);
@@ -124,17 +135,20 @@ if (process.argv.includes('--write')) {
         'terminal grid (wrap/scroll/resize/color runs), input line with cursor editing, /connect /disconnect /clear /help /quit, session repository (add/select/remove/connect, /sessions /open), SendLine queue for the abi-c transport',
       abi_bridge:
         'EventBatch events append output; SnapshotRequired/Snapshot recovery via abi-c',
+      js_rust_bridge:
+        'WebView2 shim (__TAURI_INTERNALS__) -> chrome.webview.postMessage -> bridge.rs -> GuiModel; list_sessions/connect/disconnect/terminal/resize/window controls; unknown commands resolve null',
       contract:
         'layer L5, approved bridge abi-c, forbidden dependencies absent, dependency-rules external_imports synced',
       mxterm_reference:
         'light-neutral chrome (tabs bar, left session repository, status/input lines) and a modal new-SSH dialog referencing the mxterm prototype design; credentials are not persisted',
     },
     verification: {
-      unit_tests: 'pass (cargo test -p clients-windows --locked, 16 passed)',
+      unit_tests: 'pass (cargo test -p clients-windows --locked, 23 passed)',
       cargo_check: 'pass (cargo check -p clients-windows --locked)',
       cargo_fmt: 'pass (cargo fmt -p clients-windows --check)',
       clippy: 'pass (cargo clippy -p clients-windows --all-targets --all-features -- -D warnings)',
       self_check: 'pass (ssh-gui --check)',
+      bridge_check: 'pass (ssh-gui --bridge-check: shim injected + webmessage invoke round-trip)',
       contract_test: 'pass (node scripts/test-pc-gui.mjs .)',
     },
     notes: [
@@ -157,7 +171,7 @@ pure, headless-testable UI model in \`clients/windows/src/model.rs\`.
 ## Verification
 
 \`\`\`text
-cargo test -p clients-windows --locked              PASS (16 tests)
+cargo test -p clients-windows --locked              PASS (23 tests)
 cargo check -p clients-windows --locked             PASS
 cargo fmt -p clients-windows --check                PASS
 cargo clippy -p clients-windows --all-targets --all-features -- -D warnings  PASS
@@ -177,5 +191,5 @@ product UI.
 }
 
 console.log(
-  'pc-gui contract valid: the Windows PC GUI builds, its 16 unit tests pass, the headless self-check passes, and the L5 contract (abi-c bridge, no forbidden dependencies, dependency-rules synced) holds.'
+  'pc-gui contract valid: the Windows PC GUI builds, its 23 unit tests pass, the headless self-check passes, and the L5 contract (abi-c bridge, no forbidden dependencies, dependency-rules synced) holds.'
 );

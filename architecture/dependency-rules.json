@@ -414,7 +414,8 @@
         "windows-sys",
         "windows",
         "webview2",
-        "tiny-http"
+        "tiny-http",
+        "serde-json"
       ]
     },
     {

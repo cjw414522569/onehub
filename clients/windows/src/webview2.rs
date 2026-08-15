@@ -10,14 +10,18 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use webview2_com::{
+    AddScriptToExecuteOnDocumentCreatedCompletedHandler,
     CreateCoreWebView2ControllerCompletedHandler, CreateCoreWebView2EnvironmentCompletedHandler,
+    ExecuteScriptCompletedHandler,
     Microsoft::Web::WebView2::Win32::{
         CreateCoreWebView2EnvironmentWithOptions, ICoreWebView2, ICoreWebView2Controller,
         ICoreWebView2Environment,
     },
+    WebMessageReceivedEventHandler,
 };
 use windows::Win32::Foundation::HWND;
 use windows::Win32::Foundation::RECT;
+use windows::Win32::System::Com::CoTaskMemFree;
 
 /// Creates the WebView2 environment + controller parented to `parent`,
 /// optionally navigates to `html` (raw HTML via NavigateToString when
@@ -79,6 +83,116 @@ pub(crate) unsafe fn init_webview2(
 pub(crate) unsafe fn navigate(webview: &ICoreWebView2, url: &str) -> windows::core::Result<()> {
     let uri = windows::core::HSTRING::from(url);
     webview.Navigate(&uri)
+}
+
+/// The JS bridge shim injected into every document before app scripts. It
+/// defines window.__TAURI_INTERNALS__ so @tauri-apps/api calls route to the
+/// host via chrome.webview.postMessage (mirrors ui/src/bridge/shim.ts).
+pub(crate) const SHIM_JS: &str = r#"(function () {
+  if (window.__TAURI_INTERNALS__) return;
+  var _req = 0;
+  var _pending = {};
+  function _post(m) { if (window.chrome && window.chrome.webview) { window.chrome.webview.postMessage(m); } }
+  window.__TAURI_INTERNALS__ = {
+    transformCallback: function (cb) { return (window.__TAURI_INTERNALS__._cb = (window.__TAURI_INTERNALS__._cb || 0) + 1); },
+    postMessage: _post,
+    invoke: function (cmd, payload, opts) {
+      _req += 1; var id = _req;
+      return new Promise(function (resolve, reject) {
+        _pending[id] = { resolve: resolve, reject: reject };
+        _post({ kind: 'invoke', requestId: id, cmd: cmd, payload: payload || {} });
+      });
+    }
+  };
+  if (window.chrome && window.chrome.webview && window.chrome.webview.addEventListener) {
+    window.chrome.webview.addEventListener('message', function (e) {
+      var d = (typeof e.data === 'string') ? JSON.parse(e.data) : e.data;
+      if (d && d.kind === 'invoke-reply' && _pending[d.requestId]) {
+        var p = _pending[d.requestId]; delete _pending[d.requestId];
+        if (d.error) { p.reject(new Error(d.error)); } else { p.resolve(d.payload); }
+      }
+    });
+  }
+})();"#;
+
+/// Injects the bridge shim into every document created in this WebView2.
+pub(crate) unsafe fn inject_shim(
+    webview: &ICoreWebView2,
+    script: &str,
+) -> webview2_com::Result<()> {
+    let wide: Vec<u16> = script.encode_utf16().chain(std::iter::once(0)).collect();
+    let webview = webview.clone();
+    AddScriptToExecuteOnDocumentCreatedCompletedHandler::wait_for_async_operation(
+        Box::new(move |handler| unsafe {
+            let pcwstr = windows::core::PCWSTR(wide.as_ptr());
+            webview.AddScriptToExecuteOnDocumentCreated(pcwstr, &handler)?;
+            Ok(())
+        }),
+        Box::new(|result, _script_id| {
+            result?;
+            Ok(())
+        }),
+    )?;
+    Ok(())
+}
+
+/// Registers the WebMessageReceived handler; hwnd is the main window whose
+/// AppState the bridge mutates. Returns the event token.
+pub(crate) unsafe fn add_message_handler(
+    hwnd: *mut core::ffi::c_void,
+    webview: &ICoreWebView2,
+) -> windows::core::Result<i64> {
+    let handler = WebMessageReceivedEventHandler::create(Box::new(move |sender, args| {
+        let sender = sender.expect("webmessage sender");
+        let args = args.expect("webmessage args");
+        let mut json_pwstr = windows::core::PWSTR::null();
+        args.WebMessageAsJson(&mut json_pwstr)?;
+        let message = json_pwstr.to_string()?;
+        if !json_pwstr.is_null() {
+            CoTaskMemFree(Some(json_pwstr.0 as *const core::ffi::c_void));
+        }
+        eprintln!(
+            "[bridge] <- {}",
+            message.chars().take(140).collect::<String>()
+        );
+        if let Some(reply) = crate::on_web_message(hwnd, &message) {
+            eprintln!(
+                "[bridge] -> {}",
+                reply.chars().take(140).collect::<String>()
+            );
+            let hstring = windows::core::HSTRING::from(reply);
+            sender.PostWebMessageAsString(&hstring)?;
+        }
+        Ok(())
+    }));
+    let mut token: i64 = 0;
+    webview.add_WebMessageReceived(&handler, &mut token)?;
+    Ok(token)
+}
+
+/// Runs a JS expression in the page and returns the JSON-encoded result.
+pub(crate) unsafe fn execute_script(
+    webview: &ICoreWebView2,
+    script: &str,
+) -> webview2_com::Result<String> {
+    let wide: Vec<u16> = script.encode_utf16().chain(std::iter::once(0)).collect();
+    let webview = webview.clone();
+    let output_slot: Rc<RefCell<Option<String>>> = Rc::new(RefCell::new(None));
+    let output_slot2 = output_slot.clone();
+    ExecuteScriptCompletedHandler::wait_for_async_operation(
+        Box::new(move |handler| unsafe {
+            let pcwstr = windows::core::PCWSTR(wide.as_ptr());
+            webview.ExecuteScript(pcwstr, &handler)?;
+            Ok(())
+        }),
+        Box::new(move |result, output| {
+            result?;
+            *output_slot2.borrow_mut() = Some(output);
+            Ok(())
+        }),
+    )?;
+    let output = output_slot.borrow().clone().unwrap_or_default();
+    Ok(output)
 }
 
 /// Updates the WebView2 controller bounds (call on WM_SIZE).
