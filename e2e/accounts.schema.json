@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "note": "Test-account configuration. Secrets are NEVER stored here: this file only documents the required environment variables. Real values come from the environment (E2E_GATEWAY_TOKEN, E2E_TEST_KEY) and are rotated via e2e/src/key-rotation.ts.",
+  "required_environment_variables": {
+    "E2E_GATEWAY_TOKEN": "A short-lived gateway session token for the E2E fake server.",
+    "E2E_TEST_KEY": "A short-lived SSH test key used by E2E journeys."
+  },
+  "key_rotation": {
+    "interval_days": 1,
+    "policy": "Active key = <base>-gen<generation>; rotate() advances the generation; keys expire after interval_days."
+  }
+}

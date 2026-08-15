@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "note": "Copy this file to a private location and fill values via environment variables only. Placeholders are rejected at runtime.",
+  "environment_variables": {
+    "E2E_GATEWAY_TOKEN": "<replace-me>",
+    "E2E_TEST_KEY": "<replace-me>"
+  }
+}
