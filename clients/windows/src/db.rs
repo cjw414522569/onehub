@@ -49,6 +49,7 @@ fn wired_engines() -> &'static [&'static str] {
         "sqlserver",
         "oracle",
         "clickhouse",
+        "dm",
     ]
 }
 
@@ -70,6 +71,48 @@ pub fn engine_available(engine: &str) -> bool {
     wired_engines().contains(&engine)
 }
 
+/// Maps an engine to the driver kind used to reach it (the unified extension
+/// driver framework). Protocol-compatible engines share a driver; DM/GBase go
+/// through a system ODBC driver.
+pub fn driver_kind(engine: &str) -> &'static str {
+    match engine {
+        "mysql" | "oceanbase" => "mysql",
+        "postgresql" | "opengauss" | "kingbase" => "postgres",
+        "sqlite" => "sqlite",
+        "duckdb" => "duckdb",
+        "sqlserver" => "tiberius",
+        "oracle" => "oci",
+        "clickhouse" | "iotdb" => "http",
+        "dm" | "gbase" => "odbc",
+        "redis" => "redis",
+        "mongodb" => "mongodb",
+        _ => "external",
+    }
+}
+
+/// Extension database provider registry: engine -> label -> driver kind ->
+/// wired status -> note. This is the surface consumed by the UI engine picker
+/// and by later extension-marketplace rows (T051).
+pub fn provider_registry() -> Vec<Value> {
+    DB_ENGINES
+        .iter()
+        .map(|(engine, label)| {
+            json!({
+                "engine": engine,
+                "label": label,
+                "driver": driver_kind(engine),
+                "available": engine_available(engine),
+                "note": match driver_kind(engine) {
+                    "odbc" => "需要系统 ODBC 驱动（达梦/GBase 等）",
+                    "oci" => "需要 Oracle Instant Client (OCI)",
+                    "http" => "通过 HTTP 接口",
+                    _ => "内置驱动",
+                },
+            })
+        })
+        .collect()
+}
+
 /// Engine catalog for `db_engine_list` (UI engine picker).
 pub fn engine_list() -> Vec<Value> {
     DB_ENGINES
@@ -78,6 +121,7 @@ pub fn engine_list() -> Vec<Value> {
             json!({
                 "engine": key,
                 "label": label,
+                "driver": driver_kind(key),
                 "available": engine_available(key),
             })
         })
@@ -274,6 +318,9 @@ enum EngineConnection {
     SqlServer(std::sync::Arc<tokio::sync::Mutex<MsSqlClient>>),
     Oracle(std::sync::Arc<std::sync::Mutex<oracle::Connection>>),
     ClickHouse(String),
+    /// ODBC connection string for extension engines that go through a
+    /// system ODBC driver (达梦 DM, later GBase).
+    Odbc(String),
 }
 
 /// A live database session. `connection` holds the engine handle for wired
@@ -515,6 +562,73 @@ fn oracle_run(conn: &oracle::Connection, sql: &str) -> Result<QueryOutcome, Stri
         }
     }
 }
+/// Builds the ODBC connection string for 达梦 DM (requires the DM ODBC driver).
+fn dm_odbc_conn_string(parsed: &DbProfile) -> String {
+    format!(
+        "Driver={{DM8 ODBC DRIVER}};Server={};Port={};UID={};PWD={};DATABASE={}",
+        parsed.host,
+        parsed.port,
+        parsed.username,
+        parsed.password.as_deref().unwrap_or(""),
+        parsed.database
+    )
+}
+
+/// Runs a statement through a system ODBC driver (used by DM). Without the
+/// driver installed the connection fails gracefully with the ODBC diagnostic.
+fn odbc_query(parsed: &DbProfile, sql: &str) -> Result<QueryOutcome, String> {
+    if sql.trim().is_empty() {
+        return Err("SQL 为空。".to_string());
+    }
+    let conn_str = dm_odbc_conn_string(parsed);
+    let env = odbc::Environment::new().map_err(|e| format!("ODBC 环境创建失败：{e:?}"))?;
+    let conn = env
+        .connect_with_connection_string(&conn_str)
+        .map_err(|e| format!("ODBC 连接失败：{e:?}（请安装达梦 ODBC 驱动并核对连接串/服务名）"))?;
+    let stmt =
+        odbc::Statement::with_parent(&conn).map_err(|e| format!("ODBC 语句创建失败：{e:?}"))?;
+    let state = stmt
+        .exec_direct(sql)
+        .map_err(|e| format!("SQL 执行失败：{e:?}"))?;
+    match state {
+        odbc::ResultSetState::NoData(stmt) => {
+            let affected = stmt.affected_row_count().unwrap_or(0).max(0) as u64;
+            Ok(QueryOutcome {
+                columns: Vec::new(),
+                rows: Vec::new(),
+                affected_rows: affected,
+            })
+        }
+        odbc::ResultSetState::Data(mut stmt) => {
+            let col_count = stmt.num_result_cols().unwrap_or(0).max(0) as usize;
+            let columns: Vec<String> = (1..=col_count)
+                .map(|index| {
+                    stmt.describe_col(index as u16)
+                        .map(|descriptor| descriptor.name)
+                        .unwrap_or_default()
+                })
+                .collect();
+            let mut result_rows = Vec::new();
+            while let Some(mut cursor) = stmt.fetch().map_err(|e| format!("读取行失败：{e:?}"))?
+            {
+                let mut values = Vec::new();
+                for index in 1..=col_count {
+                    let value: Option<String> = cursor
+                        .get_data(index as u16)
+                        .map_err(|e| format!("读取列失败：{e:?}"))?;
+                    values.push(value.map(Value::String).unwrap_or(Value::Null));
+                }
+                result_rows.push(values);
+            }
+            Ok(QueryOutcome {
+                columns,
+                rows: result_rows,
+                affected_rows: 0,
+            })
+        }
+    }
+}
+
 /// Builds the ClickHouse HTTP base URL and runs a statement over HTTP.
 ///
 /// SELECT-like statements get "FORMAT JSONEachRow" appended so results are
@@ -1056,6 +1170,7 @@ pub fn query_inline(profile: &Value, sql: &str) -> Result<QueryOutcome, String> 
             oracle_run(&conn, sql)
         }
         "clickhouse" => clickhouse_query(&parsed, sql),
+        "dm" => odbc_query(&parsed, sql),
         other => {
             let label = engine_label(other).unwrap_or(other);
             Err(format!("数据库引擎未接入：{other}（{label}）"))
@@ -1092,6 +1207,7 @@ pub fn query_session(session_id: &str, sql: &str) -> Result<QueryOutcome, String
                 EngineConnection::Oracle(std::sync::Arc::clone(conn))
             }
             Some(EngineConnection::ClickHouse(base)) => EngineConnection::ClickHouse(base.clone()),
+            Some(EngineConnection::Odbc(conn_str)) => EngineConnection::Odbc(conn_str.clone()),
             None => return Err("会话没有活动连接。".to_string()),
         }
     };
@@ -1125,6 +1241,18 @@ pub fn query_session(session_id: &str, sql: &str) -> Result<QueryOutcome, String
             };
             let parsed = DbProfile::parse(&profile)?;
             clickhouse_query(&parsed, sql)
+        }
+        EngineConnection::Odbc(_) => {
+            let profile = {
+                let guard = sessions_map().lock().expect("db sessions lock");
+                guard
+                    .as_ref()
+                    .and_then(|m| m.get(session_id))
+                    .map(|s| s.profile.clone())
+                    .ok_or_else(|| "数据库会话不存在。".to_string())?
+            };
+            let parsed = DbProfile::parse(&profile)?;
+            odbc_query(&parsed, sql)
         }
     }
 }
@@ -1168,6 +1296,7 @@ pub fn connect(profile: &Value) -> Result<String, String> {
             let scheme = if parsed.ssl { "https" } else { "http" };
             EngineConnection::ClickHouse(format!("{scheme}://{}:{}", parsed.host, parsed.port))
         }
+        "dm" => EngineConnection::Odbc(dm_odbc_conn_string(&parsed)),
         other => return Err(format!("数据库引擎未接入：{other}")),
     };
     // Real handshake verification for both engines.
@@ -1214,6 +1343,9 @@ pub fn connect(profile: &Value) -> Result<String, String> {
         EngineConnection::ClickHouse(_) => {
             clickhouse_query(&parsed, "SELECT 1")
                 .map_err(|e| format!("ClickHouse 连接失败：{e}"))?;
+        }
+        EngineConnection::Odbc(_) => {
+            odbc_query(&parsed, "SELECT 1").map_err(|e| format!("ODBC 连接失败：{e}"))?;
         }
     }
     let id = new_id("db");
@@ -1271,7 +1403,7 @@ mod tests {
         assert!(is_known_engine("iotdb"));
         assert!(!is_known_engine("nosql-unknown"));
         assert_eq!(engine_label("mysql"), Some("MySQL"));
-        // T019-T025 wire MySQL/PostgreSQL/SQLite/DuckDB/SQL Server/Oracle/ClickHouse; others stay unwired.
+        // T019-T026 wire MySQL/PostgreSQL/SQLite/DuckDB/SQL Server/Oracle/ClickHouse/DM; others stay unwired.
         assert!(engine_available("mysql"));
         assert!(engine_available("postgresql"));
         assert!(engine_available("sqlite"));
@@ -1279,6 +1411,7 @@ mod tests {
         assert!(engine_available("sqlserver"));
         assert!(engine_available("oracle"));
         assert!(engine_available("clickhouse"));
+        assert!(engine_available("dm"));
         assert!(DB_ENGINES.iter().all(|(key, _)| {
             *key == "mysql"
                 || *key == "postgresql"
@@ -1287,6 +1420,7 @@ mod tests {
                 || *key == "sqlserver"
                 || *key == "oracle"
                 || *key == "clickhouse"
+                || *key == "dm"
                 || !engine_available(key)
         }));
         assert_eq!(engine_list().len(), 15);
@@ -1480,11 +1614,45 @@ mod tests {
     }
 
     #[test]
+    fn driver_kind_maps_extensions() {
+        assert_eq!(driver_kind("mysql"), "mysql");
+        assert_eq!(driver_kind("oceanbase"), "mysql");
+        assert_eq!(driver_kind("opengauss"), "postgres");
+        assert_eq!(driver_kind("kingbase"), "postgres");
+        assert_eq!(driver_kind("dm"), "odbc");
+        assert_eq!(driver_kind("gbase"), "odbc");
+        assert_eq!(driver_kind("iotdb"), "http");
+        let registry = provider_registry();
+        assert_eq!(registry.len(), DB_ENGINES.len());
+        let dm = registry
+            .iter()
+            .find(|p| p["engine"] == "dm")
+            .expect("dm in registry");
+        assert_eq!(dm["driver"], "odbc");
+        assert_eq!(dm["available"], serde_json::Value::Bool(true));
+    }
+
+    #[test]
+    fn dm_odbc_graceful_without_driver() {
+        let profile = json!({ "engine": "dm", "host": "127.0.0.1", "port": 5236, "username": "SYSDBA", "password": "x", "connect_timeout_ms": 800 });
+        let connect_err = connect(&profile).expect_err("no dm driver");
+        assert!(
+            connect_err.contains("失败") || connect_err.contains("ODBC"),
+            "got {connect_err:?}"
+        );
+        let query_err = query_inline(&profile, "SELECT 1").expect_err("no dm driver");
+        assert!(
+            query_err.contains("失败") || query_err.contains("ODBC"),
+            "got {query_err:?}"
+        );
+    }
+
+    #[test]
     fn unwired_engine_connect_is_honest() {
         let err = connect(
-            &json!({ "engine": "dm", "host": "127.0.0.1", "username": "SYSDBA", "password": "x" }),
+            &json!({ "engine": "iotdb", "host": "127.0.0.1", "username": "root", "password": "x" }),
         )
-        .expect_err("dm not wired");
+        .expect_err("iotdb not wired");
         assert!(err.contains("未接入"), "got {err:?}");
         assert!(!close_session("db-missing"));
         assert!(active_db_session_ids().is_empty());

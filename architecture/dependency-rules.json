@@ -417,6 +417,7 @@
         "futures-util",
         "getrandom",
         "mysql-async",
+        "odbc",
         "oracle",
         "tokio-postgres",
         "rusqlite",
