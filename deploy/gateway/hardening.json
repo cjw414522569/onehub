@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "controls": [
+    {
+      "id": "default_non_root",
+      "requirement": "The gateway runs as an unprivileged user; root is never the default at runtime.",
+      "must_include": [
+        { "file": "deploy/gateway/Dockerfile", "pattern": "USER 10001:10001" },
+        { "file": "deploy/gateway/docker-compose.yml", "pattern": "user: \"10001:10001\"" },
+        { "file": "deploy/gateway/helm/values.yaml", "pattern": "runAsNonRoot: true" }
+      ],
+      "must_exclude": [
+        { "file": "deploy/gateway/Dockerfile", "pattern": "USER root" }
+      ]
+    },
+    {
+      "id": "read_only_filesystem",
+      "requirement": "The container root filesystem is read-only; only /tmp is writable.",
+      "must_include": [
+        { "file": "deploy/gateway/docker-compose.yml", "pattern": "read_only: true" },
+        { "file": "deploy/gateway/docker-compose.yml", "pattern": "tmpfs:" },
+        { "file": "deploy/gateway/helm/values.yaml", "pattern": "readOnlyRootFilesystem: true" },
+        { "file": "deploy/gateway/helm/templates/deployment.yaml", "pattern": "readOnlyRootFilesystem: {{ .Values.securityContext.readOnlyRootFilesystem }}" },
+        { "file": "deploy/gateway/helm/templates/deployment.yaml", "pattern": "mountPath: /tmp" }
+      ]
+    },
+    {
+      "id": "tls",
+      "requirement": "The gateway terminates TLS; certificates are mounted read-only from a secret/volume, never embedded in the image.",
+      "must_include": [
+        { "file": "deploy/gateway/docker-compose.yml", "pattern": "GATEWAY_TLS_CERT: /tls/tls.crt" },
+        { "file": "deploy/gateway/docker-compose.yml", "pattern": "GATEWAY_TLS_KEY: /tls/tls.key" },
+        { "file": "deploy/gateway/docker-compose.yml", "pattern": "./certs:/tls:ro" },
+        { "file": "deploy/gateway/helm/values.yaml", "pattern": "secretName: ssh-gateway-tls" },
+        { "file": "deploy/gateway/helm/templates/deployment.yaml", "pattern": "readOnly: true" },
+        { "file": "deploy/gateway/README.md", "pattern": "TLS" }
+      ]
+    },
+    {
+      "id": "resource_limits",
+      "requirement": "CPU and memory limits are set on the gateway container.",
+      "must_include": [
+        { "file": "deploy/gateway/docker-compose.yml", "pattern": "cpus: \"1.0\"" },
+        { "file": "deploy/gateway/docker-compose.yml", "pattern": "memory: 256M" },
+        { "file": "deploy/gateway/helm/values.yaml", "pattern": "cpu: 500m" },
+        { "file": "deploy/gateway/helm/values.yaml", "pattern": "memory: 256Mi" },
+        { "file": "deploy/gateway/helm/templates/deployment.yaml", "pattern": "memory: {{ .Values.resources.limits.memory }}" }
+      ]
+    },
+    {
+      "id": "no_privilege_escalation",
+      "requirement": "Privilege escalation is disabled and all capabilities are dropped.",
+      "must_include": [
+        { "file": "deploy/gateway/docker-compose.yml", "pattern": "no-new-privileges:true" },
+        { "file": "deploy/gateway/docker-compose.yml", "pattern": "- ALL" },
+        { "file": "deploy/gateway/helm/values.yaml", "pattern": "allowPrivilegeEscalation: false" },
+        { "file": "deploy/gateway/helm/values.yaml", "pattern": "- ALL" },
+        { "file": "deploy/gateway/helm/templates/deployment.yaml", "pattern": "allowPrivilegeEscalation: {{ .Values.securityContext.allowPrivilegeEscalation }}" }
+      ]
+    },
+    {
+      "id": "secret_management",
+      "requirement": "Credentials are never persisted by the gateway; TLS material arrives via read-only mounts.",
+      "must_include": [
+        { "file": "deploy/gateway/docker-compose.yml", "pattern": "./certs:/tls:ro" },
+        { "file": "deploy/gateway/helm/values.yaml", "pattern": "secretName: ssh-gateway-tls" },
+        { "file": "deploy/gateway/README.md", "pattern": "never stores" }
+      ]
+    }
+  ],
+  "forbidden_patterns": [
+    { "file": "deploy/gateway/docker-compose.yml", "pattern": "privileged: true" },
+    { "file": "deploy/gateway/docker-compose.yml", "pattern": "network_mode: host" },
+    { "file": "deploy/gateway/helm/values.yaml", "pattern": "privileged: true" },
+    { "file": "deploy/gateway/helm/templates/deployment.yaml", "pattern": "hostNetwork: true" },
+    { "file": "deploy/gateway/helm/templates/deployment.yaml", "pattern": "hostPID: true" },
+    { "file": "deploy/gateway/helm/values.yaml", "pattern": "latest" }
+  ]
+}

@@ -1,0 +1,32 @@
+# Standalone (single-machine) gateway deployment (T141).
+# Hardening: default non-root user, read-only root filesystem, no-new-
+# privileges, all capabilities dropped, TLS certificates mounted read-only,
+# and explicit CPU/memory limits.
+
+services:
+  gateway:
+    build:
+      context: ../..
+      dockerfile: deploy/gateway/Dockerfile
+    image: ssh-gateway:0.1.0
+    user: "10001:10001"
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    ports:
+      - "8080:8080"
+    environment:
+      GATEWAY_TLS_CERT: /tls/tls.crt
+      GATEWAY_TLS_KEY: /tls/tls.key
+    volumes:
+      - ./certs:/tls:ro
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 256M
+    restart: unless-stopped

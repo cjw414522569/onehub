@@ -1,0 +1,46 @@
+# Helm values for the SSH gateway (T141).
+# Secure defaults: non-root, read-only root filesystem, no privilege
+# escalation, all capabilities dropped, TLS via a mounted secret, and
+# explicit resource limits.
+
+replicaCount: 1
+
+image:
+  repository: ssh-gateway
+  tag: "0.1.0"
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 8080
+
+tls:
+  enabled: true
+  secretName: ssh-gateway-tls
+  certPath: /tls/tls.crt
+  keyPath: /tls/tls.key
+
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  readOnlyRootFilesystem: true
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+
+podSecurityContext:
+  fsGroup: 10001
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 256Mi
+  requests:
+    cpu: 100m
+    memory: 64Mi
+
+tmpfs:
+  enabled: true
+  size: 64Mi

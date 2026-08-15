@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "controls": [
+    {
+      "id": "default_non_root",
+      "pass": true,
+      "findings": []
+    },
+    {
+      "id": "read_only_filesystem",
+      "pass": true,
+      "findings": []
+    },
+    {
+      "id": "tls",
+      "pass": true,
+      "findings": []
+    },
+    {
+      "id": "resource_limits",
+      "pass": true,
+      "findings": []
+    },
+    {
+      "id": "no_privilege_escalation",
+      "pass": true,
+      "findings": []
+    },
+    {
+      "id": "secret_management",
+      "pass": true,
+      "findings": []
+    }
+  ],
+  "forbidden": [
+    {
+      "file": "deploy/gateway/docker-compose.yml",
+      "pattern": "privileged: true",
+      "hit": false
+    },
+    {
+      "file": "deploy/gateway/docker-compose.yml",
+      "pattern": "network_mode: host",
+      "hit": false
+    },
+    {
+      "file": "deploy/gateway/helm/values.yaml",
+      "pattern": "privileged: true",
+      "hit": false
+    },
+    {
+      "file": "deploy/gateway/helm/templates/deployment.yaml",
+      "pattern": "hostNetwork: true",
+      "hit": false
+    },
+    {
+      "file": "deploy/gateway/helm/templates/deployment.yaml",
+      "pattern": "hostPID: true",
+      "hit": false
+    },
+    {
+      "file": "deploy/gateway/helm/values.yaml",
+      "pattern": "latest",
+      "hit": false
+    }
+  ],
+  "smoke": {
+    "gateway_cargo_check_locked": true,
+    "docker": "blocked_unavailable_toolchain",
+    "helm": "blocked_unavailable_toolchain"
+  }
+}
