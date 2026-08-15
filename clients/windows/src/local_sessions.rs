@@ -6,15 +6,36 @@
 //! feeds input via terminal_write (routed to the session in a later row).
 
 use std::collections::HashMap;
+use std::io::{Read, Write};
+use std::process::{Child, ChildStdin, Command, Stdio};
+use std::sync::mpsc::{Receiver, Sender};
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::io::AsyncReadExt;
 
-/// Session registry (session_id -> kind).
+/// Session registry (session_id -> kind) for telnet/serial.
 static SESSIONS: Mutex<Option<HashMap<String, String>>> = Mutex::new(None);
 
 fn sessions_map() -> &'static Mutex<Option<HashMap<String, String>>> {
     &SESSIONS
+}
+
+/// A live local terminal session: the spawned shell process plus channels for
+/// stdin (write) and stdout/stderr (read). Output is pumped by reader threads
+/// into `rx`; main.rs drains it on a timer and emits terminal:output events.
+struct LocalSession {
+    child: Child,
+    stdin: Option<ChildStdin>,
+    rx: Receiver<Vec<u8>>,
+    request_id: Option<String>,
+    closed: bool,
+}
+
+/// Registry for real local terminal processes (session_id -> session).
+static LOCAL_SESSIONS: Mutex<Option<HashMap<String, LocalSession>>> = Mutex::new(None);
+
+fn local_sessions_map() -> &'static Mutex<Option<HashMap<String, LocalSession>>> {
+    &LOCAL_SESSIONS
 }
 
 fn new_id(prefix: &str) -> String {
@@ -176,29 +197,156 @@ pub async fn open_serial(port_name: &str, baud_rate: Option<u32>) -> Result<Stri
     Ok(id)
 }
 
-/// Opens a local terminal session (local_terminal_open): resolves the shell
-/// command and registers the session. Returns the session id.
-pub fn open_local(command: &str) -> Result<String, String> {
+/// Opens a local terminal session (local_terminal_open): spawns the shell
+/// process with piped stdio and starts reader threads that pump stdout/stderr
+/// into the session output channel. Returns the session id.
+pub fn open_local(
+    command: &str,
+    args: &[String],
+    cwd: Option<&str>,
+    request_id: Option<String>,
+) -> Result<String, String> {
     if command.is_empty() {
         return Err("缺少本地终端命令。".to_string());
     }
+    let mut cmd = Command::new(command);
+    cmd.args(args);
+    cmd.stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    if let Some(cwd) = cwd {
+        if !cwd.is_empty() {
+            cmd.current_dir(cwd);
+        }
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    }
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| format!("启动 {command} 失败：{e}"))?;
+    let stdin = child.stdin.take();
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| "无法获取标准输出。".to_string())?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| "无法获取标准错误。".to_string())?;
+    let (tx, rx): (Sender<Vec<u8>>, Receiver<Vec<u8>>) = std::sync::mpsc::channel();
+    pump_stream(stdout, tx.clone());
+    pump_stream(stderr, tx);
     let id = new_id("local");
-    sessions_map()
+    local_sessions_map()
         .lock()
-        .expect("sessions lock")
+        .expect("local sessions lock")
         .get_or_insert_with(HashMap::new)
-        .insert(id.clone(), "local".to_string());
+        .insert(
+            id.clone(),
+            LocalSession {
+                child,
+                stdin,
+                rx,
+                request_id,
+                closed: false,
+            },
+        );
     Ok(id)
 }
 
-/// Closes a session (removes it from the registry).
+/// Spawns a reader thread that forwards a byte stream into the channel.
+fn pump_stream<R: Read + Send + 'static>(mut reader: R, tx: Sender<Vec<u8>>) {
+    std::thread::spawn(move || {
+        let mut buf = [0u8; 4096];
+        loop {
+            match reader.read(&mut buf) {
+                Ok(0) => break,
+                Ok(n) => {
+                    if tx.send(buf[..n].to_vec()).is_err() {
+                        break;
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+    });
+}
+
+/// Writes bytes to a local session's stdin (terminal_write).
+pub fn local_write(session_id: &str, data: &[u8]) -> Result<(), String> {
+    let mut guard = local_sessions_map().lock().expect("local sessions lock");
+    let session = guard
+        .as_mut()
+        .and_then(|m| m.get_mut(session_id))
+        .ok_or_else(|| "本地会话不存在。".to_string())?;
+    if session.closed {
+        return Err("本地会话已关闭。".to_string());
+    }
+    let stdin = session
+        .stdin
+        .as_mut()
+        .ok_or_else(|| "本地会话标准输入不可用。".to_string())?;
+    stdin
+        .write_all(data)
+        .map_err(|e| format!("写入本地会话失败：{e}"))?;
+    stdin.flush().map_err(|e| format!("刷新本地会话失败：{e}"))
+}
+
+/// Drains all pending output chunks from a local session (WM_TIMER poll) and
+/// detects process exit.
+pub fn drain_local_output(session_id: &str) -> Vec<Vec<u8>> {
+    let mut guard = local_sessions_map().lock().expect("local sessions lock");
+    let Some(session) = guard.as_mut().and_then(|m| m.get_mut(session_id)) else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    while let Ok(chunk) = session.rx.try_recv() {
+        out.push(chunk);
+    }
+    if !session.closed && matches!(session.child.try_wait(), Ok(Some(_))) {
+        session.closed = true;
+    }
+    out
+}
+
+/// Returns (request_id, closed) for a local session (for event routing).
+pub fn local_session_info(session_id: &str) -> Option<(Option<String>, bool)> {
+    let guard = local_sessions_map().lock().expect("local sessions lock");
+    guard
+        .as_ref()
+        .and_then(|m| m.get(session_id))
+        .map(|s| (s.request_id.clone(), s.closed))
+}
+
+/// Lists active local session ids (for the WM_TIMER output drain).
+pub fn active_local_session_ids() -> Vec<String> {
+    let guard = local_sessions_map().lock().expect("local sessions lock");
+    guard
+        .as_ref()
+        .map(|m| m.keys().cloned().collect())
+        .unwrap_or_default()
+}
+
+/// Closes a session (kills local processes and removes registry entries).
 pub fn close_session(session_id: &str) -> bool {
-    sessions_map()
+    let mut guard = local_sessions_map().lock().expect("local sessions lock");
+    let removed = guard.as_mut().and_then(|m| m.remove(session_id));
+    let removed_local = removed.is_some();
+    if let Some(mut session) = removed {
+        let _ = session.child.kill();
+        let _ = session.child.wait();
+    }
+    drop(guard);
+    let removed_other = sessions_map()
         .lock()
         .expect("sessions lock")
         .as_mut()
         .map(|m| m.remove(session_id).is_some())
-        .unwrap_or(false)
+        .unwrap_or(false);
+    removed_local || removed_other
 }
 
 #[cfg(test)]
@@ -222,9 +370,34 @@ mod tests {
     }
 
     #[test]
-    fn local_open_returns_id_and_close_works() {
-        let id = open_local("powershell.exe").expect("open");
+    fn local_open_spawns_process_and_close_works() {
+        let id = open_local(
+            "cmd.exe",
+            &["/c".to_string(), "echo hello".to_string()],
+            None,
+            Some("req-1".to_string()),
+        )
+        .expect("open");
         assert!(id.starts_with("local-"));
+        assert_eq!(
+            local_session_info(&id).expect("info").0.as_deref(),
+            Some("req-1")
+        );
+        let mut out = Vec::new();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while std::time::Instant::now() < deadline {
+            out.extend(drain_local_output(&id));
+            if local_session_info(&id).expect("info").1 {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        let concat = out.concat();
+        let text = String::from_utf8_lossy(&concat);
+        assert!(
+            text.contains("hello"),
+            "expected hello in output, got {text:?}"
+        );
         assert!(close_session(&id));
         assert!(!close_session(&id));
     }

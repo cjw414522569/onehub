@@ -32,6 +32,7 @@ use clients_windows::rdp_tools;
 use clients_windows::remote_monitor;
 use clients_windows::scheduled_tasks;
 use clients_windows::sftp;
+use clients_windows::ssh_terminal;
 use clients_windows::store;
 use clients_windows::transfer_bundle;
 use clients_windows::tunnels;
@@ -1191,7 +1192,27 @@ fn local_check() {
     use clients_windows::local_sessions as ls;
     let profiles = ls::list_local_profiles();
     let ports = ls::list_serial_ports();
-    let id = ls::open_local("powershell.exe").expect("open");
+    // Real local terminal: spawn cmd /c echo and drain its output.
+    let id = ls::open_local(
+        "cmd.exe",
+        &["/c".to_string(), "echo onehub-local-ok".to_string()],
+        None,
+        Some("e2e-req".to_string()),
+    )
+    .expect("open");
+    let mut output = Vec::new();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while std::time::Instant::now() < deadline {
+        output.extend(ls::drain_local_output(&id));
+        if ls::local_session_info(&id)
+            .map(|(_, closed)| closed)
+            .unwrap_or(true)
+        {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    let output_text = String::from_utf8_lossy(&output.concat()).to_string();
     let closed = ls::close_session(&id);
     let profile_kinds: Vec<String> = profiles
         .as_array()
@@ -1205,6 +1226,8 @@ fn local_check() {
         "has_cmd": profile_kinds.iter().any(|k| k == "cmd"),
         "serial_port_count": ports.as_array().expect("arr").len(),
         "local_open_id": id.starts_with("local-"),
+        "local_output_ok": output_text.contains("onehub-local-ok"),
+        "local_output": output_text.chars().take(80).collect::<String>(),
         "close_ok": closed,
     });
     println!("{}", serde_json::to_string(&result).expect("json"));
@@ -1800,6 +1823,55 @@ unsafe extern "system" fn wnd_proc(
                 while let Some(command) = state.model.pop_command() {
                     if command == GuiCommand::Quit {
                         PostQuitMessage(0);
+                    }
+                }
+                // Drain real local terminal output into terminal:output events.
+                for session_id in local_sessions::active_local_session_ids() {
+                    let chunks = local_sessions::drain_local_output(&session_id);
+                    let info = local_sessions::local_session_info(&session_id);
+                    let request_id = info.as_ref().and_then(|(r, _)| r.as_deref());
+                    let closed = info.as_ref().map(|(_, c)| *c).unwrap_or(false);
+                    let request_id_owned = request_id.map(str::to_string);
+                    for chunk in chunks {
+                        emit_terminal_output(
+                            state,
+                            &session_id,
+                            request_id_owned.as_deref(),
+                            &chunk,
+                        );
+                    }
+                    if closed {
+                        emit_terminal_state_changed(
+                            state,
+                            &session_id,
+                            request_id_owned.as_deref(),
+                            None,
+                        );
+                        let _ = local_sessions::close_session(&session_id);
+                    }
+                }
+                for session_id in ssh_terminal::active_session_ids() {
+                    let chunks = ssh_terminal::drain_output(&session_id);
+                    let info = ssh_terminal::session_info(&session_id);
+                    let request_id = info.as_ref().and_then(|(r, _)| r.as_deref());
+                    let closed = info.as_ref().map(|(_, c)| *c).unwrap_or(false);
+                    let request_id_owned = request_id.map(str::to_string);
+                    for chunk in chunks {
+                        emit_terminal_output(
+                            state,
+                            &session_id,
+                            request_id_owned.as_deref(),
+                            &chunk,
+                        );
+                    }
+                    if closed {
+                        emit_terminal_state_changed(
+                            state,
+                            &session_id,
+                            request_id_owned.as_deref(),
+                            None,
+                        );
+                        let _ = ssh_terminal::close(&session_id);
                     }
                 }
             }
@@ -2666,7 +2738,32 @@ fn handle_local_session_commands(
                 .and_then(serde_json::Value::as_str)
                 .unwrap_or("")
                 .to_string();
-            local_sessions::open_local(&command).map(serde_json::Value::String)
+            let args: Vec<String> = profile
+                .get("args")
+                .and_then(serde_json::Value::as_array)
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(serde_json::Value::as_str)
+                        .map(|s| s.to_string())
+                        .collect()
+                })
+                .unwrap_or_default();
+            let cwd = request
+                .get("cwd")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_string)
+                .or_else(|| {
+                    profile
+                        .get("cwd")
+                        .and_then(serde_json::Value::as_str)
+                        .map(str::to_string)
+                });
+            let request_id = request
+                .get("request_id")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_string);
+            local_sessions::open_local(&command, &args, cwd.as_deref(), request_id)
+                .map(serde_json::Value::String)
         }
         "telnet_terminal_open" => {
             let host = request
@@ -3276,12 +3373,14 @@ fn handle_network_commands(
 
     // Resolve connection_id -> saved profile (host/port/username).
     let mut resolved = request.clone();
+    let mut full_profile: Option<serde_json::Value> = None;
     if let Some(connection_id) = request
         .get("connection_id")
         .and_then(serde_json::Value::as_str)
     {
         if let Some(store) = &state.store {
             if let Ok(Some(profile)) = store.get_connection(connection_id) {
+                full_profile = Some(profile.clone());
                 resolved["host"] = profile
                     .get("host")
                     .cloned()
@@ -3304,8 +3403,9 @@ fn handle_network_commands(
         "connection_probe_system" => {
             let system = probe::probe_system(&resolved, timeout);
             // Return a ConnectionProfile: merge probe-derived remote OS fields
-            // onto the saved/inline profile and keep the id for UI matching.
-            let mut profile = resolved;
+            // onto the FULL saved profile (keeps name/protocol/group so the
+            // titlebar and repository do not degrade to "连接已删除").
+            let mut profile = full_profile.clone().unwrap_or(resolved);
             let id = profile
                 .get("id")
                 .cloned()
@@ -3604,6 +3704,66 @@ fn apply_window_material(hwnd: HWND, material: i32) -> Result<serde_json::Value,
     Ok(misc_tools::window_material_info(normalized))
 }
 
+/// Emits a terminal:output event to every registered listener.
+fn emit_terminal_output(
+    state: &mut AppState,
+    session_id: &str,
+    request_id: Option<&str>,
+    data: &[u8],
+) {
+    if let Some(webview) = &state.webview {
+        let bytes: Vec<serde_json::Value> = data.iter().map(|b| serde_json::json!(*b)).collect();
+        for handler_id in state.events.event_handler_ids("terminal:output") {
+            let event_obj = serde_json::json!({
+                "event": "terminal:output",
+                "id": handler_id,
+                "payload": {
+                    "session_id": session_id,
+                    "request_id": request_id,
+                    "data": bytes,
+                },
+            });
+            let event_message =
+                serde_json::json!({ "kind": "event", "handlerId": handler_id, "payload": event_obj })
+                    .to_string();
+            let hstring = windows::core::HSTRING::from(event_message);
+            unsafe {
+                let _ = webview.PostWebMessageAsString(&hstring);
+            }
+        }
+    }
+}
+
+/// Emits a terminal:state_changed (closed) event to every registered listener.
+fn emit_terminal_state_changed(
+    state: &mut AppState,
+    session_id: &str,
+    request_id: Option<&str>,
+    exit_status: Option<i32>,
+) {
+    if let Some(webview) = &state.webview {
+        for handler_id in state.events.event_handler_ids("terminal:state_changed") {
+            let event_obj = serde_json::json!({
+                "event": "terminal:state_changed",
+                "id": handler_id,
+                "payload": {
+                    "session_id": session_id,
+                    "request_id": request_id,
+                    "state": "closed",
+                    "exit_status": exit_status,
+                },
+            });
+            let event_message =
+                serde_json::json!({ "kind": "event", "handlerId": handler_id, "payload": event_obj })
+                    .to_string();
+            let hstring = windows::core::HSTRING::from(event_message);
+            unsafe {
+                let _ = webview.PostWebMessageAsString(&hstring);
+            }
+        }
+    }
+}
+
 fn on_web_message(hwnd: HWND, message: &str) -> Option<String> {
     let raw = unsafe { GetWindowLongPtrW(hwnd, GWLP_USERDATA) };
     if raw == 0 {
@@ -3679,6 +3839,123 @@ fn on_web_message(hwnd: HWND, message: &str) -> Option<String> {
         };
         let reply = serde_json::json!({ "kind": "invoke-reply", "requestId": request_id, "payload": payload });
         return Some(reply.to_string());
+    }
+
+    // Real interactive SSH terminal (terminal_connect).
+    if cmd == "terminal_connect" {
+        let payload = parsed
+            .get("payload")
+            .cloned()
+            .unwrap_or(serde_json::Value::Null);
+        let request = payload.get("request").cloned().unwrap_or(payload.clone());
+        let connection_id = request
+            .get("connection_id")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("");
+        let mut profile = request.clone();
+        if let Some(store) = &state.store {
+            if let Ok(Some(stored)) = store.get_connection(connection_id) {
+                for key in [
+                    "host",
+                    "port",
+                    "username",
+                    "password",
+                    "private_key_path",
+                    "private_key_passphrase",
+                ] {
+                    let missing = profile.get(key).map(|v| v.is_null()).unwrap_or(true);
+                    if missing {
+                        if let Some(value) = stored.get(key) {
+                            profile[key] = value.clone();
+                        }
+                    }
+                }
+            }
+        }
+        let cols = request
+            .get("cols")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(80) as u32;
+        let rows = request
+            .get("rows")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(24) as u32;
+        let request_id = request
+            .get("request_id")
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_string);
+        let reply_payload = match ssh_terminal::open(&profile, request_id.clone(), cols, rows) {
+            Ok(session_id) => serde_json::Value::String(session_id),
+            Err(message) => serde_json::json!({
+                "error": { "code": "terminal_connect_failed", "message": message, "recoverable": true }
+            }),
+        };
+        let reply = serde_json::json!({ "kind": "invoke-reply", "requestId": request_id, "payload": reply_payload });
+        return Some(reply.to_string());
+    }
+
+    // Route terminal I/O for real local terminal sessions (Fix B).
+    if cmd == "terminal_write" || cmd == "terminal_close" {
+        let payload = parsed
+            .get("payload")
+            .cloned()
+            .unwrap_or(serde_json::Value::Null);
+        let req = payload.get("request").cloned().unwrap_or(payload.clone());
+        let session_id = req
+            .get("session_id")
+            .and_then(serde_json::Value::as_str)
+            .or_else(|| payload.get("sessionId").and_then(serde_json::Value::as_str))
+            .or_else(|| {
+                payload
+                    .get("session_id")
+                    .and_then(serde_json::Value::as_str)
+            })
+            .unwrap_or("")
+            .to_string();
+        if local_sessions::local_session_info(&session_id).is_some() {
+            if cmd == "terminal_write" {
+                let data = req
+                    .get("data")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("")
+                    .as_bytes()
+                    .to_vec();
+                let result = local_sessions::local_write(&session_id, &data);
+                let reply_payload = match result {
+                    Ok(_) => serde_json::Value::Null,
+                    Err(message) => serde_json::json!({
+                        "error": { "code": "terminal_write_failed", "message": message, "recoverable": true }
+                    }),
+                };
+                let reply = serde_json::json!({ "kind": "invoke-reply", "requestId": request_id, "payload": reply_payload });
+                return Some(reply.to_string());
+            }
+            let _ = local_sessions::close_session(&session_id);
+            let reply = serde_json::json!({ "kind": "invoke-reply", "requestId": request_id, "payload": serde_json::Value::Null });
+            return Some(reply.to_string());
+        }
+        if ssh_terminal::session_info(&session_id).is_some() {
+            if cmd == "terminal_write" {
+                let data = req
+                    .get("data")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("")
+                    .as_bytes()
+                    .to_vec();
+                let result = ssh_terminal::write(&session_id, &data);
+                let reply_payload = match result {
+                    Ok(_) => serde_json::Value::Null,
+                    Err(message) => serde_json::json!({
+                        "error": { "code": "terminal_write_failed", "message": message, "recoverable": true }
+                    }),
+                };
+                let reply = serde_json::json!({ "kind": "invoke-reply", "requestId": request_id, "payload": reply_payload });
+                return Some(reply.to_string());
+            }
+            let _ = ssh_terminal::close(&session_id);
+            let reply = serde_json::json!({ "kind": "invoke-reply", "requestId": request_id, "payload": serde_json::Value::Null });
+            return Some(reply.to_string());
+        }
     }
 
     if let Some(reply) = handle_vault_commands(state, cmd, &parsed) {

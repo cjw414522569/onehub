@@ -19,6 +19,7 @@ pub mod rdp_tools;
 pub mod remote_monitor;
 pub mod scheduled_tasks;
 pub mod sftp;
+pub mod ssh_terminal;
 pub mod store;
 pub mod transfer_bundle;
 pub mod tunnels;
