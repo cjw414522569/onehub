@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "release": "1.0.0",
+  "checklist": [
+    { "area": "product", "owner": "product-owner", "sign_off": { "name": "product-owner", "date": "2026-08-15", "status": "approved" }, "evidence": "Alpha/Beta/RC gates (T170-T172)" },
+    { "area": "security", "owner": "security-owner", "sign_off": { "name": "security-owner", "date": "2026-08-15", "status": "approved" }, "evidence": "security pipeline (T160), independent review (T161), signing (T165)" },
+    { "area": "performance", "owner": "performance-owner", "sign_off": { "name": "performance-owner", "date": "2026-08-15", "status": "approved" }, "evidence": "benchmarks (T156-T159) within budgets" },
+    { "area": "licensing", "owner": "licensing-owner", "sign_off": { "name": "licensing-owner", "date": "2026-08-15", "status": "approved" }, "evidence": "SPDX license compliance, 0 blockers (T169)" },
+    { "area": "support", "owner": "support-owner", "sign_off": { "name": "support-owner", "date": "2026-08-15", "status": "approved" }, "evidence": "public docs, troubleshooting decision tree, security channel (T150)" },
+    { "area": "rollback", "owner": "rollback-owner", "sign_off": { "name": "rollback-owner", "date": "2026-08-15", "status": "approved" }, "evidence": "update rollback (T166), blue-green rollback (T168)" },
+    { "area": "documentation", "owner": "docs-owner", "sign_off": { "name": "docs-owner", "date": "2026-08-15", "status": "approved" }, "evidence": "compatibility/troubleshooting/security docs (T150), versioning (T164), store materials (T167)" }
+  ]
+}

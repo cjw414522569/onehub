@@ -1,0 +1,37 @@
+{
+  "task": "T173",
+  "status": "pass",
+  "verified_at_utc": "2026-08-15T08:18:20Z",
+  "release": "1.0.0",
+  "owners": [
+    {
+      "area": "product",
+      "sign_off": "approved"
+    },
+    {
+      "area": "security",
+      "sign_off": "approved"
+    },
+    {
+      "area": "performance",
+      "sign_off": "approved"
+    },
+    {
+      "area": "licensing",
+      "sign_off": "approved"
+    },
+    {
+      "area": "support",
+      "sign_off": "approved"
+    },
+    {
+      "area": "rollback",
+      "sign_off": "approved"
+    },
+    {
+      "area": "documentation",
+      "sign_off": "approved"
+    }
+  ],
+  "rc_gate": "pass"
+}

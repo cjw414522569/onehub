@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "source_commit": "7cc0a5f0cdaed40bccd6dc65fde135540465e07e",
+  "source_commit": "dd1d5d04bd374f11a4c637a5e8ffbdf799ba2e67",
   "toolchain": {
     "rustc": "rustc 1.97.1 (8bab26f4f 2026-07-14)",
     "cargo": "cargo 1.97.1 (c980f4866 2026-06-30)",
