@@ -24,6 +24,7 @@ pub mod linux_integration;
 pub mod macos_entitlements;
 pub mod macos_integration;
 pub mod mobile;
+pub mod mobile_background;
 pub mod paste;
 pub mod port_forwarding;
 pub mod session_status;
@@ -92,6 +93,9 @@ pub use macos_integration::{
 pub use mobile::{
     effective_safe_area, BarLayout, BottomActionBar, FormFactor, Orientation, SafeAreaInsets,
     SessionStack, SystemBack, Viewport,
+};
+pub use mobile_background::{
+    BackgroundPath, BackgroundTransferPolicy, InterruptionRecovery, MobilePlatform, PlatformPaths,
 };
 pub use paste::{
     PasswordPastePolicy, PasteContent, PasteDecision, PastePayload, PastePolicy, PasteRisk,

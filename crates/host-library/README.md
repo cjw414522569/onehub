@@ -367,3 +367,17 @@
   temporary import file immediately.
 - `IosBiometricPrompt` - confirm / cancel per device state.
 - Real lock-screen / restart / backup-restore tests run on Apple hosts.
+
+## T131: mobile background-transfer paths and user prompts
+
+`crates/host-library/src/mobile_background.rs`:
+
+- `PlatformPaths` - Android (foreground service for active sessions,
+  WorkManager for deferred) vs iOS (BGTaskScheduler, URLSession background
+  transfers) are explicit and different, with a user-visible summary.
+- `BackgroundTransferPolicy` - background transfers require a user prompt
+  and are system time-limited on both platforms.
+- `InterruptionRecovery` - an interrupted transfer resumes from its
+  checkpoint (never past the bytes actually completed).
+- Real background time-limit / system-termination tests run on mobile
+  devices.
