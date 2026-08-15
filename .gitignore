@@ -42,3 +42,7 @@ web/app/node_modules/
 
 # mXterm reference project (separate repo, used as a GUI design reference only)
 mxterm/
+
+# mXterm UI build artifacts (clients/windows/ui)
+clients/windows/ui/node_modules/
+clients/windows/ui/dist/
