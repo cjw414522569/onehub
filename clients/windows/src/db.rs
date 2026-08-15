@@ -41,7 +41,14 @@ pub const DB_ENGINES: &[(&str, &str)] = &[
 
 /// Engines whose real connection is implemented (wired by later rows).
 fn wired_engines() -> &'static [&'static str] {
-    &["mysql", "postgresql", "sqlite", "duckdb", "sqlserver"]
+    &[
+        "mysql",
+        "postgresql",
+        "sqlite",
+        "duckdb",
+        "sqlserver",
+        "oracle",
+    ]
 }
 
 /// Returns true when the engine key is part of the known catalog.
@@ -264,6 +271,7 @@ enum EngineConnection {
     Sqlite(std::sync::Arc<std::sync::Mutex<rusqlite::Connection>>),
     DuckDb(std::sync::Arc<std::sync::Mutex<duckdb::Connection>>),
     SqlServer(std::sync::Arc<tokio::sync::Mutex<MsSqlClient>>),
+    Oracle(std::sync::Arc<std::sync::Mutex<oracle::Connection>>),
 }
 
 /// A live database session. `connection` holds the engine handle for wired
@@ -415,6 +423,96 @@ fn sqlite_run(conn: &rusqlite::Connection, sql: &str) -> Result<QueryOutcome, St
     })
 }
 
+/// Connects an Oracle client (oracle crate; requires OCI libraries at
+/// runtime, so hosts without Oracle Instant Client fail gracefully).
+fn oracle_connect(parsed: &DbProfile) -> Result<oracle::Connection, String> {
+    let service = if parsed.database.is_empty() {
+        "ORCL"
+    } else {
+        parsed.database.as_str()
+    };
+    let connect_string = format!("//{}:{}/{}", parsed.host, parsed.port, service);
+    oracle::Connection::connect(
+        parsed.username.as_str(),
+        parsed.password.as_deref().unwrap_or(""),
+        connect_string.as_str(),
+    )
+    .map_err(|e| format!("Oracle 连接失败：{e}"))
+}
+
+/// Converts an Oracle cell into a JSON value via a type cascade.
+fn oracle_cell_to_json(row: &oracle::Row, index: usize) -> Value {
+    if let Ok(Some(v)) = row.get::<usize, Option<bool>>(index) {
+        return serde_json::json!(v);
+    }
+    if let Ok(Some(v)) = row.get::<usize, Option<i64>>(index) {
+        return serde_json::json!(v);
+    }
+    if let Ok(Some(v)) = row.get::<usize, Option<f64>>(index) {
+        return serde_json::Number::from_f64(v)
+            .map(Value::Number)
+            .unwrap_or(Value::Null);
+    }
+    if let Ok(Some(v)) = row.get::<usize, Option<String>>(index) {
+        return Value::String(v);
+    }
+    if let Ok(Some(v)) = row.get::<usize, Option<chrono::NaiveDate>>(index) {
+        return Value::String(v.to_string());
+    }
+    if let Ok(Some(v)) = row.get::<usize, Option<chrono::NaiveDateTime>>(index) {
+        return Value::String(v.to_string());
+    }
+    if let Ok(Some(v)) = row.get::<usize, Option<Vec<u8>>>(index) {
+        return Value::String(String::from_utf8_lossy(&v).to_string());
+    }
+    Value::Null
+}
+
+/// Runs a statement against an Oracle connection (synchronous). DML affected
+/// rows are not exposed by the oracle crate's Statement API; SELECT
+/// columns/rows are fully real.
+fn oracle_run(conn: &oracle::Connection, sql: &str) -> Result<QueryOutcome, String> {
+    let mut stmt = conn
+        .statement(sql)
+        .build()
+        .map_err(|e| format!("SQL 准备失败：{e}"))?;
+    match stmt.query(&[]) {
+        Ok(result_set) => {
+            let mut columns: Vec<String> = Vec::new();
+            let mut result_rows = Vec::new();
+            for row_result in result_set {
+                let row = row_result.map_err(|e| format!("读取结果失败：{e}"))?;
+                if columns.is_empty() {
+                    columns = row
+                        .column_info()
+                        .iter()
+                        .map(|info| info.name().to_string())
+                        .collect();
+                }
+                let mut values = Vec::new();
+                for index in 0..columns.len() {
+                    values.push(oracle_cell_to_json(&row, index));
+                }
+                result_rows.push(values);
+            }
+            Ok(QueryOutcome {
+                columns,
+                rows: result_rows,
+                affected_rows: 0,
+            })
+        }
+        Err(query_err) => {
+            // DML/DDL path (query rejected the statement).
+            stmt.execute(&[])
+                .map_err(|_| format!("SQL 执行失败：{query_err}"))?;
+            Ok(QueryOutcome {
+                columns: Vec::new(),
+                rows: Vec::new(),
+                affected_rows: 0,
+            })
+        }
+    }
+}
 /// Connects a SQL Server client (tiberius + rustls). Windows integrated auth
 /// is used when the username is blank, otherwise SQL Server auth.
 fn mssql_connect(parsed: &DbProfile) -> Result<MsSqlClient, String> {
@@ -878,6 +976,10 @@ pub fn query_inline(profile: &Value, sql: &str) -> Result<QueryOutcome, String> 
             let mut client = mssql_connect(&parsed)?;
             runtime().block_on(mssql_run(&mut client, sql))
         }
+        "oracle" => {
+            let conn = oracle_connect(&parsed)?;
+            oracle_run(&conn, sql)
+        }
         other => {
             let label = engine_label(other).unwrap_or(other);
             Err(format!("数据库引擎未接入：{other}（{label}）"))
@@ -910,6 +1012,9 @@ pub fn query_session(session_id: &str, sql: &str) -> Result<QueryOutcome, String
             Some(EngineConnection::SqlServer(conn)) => {
                 EngineConnection::SqlServer(std::sync::Arc::clone(conn))
             }
+            Some(EngineConnection::Oracle(conn)) => {
+                EngineConnection::Oracle(std::sync::Arc::clone(conn))
+            }
             None => return Err("会话没有活动连接。".to_string()),
         }
     };
@@ -927,6 +1032,10 @@ pub fn query_session(session_id: &str, sql: &str) -> Result<QueryOutcome, String
         EngineConnection::SqlServer(conn) => {
             let mut guard = runtime().block_on(async { conn.lock().await });
             runtime().block_on(mssql_run(&mut guard, sql))
+        }
+        EngineConnection::Oracle(conn) => {
+            let guard = conn.lock().expect("oracle session lock");
+            oracle_run(&guard, sql)
         }
     }
 }
@@ -961,6 +1070,10 @@ pub fn connect(profile: &Value) -> Result<String, String> {
         "sqlserver" => {
             let client = mssql_connect(&parsed)?;
             EngineConnection::SqlServer(std::sync::Arc::new(tokio::sync::Mutex::new(client)))
+        }
+        "oracle" => {
+            let conn = oracle_connect(&parsed)?;
+            EngineConnection::Oracle(std::sync::Arc::new(std::sync::Mutex::new(conn)))
         }
         other => return Err(format!("数据库引擎未接入：{other}")),
     };
@@ -999,6 +1112,11 @@ pub fn connect(profile: &Value) -> Result<String, String> {
             runtime()
                 .block_on(guard.query("SELECT 1", &[]))
                 .map_err(|e| format!("SQL Server 连接失败：{e}"))?;
+        }
+        EngineConnection::Oracle(conn) => {
+            let guard = conn.lock().expect("oracle session lock");
+            oracle_run(&guard, "SELECT 1 FROM dual")
+                .map_err(|e| format!("Oracle 连接失败：{e}"))?;
         }
     }
     let id = new_id("db");
@@ -1056,18 +1174,20 @@ mod tests {
         assert!(is_known_engine("iotdb"));
         assert!(!is_known_engine("nosql-unknown"));
         assert_eq!(engine_label("mysql"), Some("MySQL"));
-        // T019-T023 wire MySQL/PostgreSQL/SQLite/DuckDB/SQL Server; others stay unwired.
+        // T019-T024 wire MySQL/PostgreSQL/SQLite/DuckDB/SQL Server/Oracle; others stay unwired.
         assert!(engine_available("mysql"));
         assert!(engine_available("postgresql"));
         assert!(engine_available("sqlite"));
         assert!(engine_available("duckdb"));
         assert!(engine_available("sqlserver"));
+        assert!(engine_available("oracle"));
         assert!(DB_ENGINES.iter().all(|(key, _)| {
             *key == "mysql"
                 || *key == "postgresql"
                 || *key == "sqlite"
                 || *key == "duckdb"
                 || *key == "sqlserver"
+                || *key == "oracle"
                 || !engine_available(key)
         }));
         assert_eq!(engine_list().len(), 15);
@@ -1241,9 +1361,19 @@ mod tests {
     }
 
     #[test]
+    fn oracle_refused_endpoints_are_graceful() {
+        let profile = json!({ "engine": "oracle", "host": "127.0.0.1", "port": 1, "username": "system", "password": "x", "connect_timeout_ms": 800 });
+        let connect_err = connect(&profile).expect_err("refused");
+        assert!(connect_err.contains("失败"), "got {connect_err:?}");
+
+        let query_err = query_inline(&profile, "SELECT 1 FROM dual").expect_err("refused");
+        assert!(query_err.contains("失败"), "got {query_err:?}");
+    }
+
+    #[test]
     fn unwired_engine_connect_is_honest() {
-        let err = connect(&json!({ "engine": "oracle", "host": "127.0.0.1", "username": "system", "password": "x" }))
-            .expect_err("oracle not wired");
+        let err = connect(&json!({ "engine": "clickhouse", "host": "127.0.0.1", "username": "default", "password": "x" }))
+            .expect_err("clickhouse not wired");
         assert!(err.contains("未接入"), "got {err:?}");
         assert!(!close_session("db-missing"));
         assert!(active_db_session_ids().is_empty());
