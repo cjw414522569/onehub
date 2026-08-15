@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "raw_tcp": {
+    "status": "unavailable",
+    "reason": "browsers cannot open raw TCP sockets",
+    "user_note": "Direct SSH is not available in the browser; connections go through the gateway."
+  },
+  "capabilities": {
+    "terminal.rendering": {
+      "status": "available",
+      "gated": false,
+      "user_note": "The terminal renders in the browser via WebAssembly."
+    },
+    "ssh.direct_tcp": {
+      "status": "unavailable",
+      "gated": true,
+      "user_note": "Direct SSH is unavailable; use the gateway."
+    },
+    "ssh.via_gateway": {
+      "status": "available",
+      "gated": false,
+      "user_note": "SSH through the gateway WebSocket works."
+    },
+    "sftp.via_gateway": {
+      "status": "available",
+      "gated": false,
+      "user_note": "File transfers work through the gateway."
+    },
+    "local.filesystem": {
+      "status": "unavailable",
+      "gated": true,
+      "user_note": "The browser cannot access the local filesystem."
+    },
+    "clipboard": {
+      "status": "partial",
+      "gated": false,
+      "user_note": "Clipboard requires a permission prompt."
+    },
+    "notifications": {
+      "status": "partial",
+      "gated": false,
+      "user_note": "Notifications require a permission prompt."
+    },
+    "port_forward.direct": {
+      "status": "unavailable",
+      "gated": true,
+      "user_note": "Direct port forwarding is unavailable (no raw TCP)."
+    },
+    "port_forward.via_gateway": {
+      "status": "available",
+      "gated": false,
+      "user_note": "Gateway-mediated forwarding works."
+    },
+    "key_storage.hardware": {
+      "status": "unavailable",
+      "gated": true,
+      "user_note": "No OS keystore in the browser; keys stay in memory for the session."
+    },
+    "multi_window": {
+      "status": "available",
+      "gated": false,
+      "user_note": "Browser tabs/windows act as windows."
+    }
+  }
+}
