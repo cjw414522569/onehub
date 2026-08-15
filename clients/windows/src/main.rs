@@ -25,6 +25,7 @@ use clients_windows::probe;
 use clients_windows::sftp;
 use clients_windows::store;
 use clients_windows::transfer_bundle;
+use clients_windows::tunnels;
 use windows_sys::core::w;
 use windows_sys::Win32::Foundation::{GetLastError, HWND, LPARAM, LRESULT, RECT, SIZE, WPARAM};
 use windows_sys::Win32::Graphics::Gdi::{
@@ -147,7 +148,55 @@ fn main() {
         bundle_check();
         return;
     }
+    if std::env::args().any(|argument| argument == "--tunnel-check") {
+        tunnel_check();
+        return;
+    }
     run_gui();
+}
+
+/// End-to-end tunnel check (--tunnel-check): creates a tunnel rule, lists it,
+/// stops it, and deletes it, printing JSON evidence. start_rule requires a
+/// real SSH server (blocked_environment here); the state machine and
+/// persistence are verified (mxterm parity T007).
+fn tunnel_check() {
+    use clients_windows::store::Store;
+    use clients_windows::tunnels as tu;
+    let dir = std::env::temp_dir().join(format!(
+        "ssh-tunnel-e2e-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    ));
+    let _ = std::fs::create_dir_all(&dir);
+    let db = dir.join("t.db");
+    let mut store = Store::open(&db).expect("store");
+    let created = tu::upsert_rule(
+        &mut store,
+        &serde_json::json!({
+            "name": "web", "kind": "local", "connection_id": "c1",
+            "local_host": "127.0.0.1", "local_port": 8080,
+            "remote_host": "internal", "remote_port": 80, "auto_start": false
+        }),
+    )
+    .expect("upsert");
+    let id = created["rule"]["id"].as_str().expect("id").to_string();
+    let listed = tu::list_rules(&store).expect("list");
+    let stopped = tu::stop_rule(&id).expect("stop");
+    let deleted = tu::delete_rule(&mut store, &id).expect("delete");
+    let after = tu::list_rules(&store).expect("list");
+    let result = serde_json::json!({
+        "created_kind": created["rule"]["kind"],
+        "listed_count": listed.as_array().expect("arr").len(),
+        "listed_status": listed[0]["state"]["status"],
+        "stop_status": stopped["state"]["status"],
+        "delete_ok": deleted.is_null(),
+        "after_count": after.as_array().expect("arr").len(),
+    });
+    println!("{}", serde_json::to_string(&result).expect("json"));
+    let _ = std::fs::remove_dir_all(&dir);
 }
 
 /// End-to-end connection transfer bundle check (--bundle-check): exports
@@ -816,6 +865,94 @@ unsafe fn handle_key(state: &mut AppState, hwnd: HWND, wparam: WPARAM) {
         state.model.delete_forward();
     }
     InvalidateRect(hwnd, std::ptr::null(), 1);
+}
+
+/// Handles SSH tunnel commands (mxterm parity T007): tunnel_list/upsert/
+/// delete/start/stop/autostart. Rules persist in the store; start/autostart
+/// run on a tokio runtime.
+fn handle_tunnel_commands(
+    state: &mut AppState,
+    cmd: &str,
+    parsed: &serde_json::Value,
+) -> Option<String> {
+    let is_tunnel_cmd = matches!(
+        cmd,
+        "tunnel_list"
+            | "tunnel_upsert"
+            | "tunnel_delete"
+            | "tunnel_start"
+            | "tunnel_stop"
+            | "tunnel_autostart"
+    );
+    if !is_tunnel_cmd {
+        return None;
+    }
+    let request_id = parsed
+        .get("requestId")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+    let payload = parsed
+        .get("payload")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+    let request = payload.get("request").cloned().unwrap_or(payload.clone());
+
+    let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
+    let result = match cmd {
+        "tunnel_list" => match state.store.as_ref() {
+            Some(store) => tunnels::list_rules(store),
+            None => Err("本地存储不可用。".to_string()),
+        },
+        "tunnel_upsert" => match state.store.as_mut() {
+            Some(store) => tunnels::upsert_rule(store, &request),
+            None => Err("本地存储不可用。".to_string()),
+        },
+        "tunnel_delete" => {
+            let rule_id = request
+                .get("rule_id")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            match state.store.as_mut() {
+                Some(store) => tunnels::delete_rule(store, rule_id),
+                None => Err("本地存储不可用。".to_string()),
+            }
+        }
+        "tunnel_start" => {
+            let rule_id = request
+                .get("rule_id")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            let credential = request.get("runtime_credential").cloned();
+            match state.store.as_ref() {
+                Some(store) => rt.block_on(async {
+                    tunnels::start_rule(store, rule_id, credential.as_ref()).await
+                }),
+                None => Err("本地存储不可用。".to_string()),
+            }
+        }
+        "tunnel_stop" => {
+            let rule_id = request
+                .get("rule_id")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            tunnels::stop_rule(rule_id)
+        }
+        "tunnel_autostart" => match state.store.as_ref() {
+            Some(store) => rt.block_on(tunnels::autostart(store)),
+            None => Err("本地存储不可用。".to_string()),
+        },
+        _ => Err("未知命令".to_string()),
+    };
+    let reply_payload = match result {
+        Ok(value) => value,
+        Err(message) => serde_json::json!({
+            "error": { "code": "tunnel_error", "message": message, "recoverable": true }
+        }),
+    };
+    Some(
+        serde_json::json!({ "kind": "invoke-reply", "requestId": request_id, "payload": reply_payload })
+            .to_string(),
+    )
 }
 
 /// Handles connection import/export bundle commands (mxterm parity T006):
@@ -1549,6 +1686,10 @@ fn on_web_message(hwnd: HWND, message: &str) -> Option<String> {
     }
 
     if let Some(reply) = handle_transfer_bundle_commands(state, cmd, &parsed) {
+        return Some(reply);
+    }
+
+    if let Some(reply) = handle_tunnel_commands(state, cmd, &parsed) {
         return Some(reply);
     }
 

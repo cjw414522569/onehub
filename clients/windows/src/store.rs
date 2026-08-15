@@ -305,6 +305,27 @@ impl Store {
         }
     }
 
+    // ---- tunnels ----
+
+    /// Lists tunnel rules.
+    pub fn list_tunnels(&self) -> rusqlite::Result<Vec<Value>> {
+        self.list("tunnel")
+    }
+
+    /// Gets one tunnel rule by id.
+    pub fn get_tunnel(&self, id: &str) -> rusqlite::Result<Option<Value>> {
+        self.get("tunnel", id)
+    }
+
+    /// Upserts a tunnel rule.
+    pub fn put_tunnel(&mut self, id: &str, rule: &Value) -> rusqlite::Result<()> {
+        self.put("tunnel", id, rule)
+    }
+
+    /// Deletes a tunnel rule.
+    pub fn delete_tunnel(&mut self, id: &str) -> rusqlite::Result<bool> {
+        self.delete("tunnel", id)
+    }
     // ---- credentials ----
 
     /// Lists credentials (mXterm CredentialProfile[]).
