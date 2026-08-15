@@ -216,6 +216,7 @@
         "tokio",
         "base64",
         "chrono",
+        "duckdb",
         "hmac",
         "sha1",
         "sha2",

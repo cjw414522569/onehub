@@ -40,7 +40,7 @@ pub const DB_ENGINES: &[(&str, &str)] = &[
 
 /// Engines whose real connection is implemented (wired by later rows).
 fn wired_engines() -> &'static [&'static str] {
-    &["mysql", "postgresql", "sqlite"]
+    &["mysql", "postgresql", "sqlite", "duckdb"]
 }
 
 /// Returns true when the engine key is part of the known catalog.
@@ -258,6 +258,7 @@ enum EngineConnection {
     MySql(mysql_async::Pool),
     Postgres(std::sync::Arc<tokio_postgres::Client>),
     Sqlite(std::sync::Arc<std::sync::Mutex<rusqlite::Connection>>),
+    DuckDb(std::sync::Arc<std::sync::Mutex<duckdb::Connection>>),
 }
 
 /// A live database session. `connection` holds the engine handle for wired
@@ -409,6 +410,126 @@ fn sqlite_run(conn: &rusqlite::Connection, sql: &str) -> Result<QueryOutcome, St
     })
 }
 
+/// Opens a DuckDB database (file path or :memory:).
+fn duckdb_open(parsed: &DbProfile) -> Result<duckdb::Connection, String> {
+    let path = if parsed.database.is_empty() {
+        ":memory:".to_string()
+    } else {
+        parsed.database.clone()
+    };
+    duckdb::Connection::open(&path).map_err(|e| format!("DuckDB 打开失败：{e}"))
+}
+
+/// Converts a duckdb value into a JSON value.
+fn duckdb_value_to_json(value: duckdb::types::Value) -> Value {
+    use duckdb::types::Value as Dv;
+    match value {
+        Dv::Null => Value::Null,
+        Dv::Boolean(b) => serde_json::json!(b),
+        Dv::TinyInt(i) => serde_json::json!(i),
+        Dv::SmallInt(i) => serde_json::json!(i),
+        Dv::Int(i) => serde_json::json!(i),
+        Dv::BigInt(i) => serde_json::json!(i),
+        Dv::UTinyInt(i) => serde_json::json!(i),
+        Dv::USmallInt(i) => serde_json::json!(i),
+        Dv::UInt(i) => serde_json::json!(i),
+        Dv::UBigInt(i) => serde_json::json!(i),
+        Dv::HugeInt(i) => serde_json::Number::from_i128(i)
+            .map(Value::Number)
+            .unwrap_or(Value::String(i.to_string())),
+        Dv::UHugeInt(i) => serde_json::Number::from_u128(i)
+            .map(Value::Number)
+            .unwrap_or(Value::String(i.to_string())),
+        Dv::Float(f) => serde_json::Number::from_f64(f as f64)
+            .map(Value::Number)
+            .unwrap_or(Value::Null),
+        Dv::Double(f) => serde_json::Number::from_f64(f)
+            .map(Value::Number)
+            .unwrap_or(Value::Null),
+        Dv::Decimal(d) => Value::String(d.to_string()),
+        Dv::Timestamp(_, i) => Value::String(i.to_string()),
+        Dv::Text(t) => Value::String(t),
+        Dv::Enum(t) => Value::String(t),
+        Dv::Blob(b) | Dv::Geometry(b) => Value::String(String::from_utf8_lossy(&b).to_string()),
+        Dv::List(items) | Dv::Array(items) => {
+            Value::Array(items.into_iter().map(duckdb_value_to_json).collect())
+        }
+        Dv::Struct(map) => {
+            let mut object = serde_json::Map::new();
+            for (key, value) in map.iter() {
+                object.insert(key.clone(), duckdb_value_to_json(value.clone()));
+            }
+            Value::Object(object)
+        }
+        Dv::Map(map) => {
+            let mut object = serde_json::Map::new();
+            for (key, value) in map.iter() {
+                let key_text = match key {
+                    Dv::Text(t) => t.clone(),
+                    other => format!("{other:?}"),
+                };
+                object.insert(key_text, duckdb_value_to_json(value.clone()));
+            }
+            Value::Object(object)
+        }
+        Dv::Union(inner) => duckdb_value_to_json(*inner),
+        _ => Value::Null,
+    }
+}
+
+/// Runs a statement against a DuckDB connection (synchronous).
+///
+/// DuckDB resolves columns at execution time and reports DML/DDL as a single
+/// "Count" result column, so the runner executes once, inspects the executed
+/// statement, and reads rows (or the affected count) accordingly.
+fn duckdb_run(conn: &duckdb::Connection, sql: &str) -> Result<QueryOutcome, String> {
+    let mut stmt = conn
+        .prepare(sql)
+        .map_err(|e| format!("SQL 准备失败：{e}"))?;
+    let mut rows = stmt.query([]).map_err(|e| format!("查询失败：{e}"))?;
+    let statement = rows
+        .as_ref()
+        .ok_or_else(|| "DuckDB 未返回结果。".to_string())?;
+    let column_count = statement.column_count();
+    if column_count == 0 {
+        return Ok(QueryOutcome {
+            columns: Vec::new(),
+            rows: Vec::new(),
+            affected_rows: 0,
+        });
+    }
+    let first_column = statement.column_name(0).ok().cloned().unwrap_or_default();
+    if column_count == 1 && first_column == "Count" {
+        let mut affected: u64 = 0;
+        if let Some(row) = rows.next().map_err(|e| format!("读取结果失败：{e}"))? {
+            affected = row.get::<usize, i64>(0).unwrap_or(0).max(0) as u64;
+        }
+        return Ok(QueryOutcome {
+            columns: Vec::new(),
+            rows: Vec::new(),
+            affected_rows: affected,
+        });
+    }
+    let columns: Vec<String> = (0..column_count)
+        .filter_map(|index| statement.column_name(index).ok().cloned())
+        .collect();
+    let mut result_rows = Vec::new();
+    while let Some(row) = rows.next().map_err(|e| format!("读取结果失败：{e}"))? {
+        let mut values = Vec::new();
+        for index in 0..column_count {
+            let value = row
+                .get::<usize, duckdb::types::Value>(index)
+                .unwrap_or(duckdb::types::Value::Null);
+            values.push(duckdb_value_to_json(value));
+        }
+        result_rows.push(values);
+    }
+    Ok(QueryOutcome {
+        columns,
+        rows: result_rows,
+        affected_rows: 0,
+    })
+}
 /// Converts a mysql_async value into a JSON value.
 fn mysql_value_to_json(value: mysql_async::Value) -> Value {
     match value {
@@ -634,6 +755,10 @@ pub fn query_inline(profile: &Value, sql: &str) -> Result<QueryOutcome, String> 
             let conn = sqlite_open(&parsed)?;
             sqlite_run(&conn, sql)
         }
+        "duckdb" => {
+            let conn = duckdb_open(&parsed)?;
+            duckdb_run(&conn, sql)
+        }
         other => {
             let label = engine_label(other).unwrap_or(other);
             Err(format!("数据库引擎未接入：{other}（{label}）"))
@@ -660,6 +785,9 @@ pub fn query_session(session_id: &str, sql: &str) -> Result<QueryOutcome, String
             Some(EngineConnection::Sqlite(conn)) => {
                 EngineConnection::Sqlite(std::sync::Arc::clone(conn))
             }
+            Some(EngineConnection::DuckDb(conn)) => {
+                EngineConnection::DuckDb(std::sync::Arc::clone(conn))
+            }
             None => return Err("会话没有活动连接。".to_string()),
         }
     };
@@ -669,6 +797,10 @@ pub fn query_session(session_id: &str, sql: &str) -> Result<QueryOutcome, String
         EngineConnection::Sqlite(conn) => {
             let guard = conn.lock().expect("sqlite session lock");
             sqlite_run(&guard, sql)
+        }
+        EngineConnection::DuckDb(conn) => {
+            let guard = conn.lock().expect("duckdb session lock");
+            duckdb_run(&guard, sql)
         }
     }
 }
@@ -696,6 +828,10 @@ pub fn connect(profile: &Value) -> Result<String, String> {
             let conn = sqlite_open(&parsed)?;
             EngineConnection::Sqlite(std::sync::Arc::new(std::sync::Mutex::new(conn)))
         }
+        "duckdb" => {
+            let conn = duckdb_open(&parsed)?;
+            EngineConnection::DuckDb(std::sync::Arc::new(std::sync::Mutex::new(conn)))
+        }
         other => return Err(format!("数据库引擎未接入：{other}")),
     };
     // Real handshake verification for both engines.
@@ -721,6 +857,12 @@ pub fn connect(profile: &Value) -> Result<String, String> {
             guard
                 .query_row("SELECT 1", [], |_| Ok(()))
                 .map_err(|e| format!("SQLite 连接失败：{e}"))?;
+        }
+        EngineConnection::DuckDb(conn) => {
+            let guard = conn.lock().expect("duckdb session lock");
+            guard
+                .query_row("SELECT 1", [], |_| Ok(()))
+                .map_err(|e| format!("DuckDB 连接失败：{e}"))?;
         }
     }
     let id = new_id("db");
@@ -778,12 +920,17 @@ mod tests {
         assert!(is_known_engine("iotdb"));
         assert!(!is_known_engine("nosql-unknown"));
         assert_eq!(engine_label("mysql"), Some("MySQL"));
-        // T019-T021 wire MySQL/PostgreSQL/SQLite; others must stay unwired.
+        // T019-T022 wire MySQL/PostgreSQL/SQLite/DuckDB; others stay unwired.
         assert!(engine_available("mysql"));
         assert!(engine_available("postgresql"));
         assert!(engine_available("sqlite"));
+        assert!(engine_available("duckdb"));
         assert!(DB_ENGINES.iter().all(|(key, _)| {
-            *key == "mysql" || *key == "postgresql" || *key == "sqlite" || !engine_available(key)
+            *key == "mysql"
+                || *key == "postgresql"
+                || *key == "sqlite"
+                || *key == "duckdb"
+                || !engine_available(key)
         }));
         assert_eq!(engine_list().len(), 15);
     }
@@ -886,6 +1033,33 @@ mod tests {
         )
         .expect_err("tls not wired");
         assert!(ssl_err.contains("TLS"), "got {ssl_err:?}");
+    }
+
+    #[test]
+    fn duckdb_roundtrip_works() {
+        let dir =
+            std::env::temp_dir().join(format!("onehub-duckdb-test-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&dir);
+        let profile = json!({ "engine": "duckdb", "database": dir.to_string_lossy() });
+        let create =
+            query_inline(&profile, "CREATE TABLE demo (id INTEGER, name VARCHAR)").expect("create");
+        assert_eq!(create.affected_rows, 0);
+        let insert =
+            query_inline(&profile, "INSERT INTO demo VALUES (1, 'onehub')").expect("insert");
+        assert!(
+            insert.affected_rows >= 1,
+            "affected_rows={}",
+            insert.affected_rows
+        );
+        let select = query_inline(&profile, "SELECT id, name FROM demo").expect("select");
+        assert_eq!(select.columns, vec!["id".to_string(), "name".to_string()]);
+        assert_eq!(select.rows.len(), 1);
+        assert_eq!(select.rows[0][1], Value::String("onehub".to_string()));
+        let session = connect(&profile).expect("connect");
+        let via_session = query_session(&session, "SELECT name FROM demo").expect("session query");
+        assert_eq!(via_session.rows.len(), 1);
+        assert!(close_session(&session));
+        let _ = std::fs::remove_file(&dir);
     }
 
     #[test]

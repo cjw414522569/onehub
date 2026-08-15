@@ -243,10 +243,14 @@ fn db_check() {
     let sqlite_available = engines
         .iter()
         .any(|e| e["engine"] == "sqlite" && e["available"] == serde_json::Value::Bool(true));
+    let duckdb_available = engines
+        .iter()
+        .any(|e| e["engine"] == "duckdb" && e["available"] == serde_json::Value::Bool(true));
     let other_engines_unavailable = engines.iter().all(|e| {
         e["engine"] == "mysql"
             || e["engine"] == "postgresql"
             || e["engine"] == "sqlite"
+            || e["engine"] == "duckdb"
             || e["available"] == serde_json::Value::Bool(false)
     });
     let tcp = db::test_connection(&serde_json::json!({
@@ -320,6 +324,36 @@ fn db_check() {
             .unwrap_or(false);
     let _ = db::close_session(&sqlite_session_id);
     let _ = std::fs::remove_file(&sqlite_path);
+    // DuckDB round-trip through the real engine (create/insert/select).
+    let duckdb_path =
+        std::env::temp_dir().join(format!("onehub-db-check-duckdb-{}.db", std::process::id()));
+    let duckdb_profile = serde_json::json!({
+        "engine": "duckdb",
+        "database": duckdb_path.to_string_lossy(),
+    });
+    let duckdb_session = db::connect(&duckdb_profile);
+    let duckdb_session_id = duckdb_session.clone().unwrap_or_default();
+    let duckdb_create = db::query_session(
+        &duckdb_session_id,
+        "CREATE TABLE IF NOT EXISTS d (id INTEGER, name VARCHAR)",
+    );
+    let duckdb_insert = db::query_session(
+        &duckdb_session_id,
+        "INSERT INTO d VALUES (1, 'onehub-duckdb-ok')",
+    );
+    let duckdb_select = db::query_session(&duckdb_session_id, "SELECT id, name FROM d");
+    let duckdb_roundtrip_ok = duckdb_session.is_ok()
+        && duckdb_create.is_ok()
+        && duckdb_insert
+            .as_ref()
+            .map(|o| o.affected_rows >= 1)
+            .unwrap_or(false)
+        && duckdb_select
+            .as_ref()
+            .map(|o| o.columns.len() == 2 && !o.rows.is_empty())
+            .unwrap_or(false);
+    let _ = db::close_session(&duckdb_session_id);
+    let _ = std::fs::remove_file(&duckdb_path);
     let store_path =
         std::env::temp_dir().join(format!("onehub-db-check-{}.sqlite", std::process::id()));
     let mut store = Store::open(&store_path).expect("store");
@@ -354,6 +388,7 @@ fn db_check() {
         "mysql_available": mysql_available,
         "postgresql_available": postgresql_available,
         "sqlite_available": sqlite_available,
+        "duckdb_available": duckdb_available,
         "other_engines_unavailable": other_engines_unavailable,
         "tcp_refused_graceful": tcp["reachable"] == serde_json::Value::Bool(false),
         "sqlite_missing_reported": sqlite_missing["reachable"] == serde_json::Value::Bool(false),
@@ -363,6 +398,7 @@ fn db_check() {
         "pg_connect_refused_graceful": pg_connect_err.contains("失败"),
         "pg_query_refused_graceful": pg_query_err.contains("失败"),
         "sqlite_roundtrip_ok": sqlite_roundtrip_ok,
+        "duckdb_roundtrip_ok": duckdb_roundtrip_ok,
         "db_connection_save_list_delete_ok": db_listed >= 1 && deleted,
     });
     println!("{}", serde_json::to_string(&result).expect("json"));
