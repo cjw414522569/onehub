@@ -191,11 +191,14 @@ dependencies = [
 name = "cli"
 version = "0.1.0"
 dependencies = [
+ "core-domain",
  "forwarding",
+ "proxy",
  "secure-store",
  "session-orchestrator",
  "storage-sqlite",
  "terminal-parser",
+ "tokio",
  "transfer",
 ]
 

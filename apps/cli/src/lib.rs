@@ -6,9 +6,13 @@
 //! CLI entrypoint (T101 startup / database unlock / failure-recovery flow;
 //! T143 config / connect / exec / exit-code contract).
 
+pub mod capabilities;
 pub mod cli;
 pub mod startup;
 
+pub use capabilities::{
+    parse_target, run_sftp_copy, ForwardSpec, ProxyChainSpec, ProxyHop, SftpSpec,
+};
 pub use cli::{
     Cli, CliConfig, CommandRunner, ConfigError, ExecResult, ExitCode, HostConfig, MockRunner,
     OutputMode,

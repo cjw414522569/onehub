@@ -10,10 +10,14 @@ name = "ssh-cli"
 path = "src/main.rs"
 
 [dependencies]
+core-domain = { path = "../../crates/core-domain" }
 forwarding = { path = "../../crates/forwarding" }
+proxy = { path = "../../crates/proxy" }
 secure-store = { path = "../../crates/secure-store" }
 storage-sqlite = { path = "../../crates/storage-sqlite" }
 session-orchestrator = { path = "../../crates/session-orchestrator" }
 terminal-parser = { path = "../../crates/terminal-parser" }
 transfer = { path = "../../crates/transfer" }
 
+[dev-dependencies]
+tokio = { version = "1", features = ["rt", "macros", "rt-multi-thread"] }

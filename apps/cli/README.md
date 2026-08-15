@@ -46,3 +46,18 @@ Dependencies added: `storage-sqlite`, `secure-store` (declared in
   lines go to stderr (interactive only).
 - Real binary E2E: `--version` 0, `--help` 0, bad args 2,
   `config --check` 0/3/3, `exec` 4 (connect backend pending).
+
+## T144: forwarding, SFTP, and proxy-chain capabilities (shared GUI core)
+
+`apps/cli/src/capabilities.rs`:
+
+- `ForwardSpec::to_config` - builds the exact `forwarding::LocalForwardConfig`
+  the GUI path uses; `bind_scope` drives the exposure warning.
+- `SftpSpec::to_stream_config` - builds the exact `transfer::StreamConfig`
+  (defaults equal the core defaults); `run_sftp_copy` runs the shared
+  `run_streaming_copy` engine.
+- `ProxyChainSpec::first_hop_wire` - builds the SOCKS5 greeting + CONNECT
+  wire bytes with the shared `proxy` encoders (byte-identical to the GUI).
+- CLI/GUI core-agreement tests: config equality, byte-identical wire, and
+  matching transfer statistics ? no behavior divergence.
+- Real binary `cap` commands: `forward`, `sftp`, `proxy --chain`.

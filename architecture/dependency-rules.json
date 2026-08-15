@@ -467,12 +467,14 @@
       "layer": "L6",
       "path": "apps/cli",
       "dependencies": [
-        "session-orchestrator",
-        "terminal-parser",
-        "transfer",
+        "core-domain",
         "forwarding",
+        "proxy",
+        "secure-store",
+        "session-orchestrator",
         "storage-sqlite",
-        "secure-store"
+        "terminal-parser",
+        "transfer"
       ],
       "external_imports": [
         "clap"
