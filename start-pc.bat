@@ -3,37 +3,47 @@ setlocal
 cd /d "%~dp0"
 
 set "ROOT=%CD%"
+set "UI=%ROOT%\clients\windows\ui"
+set "DIST=%UI%\dist\index.html"
 set "EXE=%ROOT%\target\debug\onehub.exe"
-set "DIST=%ROOT%\clients\windows\ui\dist\index.html"
 
-echo [PC client] working dir: %ROOT%
+echo [OneHub PC] working dir: %ROOT%
 
-REM 1) Build the copied mxterm UI if dist is missing.
-if exist "%DIST%" goto have_dist
-echo [PC client] UI dist not found, building ...
-pushd "%ROOT%\clients\windows\ui"
-if exist "node_modules" goto have_deps
-echo [PC client] installing frontend deps (npm install) ...
+REM 1) Install frontend deps when missing.
+if exist "%UI%\node_modules" goto have_deps
+echo [OneHub PC] installing frontend deps (npm install) ...
+pushd "%UI%"
 call npm.cmd install --no-audit --no-fund
 if errorlevel 1 goto npm_failed
+popd
 :have_deps
-echo [PC client] building frontend (npm run build) ...
+
+REM 2) Rebuild the UI when dist is missing or older than any ui/src source.
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+  "$dist='%DIST%'; if (-not (Test-Path $dist)) { exit 1 }; " ^
+  "$newest=Get-ChildItem -Path '%UI%\src' -Recurse -File -Include *.ts,*.tsx,*.js,*.jsx,*.html,*.css -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1; " ^
+  "if ($newest -and $newest.LastWriteTime -gt (Get-Item $dist).LastWriteTime) { exit 1 } else { exit 0 }"
+if errorlevel 1 goto build_ui
+goto have_dist
+
+:build_ui
+echo [OneHub PC] building frontend (npm run build) ...
+pushd "%UI%"
 call npm.cmd run build
-if errorlevel 1 goto build_failed
+if errorlevel 1 goto ui_build_failed
 popd
 
 :have_dist
-REM 2) Compile the native shell if the exe is missing.
-if exist "%EXE%" goto have_exe
-echo [PC client] binary not found, compiling (cargo build) ...
+REM 3) Always compile the native shell (incremental, fast when unchanged).
+echo [OneHub PC] compiling native shell (cargo build -p clients-windows --locked) ...
 cargo build -p clients-windows --locked
 if errorlevel 1 goto cargo_failed
 
-:have_exe
-REM 3) Launch.
-echo [PC client] launching ...
+REM 4) Launch the freshly built binary.
+if not exist "%EXE%" goto exe_missing
+echo [OneHub PC] launching ...
 start "" "%EXE%"
-echo [PC client] started (window title: OneHub - PC Client).
+echo [OneHub PC] started (OneHub - PC Client).
 goto done
 
 :npm_failed
@@ -41,13 +51,17 @@ echo [ERROR] npm install failed
 popd
 goto fail
 
-:build_failed
+:ui_build_failed
 echo [ERROR] frontend build failed
 popd
 goto fail
 
 :cargo_failed
 echo [ERROR] cargo build failed
+goto fail
+
+:exe_missing
+echo [ERROR] binary not found after build: %EXE%
 goto fail
 
 :fail
