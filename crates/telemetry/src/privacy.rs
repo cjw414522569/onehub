@@ -238,6 +238,40 @@ mod tests {
     }
 
     #[test]
+    fn render_and_escape_are_deterministic() {
+        let collector = TelemetryCollector::new(TelemetryConsent::ExplicitConsent);
+        let event = collector
+            .collect(
+                "app_start",
+                &[("platform", "windows"), ("app_version", "x y=z")],
+            )
+            .unwrap();
+        let line = collector.render(&event);
+        // Values are escaped: no whitespace injection, empty values render.
+        assert_eq!(
+            line,
+            "telemetry:event=app_start platform=windows app_version=x_y_z"
+        );
+        let empty = collector
+            .collect("feature_used", &[("feature", "")])
+            .unwrap();
+        assert_eq!(
+            collector.render(&empty),
+            "telemetry:event=feature_used feature=\"\""
+        );
+    }
+
+    #[test]
+    fn consent_getter_and_setter_are_reflected() {
+        let mut collector = TelemetryCollector::default();
+        assert_eq!(collector.consent(), TelemetryConsent::DefaultOff);
+        collector.set_consent(TelemetryConsent::ExplicitConsent);
+        assert_eq!(collector.consent(), TelemetryConsent::ExplicitConsent);
+        collector.set_consent(TelemetryConsent::DefaultOff);
+        assert!(collector.collect("app_start", &[]).is_none());
+    }
+
+    #[test]
     fn schema_is_public_and_clean() {
         // The dictionary never contains terminal/command/identity/host data.
         let forbidden = [

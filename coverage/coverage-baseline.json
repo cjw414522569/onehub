@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "captured_at_utc": "2026-08-15T05:18:00Z",
+  "commit": "T151",
+  "languages": {
+    "rust": {
+      "method": "cargo llvm-cov --workspace --locked --summary-only (line %)",
+      "threshold": 80.0,
+      "baseline": 92.59,
+      "differential_tolerance_pct": 0.5,
+      "core_security_modules": {
+        "services/gateway/src/auth.rs": 99.67,
+        "services/gateway/src/session_protocol.rs": 97.59,
+        "services/gateway/src/address_policy.rs": 95.11,
+        "crates/telemetry/src/crash.rs": 99.64,
+        "crates/telemetry/src/privacy.rs": 100.0,
+        "crates/telemetry/src/log.rs": 95.07,
+        "apps/cli/src/cli.rs": 95.25
+      },
+      "core_security_threshold": 90.0
+    },
+    "typescript": {
+      "method": "module-exercise coverage of web/app/src/*.ts by tests",
+      "threshold": 90.0,
+      "baseline": 100.0
+    },
+    "csharp": {
+      "status": "blocked_unavailable_toolchain"
+    },
+    "swift": {
+      "status": "blocked_unavailable_toolchain"
+    },
+    "kotlin": {
+      "status": "blocked_unavailable_toolchain"
+    }
+  }
+}
