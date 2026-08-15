@@ -17,6 +17,7 @@ pub mod paste;
 pub mod port_forwarding;
 pub mod session_status;
 pub mod snippets;
+pub mod transfer_queue;
 pub mod workspace;
 
 pub use auth_prompt::{

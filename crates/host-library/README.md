@@ -185,3 +185,18 @@
   id** (no duplicate submission).
 - Desktop drag-drop maps to a move op; mobile selection maps to multi-file
   ops; progress, conflict handling, and lifecycle are consistent.
+
+## T115: transfer queue, background progress, failure retry, safe notifications
+
+`crates/host-library/src/transfer_queue.rs`:
+
+- `TransferQueue` - manages transfers with background progress, transient /
+  permanent failure classification, auto-retry under a configurable
+  `RetryPolicy`, and manual retry / cancel that reuse the same entry id (no
+  duplicate submission).
+- `notification_for` - builds system notifications from the **safe label
+  only** (never source/destination paths), so secrets cannot leak (verified
+  by a notification-leak test).
+- Tests: queue lifecycle/stats, cancel/retry without duplicates, transient
+  auto-retry and permanent no-retry, background progress, and notification
+  leak safety.
