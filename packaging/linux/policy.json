@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "formats": {
+    "deb": {
+      "targets": ["debian", "ubuntu"],
+      "dependencies": ["libc6"],
+      "sandbox": "none",
+      "auto_update": "repository"
+    },
+    "rpm": {
+      "targets": ["fedora", "rhel"],
+      "dependencies": ["glibc"],
+      "sandbox": "none",
+      "auto_update": "repository"
+    },
+    "appimage": {
+      "targets": ["any-linux"],
+      "dependencies": ["fuse2-or-3"],
+      "sandbox": "none",
+      "auto_update": "none"
+    },
+    "flatpak": {
+      "targets": ["flathub"],
+      "dependencies": ["org.freedesktop.Platform"],
+      "sandbox": "sandboxed",
+      "permissions": ["network", "share=ipc", "device=all-if-needed"],
+      "auto_update": "flatpak_runtime"
+    }
+  },
+  "auto_update_boundaries": {
+    "repository": "updates only via the distro repository; no self-update",
+    "flatpak_runtime": "updates ride the Flatpak runtime; app data versioned",
+    "none": "no auto-update; manual download"
+  },
+  "reproducibility": {
+    "clean_ci_builds": true,
+    "source_timestamps": true,
+    "deterministic_archives": true
+  }
+}
