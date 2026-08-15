@@ -10,7 +10,10 @@ const SKIP_FILES = new Set(['Cargo.lock']);
 const MAX_SCAN_BYTES = 4 * 1024 * 1024;
 
 const RULES = [
-  { rule: 'private-key', pattern: /-----BEGIN (RSA |EC |DSA |OPENSSH |PGP |ENCRYPTED )?PRIVATE KEY( BLOCK)?-----/ },
+  // A private key is only a real finding when a full PEM block is present
+  // (BEGIN header + base64 body + END footer). A bare `-----BEGIN ... PRIVATE
+  // KEY-----` marker inside parser/test source is not a secret.
+  { rule: 'private-key', pattern: /-----BEGIN [A-Z0-9 ]*PRIVATE KEY( BLOCK)?-----\s*[A-Za-z0-9+/=\s]{40,}?-----END [A-Z0-9 ]*PRIVATE KEY-----/ },
   { rule: 'aws-access-key-id', pattern: /\bAKIA[0-9A-Z]{16}\b/ },
   { rule: 'aws-secret-access-key', pattern: /\baws_secret_access_key\s*[=:]\s*[A-Za-z0-9/+=]{40}\b/i },
   { rule: 'github-pat', pattern: /\b(?:ghp_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{22,})\b/ },
@@ -58,10 +61,17 @@ function walk(dir, findings, state) {
     const text = buffer.toString('utf8');
     const rel = relative(ROOT, absolute).split(sep).join('/');
     state.filesScanned += 1;
+    // The private-key rule matches a full PEM block across the whole file
+    // (one finding per file); the token rules stay per-line.
+    const privateKeyRule = RULES.find((r) => r.rule === 'private-key');
+    if (privateKeyRule.pattern.test(text)) {
+      findings.push({ path: rel, line: 1, rule: 'private-key' });
+    }
     const lines = text.split(/\r?\n/);
     for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
       const line = lines[lineIndex];
       for (const { rule, pattern } of RULES) {
+        if (rule === 'private-key') continue;
         if (pattern.test(line)) {
           findings.push({ path: rel, line: lineIndex + 1, rule });
         }
