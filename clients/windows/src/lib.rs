@@ -9,6 +9,7 @@
 
 pub mod model;
 pub mod probe;
+pub mod scheduled_tasks;
 pub mod sftp;
 pub mod store;
 pub mod transfer_bundle;

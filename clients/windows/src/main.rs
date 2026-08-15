@@ -22,6 +22,7 @@ use clients_windows::model::{
     PANEL_ACTIVE, PANEL_BG, TEXT_MAIN, TEXT_MUTED,
 };
 use clients_windows::probe;
+use clients_windows::scheduled_tasks;
 use clients_windows::sftp;
 use clients_windows::store;
 use clients_windows::transfer_bundle;
@@ -152,7 +153,57 @@ fn main() {
         tunnel_check();
         return;
     }
+    if std::env::args().any(|argument| argument == "--task-check") {
+        task_check();
+        return;
+    }
     run_gui();
+}
+
+/// End-to-end scheduled-task check (--task-check): saves, lists, disables,
+/// and deletes a task; also checks cron matching, printing JSON evidence
+/// (mxterm parity T008). run_now requires a real SSH server (blocked here).
+fn task_check() {
+    use clients_windows::scheduled_tasks as st;
+    use clients_windows::store::Store;
+    let dir = std::env::temp_dir().join(format!(
+        "ssh-task-e2e-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    ));
+    let _ = std::fs::create_dir_all(&dir);
+    let db = dir.join("t.db");
+    let mut store = Store::open(&db).expect("store");
+    let saved = st::save_task(
+        &mut store,
+        "c1",
+        &serde_json::json!({
+            "name": "backup", "cron": "0 2 * * *", "command": "echo hi", "enabled": true
+        }),
+    )
+    .expect("save");
+    let id = saved["id"].as_str().expect("id").to_string();
+    let listed = st::list_tasks(&store, "c1").expect("list");
+    let disabled = st::set_enabled(&mut store, &id, false).expect("disable");
+    let base = 12 * 3600 + 30 * 60;
+    let cron_ok = st::cron_matches("30 12 * * *", base);
+    let cron_no = st::cron_matches("31 12 * * *", base);
+    let deleted = st::delete_task(&mut store, &id).expect("delete");
+    let after = st::list_tasks(&store, "c1").expect("list");
+    let result = serde_json::json!({
+        "saved_enabled": saved["enabled"],
+        "listed_count": listed.as_array().expect("arr").len(),
+        "disabled_enabled": disabled["enabled"],
+        "cron_matches": cron_ok,
+        "cron_not_match": !cron_no,
+        "delete_ok": deleted["ok"],
+        "after_count": after.as_array().expect("arr").len(),
+    });
+    println!("{}", serde_json::to_string(&result).expect("json"));
+    let _ = std::fs::remove_dir_all(&dir);
 }
 
 /// End-to-end tunnel check (--tunnel-check): creates a tunnel rule, lists it,
@@ -865,6 +916,89 @@ unsafe fn handle_key(state: &mut AppState, hwnd: HWND, wparam: WPARAM) {
         state.model.delete_forward();
     }
     InvalidateRect(hwnd, std::ptr::null(), 1);
+}
+
+/// Handles scheduled-task commands (mxterm parity T008):
+/// scheduled_task_list/save/delete/set_enabled/run_now.
+fn handle_scheduled_task_commands(
+    state: &mut AppState,
+    cmd: &str,
+    parsed: &serde_json::Value,
+) -> Option<String> {
+    let is_task_cmd = matches!(
+        cmd,
+        "scheduled_task_list"
+            | "scheduled_task_save"
+            | "scheduled_task_delete"
+            | "scheduled_task_set_enabled"
+            | "scheduled_task_run_now"
+    );
+    if !is_task_cmd {
+        return None;
+    }
+    let request_id = parsed
+        .get("requestId")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+    let payload = parsed
+        .get("payload")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+    let request = payload.get("request").cloned().unwrap_or(payload.clone());
+    let connection_id = request
+        .get("connection_id")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("");
+    let task_id = request
+        .get("task_id")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("");
+
+    let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
+    let result = match cmd {
+        "scheduled_task_list" => match state.store.as_ref() {
+            Some(store) => scheduled_tasks::list_tasks(store, connection_id),
+            None => Err("本地存储不可用。".to_string()),
+        },
+        "scheduled_task_save" => {
+            let task = request.get("task").cloned().unwrap_or(request.clone());
+            match state.store.as_mut() {
+                Some(store) => scheduled_tasks::save_task(store, connection_id, &task),
+                None => Err("本地存储不可用。".to_string()),
+            }
+        }
+        "scheduled_task_delete" => match state.store.as_mut() {
+            Some(store) => scheduled_tasks::delete_task(store, task_id),
+            None => Err("本地存储不可用。".to_string()),
+        },
+        "scheduled_task_set_enabled" => {
+            let enabled = request
+                .get("enabled")
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or(false);
+            match state.store.as_mut() {
+                Some(store) => scheduled_tasks::set_enabled(store, task_id, enabled),
+                None => Err("本地存储不可用。".to_string()),
+            }
+        }
+        "scheduled_task_run_now" => match state.store.as_ref() {
+            Some(store) => {
+                rt.block_on(async { scheduled_tasks::run_now(store, connection_id, task_id).await })
+            }
+            None => Err("本地存储不可用。".to_string()),
+        },
+        _ => Err("未知命令".to_string()),
+    };
+    let reply_payload = match result {
+        Ok(value) => value,
+        Err(message) => serde_json::json!({
+            "error": { "code": "scheduled_task_error", "message": message, "recoverable": true }
+        }),
+    };
+    Some(
+        serde_json::json!({ "kind": "invoke-reply", "requestId": request_id, "payload": reply_payload })
+            .to_string(),
+    )
 }
 
 /// Handles SSH tunnel commands (mxterm parity T007): tunnel_list/upsert/
@@ -1690,6 +1824,10 @@ fn on_web_message(hwnd: HWND, message: &str) -> Option<String> {
     }
 
     if let Some(reply) = handle_tunnel_commands(state, cmd, &parsed) {
+        return Some(reply);
+    }
+
+    if let Some(reply) = handle_scheduled_task_commands(state, cmd, &parsed) {
         return Some(reply);
     }
 

@@ -326,6 +326,27 @@ impl Store {
     pub fn delete_tunnel(&mut self, id: &str) -> rusqlite::Result<bool> {
         self.delete("tunnel", id)
     }
+    // ---- scheduled tasks ----
+
+    /// Lists scheduled tasks.
+    pub fn list_tasks(&self) -> rusqlite::Result<Vec<Value>> {
+        self.list("task")
+    }
+
+    /// Gets one scheduled task by id.
+    pub fn get_task(&self, id: &str) -> rusqlite::Result<Option<Value>> {
+        self.get("task", id)
+    }
+
+    /// Upserts a scheduled task.
+    pub fn put_task(&mut self, id: &str, task: &Value) -> rusqlite::Result<()> {
+        self.put("task", id, task)
+    }
+
+    /// Deletes a scheduled task.
+    pub fn delete_task(&mut self, id: &str) -> rusqlite::Result<bool> {
+        self.delete("task", id)
+    }
     // ---- credentials ----
 
     /// Lists credentials (mXterm CredentialProfile[]).
