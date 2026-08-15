@@ -6,6 +6,7 @@
 //! Host library model: list, grouping, tags, search, and sorting (T102).
 
 pub mod accessibility;
+pub mod android_integration;
 pub mod auth_prompt;
 pub mod backend_gate;
 pub mod command_palette;
@@ -33,6 +34,7 @@ pub use accessibility::{
     screen_reader_checklist, A11yNode, A11yRole, A11yTree, A11yViolation, ChecklistItem,
     MotionPreference, ReduceMotionPolicy, TerminalAccessibleMode, ViolationSeverity,
 };
+pub use android_integration::{AppState, LifecycleModel, NetworkState};
 pub use auth_prompt::{
     AuthPrompt, ConfirmState, HardwareConfirmation, KeyOption, KeySelection, PromptError,
     PromptKind, PromptState, SelectionError, SelectionState,

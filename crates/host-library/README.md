@@ -318,3 +318,15 @@
 - `DesktopEntry` - generates a valid `.desktop` file.
 - `LinuxNotification` - secret-free notifications.
 - The real distro / display-server matrix runs on Linux hosts.
+
+## T127: Android lifecycle, foreground service, network-switch model
+
+`crates/host-library/src/android_integration.rs`:
+
+- `LifecycleModel` - foreground/background transitions, foreground-service
+  requirement (active session in the background), Doze network gating, and
+  network-switch handling (Wi-Fi <-> cellular never loses the session).
+- `is_deceptive` - the app never pretends to be permanently online: it is
+  deceptive exactly when the UI claims an active session that cannot be
+  sustained under the current background / Doze / service state.
+- Real Doze / network-switch / process-reclaim tests run on Android devices.
