@@ -16,6 +16,7 @@ pub mod fingerprint;
 pub mod gestures;
 pub mod host;
 pub mod keyboard;
+pub mod macos_integration;
 pub mod mobile;
 pub mod paste;
 pub mod port_forwarding;
@@ -64,6 +65,9 @@ pub use host::{
 pub use keyboard::{
     key_label, parse_key, Chord, Direction, KeyAction, KeyBindingConfig, KeyCode, KeyEvent, KeyMap,
     ModifierKey, Modifiers, Platform, PlatformSemantics, PrimaryModifier,
+};
+pub use macos_integration::{
+    AppNapPolicy, MacArch, MacMenu, MacMenuAction, MacNotification, RetinaScale,
 };
 pub use mobile::{
     effective_safe_area, BarLayout, BottomActionBar, FormFactor, Orientation, SafeAreaInsets,

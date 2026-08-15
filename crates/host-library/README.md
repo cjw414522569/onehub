@@ -284,3 +284,14 @@
   bracketed paste, mouse, resize, unicode width, OSC 52 clipboard, bell)
   exposes the behavior differences between the built-in and system backends
   so they are visible to the user.
+
+## T123: macOS menu / window / Keychain / notification / deep-link model
+
+`crates/host-library/src/macos_integration.rs`:
+
+- `MacArch` (Intel / Apple Silicon) and `RetinaScale` (@1x / @2x backing).
+- Multi-monitor restore reuses the shared geometry (`MonitorLayout`).
+- `AppNapPolicy` - App Nap is disabled during active sessions.
+- `MacMenu` (default app menu) and secret-free `MacNotification`.
+- Deep links reuse `parse_ssh_link`; real macOS automation and the
+  physical-machine checklist run on macOS hosts.
