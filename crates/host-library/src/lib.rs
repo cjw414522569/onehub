@@ -16,6 +16,7 @@ pub mod fingerprint;
 pub mod gestures;
 pub mod host;
 pub mod keyboard;
+pub mod macos_entitlements;
 pub mod macos_integration;
 pub mod mobile;
 pub mod paste;
@@ -66,6 +67,7 @@ pub use keyboard::{
     key_label, parse_key, Chord, Direction, KeyAction, KeyBindingConfig, KeyCode, KeyEvent, KeyMap,
     ModifierKey, Modifiers, Platform, PlatformSemantics, PrimaryModifier,
 };
+pub use macos_entitlements::{AuditIssue, Entitlement, EntitlementSet, NotarizationAudit};
 pub use macos_integration::{
     AppNapPolicy, MacArch, MacMenu, MacMenuAction, MacNotification, RetinaScale,
 };

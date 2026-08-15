@@ -295,3 +295,14 @@
 - `MacMenu` (default app menu) and secret-free `MacNotification`.
 - Deep links reuse `parse_ssh_link`; real macOS automation and the
   physical-machine checklist run on macOS hosts.
+
+## T124: macOS sandbox, hardened runtime, minimal entitlements
+
+`crates/host-library/src/macos_entitlements.rs`:
+
+- `EntitlementSet::minimal` - the baseline (sandbox, network client,
+  user-selected files); on-demand entitlements (network server for
+  forwarding, keychain access group) can be added explicitly.
+- `NotarizationAudit` - the pre-notarization checks: hardened runtime,
+  sandbox, no `get-task-allow` in release, and no extra entitlements.
+- Real `codesign` / `spctl` / entitlement audits run on macOS hosts.
