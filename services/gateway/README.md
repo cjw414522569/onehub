@@ -33,3 +33,17 @@
 - Tests cover the SSRF bypass set: private/link-local/loopback/metadata
   (IPv4, IPv6, IPv4-mapped), reserved and multicast ranges, port and
   allowlist policy, and DNS rebinding detection.
+
+## T137: authentication, short-lived tokens, session isolation
+
+`services/gateway/src/auth.rs`:
+
+- `TokenIssuer` - issues short-lived (default 300s), single-use,
+  tenant-bound tokens; secrets are derived in memory only, never persisted.
+- `SessionRegistry` - owns every session; `authenticate` rejects expired,
+  replayed, unknown, and cross-tenant tokens; `access` re-checks the tenant
+  boundary on every session-bound operation (no cross-tenant reach).
+- `CredentialPolicy` - the gateway rejects persisting long-lived SSH keys
+  (keys stay client-side); only short-lived in-memory session keys within
+  the lifetime budget are accepted.
+- Tests cover the authorization-bypass, replay, and token-expiry sets.
