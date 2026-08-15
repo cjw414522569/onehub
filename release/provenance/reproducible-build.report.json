@@ -1,7 +1,7 @@
 {
   "task": "T169",
   "status": "pass",
-  "verified_at_utc": "2026-08-15T07:34:36Z",
+  "verified_at_utc": "2026-08-15T07:57:59Z",
   "sbom": {
     "format": "CycloneDX",
     "spec_version": "1.5",
@@ -14,7 +14,7 @@
   },
   "provenance": {
     "schema_version": 1,
-    "source_commit": "2cecbdae11ba99c7a6540e0f7dd64eac871401f0",
+    "source_commit": "7cc0a5f0cdaed40bccd6dc65fde135540465e07e",
     "toolchain": {
       "rustc": "rustc 1.97.1 (8bab26f4f 2026-07-14)",
       "cargo": "cargo 1.97.1 (c980f4866 2026-06-30)",

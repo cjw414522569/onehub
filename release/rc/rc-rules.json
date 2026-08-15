@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "feature_freeze": {
+    "policy": "After the freeze commit, no new features are merged; only defect fixes, security patches, and release tooling changes.",
+    "freeze_commit": "<set at RC cut>"
+  },
+  "defect_zero": {
+    "policy": "A Release Candidate ships only when there are zero blocker and zero critical defects.",
+    "severity_scale": ["blocker", "critical", "high", "medium", "low"],
+    "blocking": ["blocker", "critical"],
+    "enforced_by": ["security pipeline (T160)", "supply-chain gate", "RC full matrix"]
+  },
+  "same_commit": {
+    "policy": "Every RC artifact (client, gateway, sync, wasm, CLI) must be built from the exact same source commit; the artifact provenance records it (T169).",
+    "verified_by": "RC artifact hash + commit check"
+  }
+}
