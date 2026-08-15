@@ -1,0 +1,77 @@
+{
+  "task": "T170",
+  "status": "pass",
+  "verified_at_utc": "2026-08-15T07:40:08Z",
+  "areas": {
+    "core_connect": [
+      {
+        "contract": "test-gateway-session-protocol",
+        "pass": true
+      },
+      {
+        "contract": "test-gateway-auth",
+        "pass": true
+      },
+      {
+        "contract": "test-gateway-address-policy",
+        "pass": true
+      },
+      {
+        "contract": "test-cli-contract",
+        "pass": true
+      },
+      {
+        "contract": "test-cli-capabilities",
+        "pass": true
+      },
+      {
+        "contract": "test-gateway-soak",
+        "pass": true
+      }
+    ],
+    "terminal": [
+      {
+        "contract": "test-terminal-parser",
+        "pass": true
+      },
+      {
+        "contract": "test-input-protocol",
+        "pass": true
+      },
+      {
+        "contract": "test-wasm-webgpu",
+        "pass": true
+      }
+    ],
+    "keys": [
+      {
+        "contract": "test-secure-store",
+        "pass": true
+      },
+      {
+        "contract": "test-field-encryption",
+        "pass": true
+      }
+    ],
+    "log_security": [
+      {
+        "contract": "test-telemetry-logging",
+        "pass": true
+      },
+      {
+        "contract": "test-telemetry-privacy",
+        "pass": true
+      },
+      {
+        "contract": "test-crash-diagnostics",
+        "pass": true
+      },
+      {
+        "contract": "test-diagnostics",
+        "pass": true
+      }
+    ]
+  },
+  "workspace": "pass",
+  "total_contracts": 16
+}
