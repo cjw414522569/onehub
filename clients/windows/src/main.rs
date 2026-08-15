@@ -261,6 +261,9 @@ fn db_check() {
     let kingbase_available = engines
         .iter()
         .any(|e| e["engine"] == "kingbase" && e["available"] == serde_json::Value::Bool(true));
+    let gbase_available = engines
+        .iter()
+        .any(|e| e["engine"] == "gbase" && e["available"] == serde_json::Value::Bool(true));
     let other_engines_unavailable = engines.iter().all(|e| {
         e["engine"] == "mysql"
             || e["engine"] == "postgresql"
@@ -271,6 +274,7 @@ fn db_check() {
             || e["engine"] == "clickhouse"
             || e["engine"] == "dm"
             || e["engine"] == "kingbase"
+            || e["engine"] == "gbase"
             || e["available"] == serde_json::Value::Bool(false)
     });
     let tcp = db::test_connection(&serde_json::json!({
@@ -370,6 +374,18 @@ fn db_check() {
     });
     let kingbase_connect_err = db::connect(&kingbase_profile).err().unwrap_or_default();
     let kingbase_query_err = db::query_inline(&kingbase_profile, "SELECT 1")
+        .err()
+        .unwrap_or_default();
+    let gbase_profile = serde_json::json!({
+        "engine": "gbase",
+        "host": "127.0.0.1",
+        "port": 9088,
+        "username": "gbasedbt",
+        "password": "x",
+        "connect_timeout_ms": 800,
+    });
+    let gbase_connect_err = db::connect(&gbase_profile).err().unwrap_or_default();
+    let gbase_query_err = db::query_inline(&gbase_profile, "SELECT 1")
         .err()
         .unwrap_or_default();
     // SQLite round-trip through the real engine (create/insert/select).
@@ -472,6 +488,7 @@ fn db_check() {
         "clickhouse_available": clickhouse_available,
         "dm_available": dm_available,
         "kingbase_available": kingbase_available,
+        "gbase_available": gbase_available,
         "other_engines_unavailable": other_engines_unavailable,
         "tcp_refused_graceful": tcp["reachable"] == serde_json::Value::Bool(false),
         "sqlite_missing_reported": sqlite_missing["reachable"] == serde_json::Value::Bool(false),
@@ -492,6 +509,8 @@ fn db_check() {
         "dm_query_graceful_without_driver": dm_query_err.contains("失败") || dm_query_err.contains("ODBC"),
         "kingbase_connect_refused_graceful": kingbase_connect_err.contains("失败"),
         "kingbase_query_refused_graceful": kingbase_query_err.contains("失败"),
+        "gbase_connect_graceful_without_driver": gbase_connect_err.contains("失败") || gbase_connect_err.contains("ODBC"),
+        "gbase_query_graceful_without_driver": gbase_query_err.contains("失败") || gbase_query_err.contains("ODBC"),
         "db_connection_save_list_delete_ok": db_listed >= 1 && deleted,
     });
     println!("{}", serde_json::to_string(&result).expect("json"));

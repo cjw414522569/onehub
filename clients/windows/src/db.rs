@@ -51,6 +51,7 @@ fn wired_engines() -> &'static [&'static str] {
         "clickhouse",
         "dm",
         "kingbase",
+        "gbase",
     ]
 }
 
@@ -239,7 +240,8 @@ impl DbProfile {
 fn default_port(engine: &str) -> u64 {
     match engine {
         "mysql" | "oceanbase" => 3306,
-        "postgresql" | "opengauss" | "gbase" => 5432,
+        "postgresql" | "opengauss" => 5432,
+        "gbase" => 9088,
         "kingbase" => 54321,
         "sqlserver" | "dm" => 1433,
         "oracle" => 1521,
@@ -564,10 +566,15 @@ fn oracle_run(conn: &oracle::Connection, sql: &str) -> Result<QueryOutcome, Stri
         }
     }
 }
-/// Builds the ODBC connection string for 达梦 DM (requires the DM ODBC driver).
-fn dm_odbc_conn_string(parsed: &DbProfile) -> String {
+/// Builds the ODBC connection string for extension engines that go through a
+/// system ODBC driver (达梦 DM / GBase 8s; the driver must be installed).
+fn odbc_conn_string(engine: &str, parsed: &DbProfile) -> String {
+    let driver = match engine {
+        "gbase" => "GBase 8s ODBC DRIVER",
+        _ => "DM8 ODBC DRIVER",
+    };
     format!(
-        "Driver={{DM8 ODBC DRIVER}};Server={};Port={};UID={};PWD={};DATABASE={}",
+        "Driver={{{driver}}};Server={};Port={};UID={};PWD={};DATABASE={}",
         parsed.host,
         parsed.port,
         parsed.username,
@@ -582,7 +589,7 @@ fn odbc_query(parsed: &DbProfile, sql: &str) -> Result<QueryOutcome, String> {
     if sql.trim().is_empty() {
         return Err("SQL 为空。".to_string());
     }
-    let conn_str = dm_odbc_conn_string(parsed);
+    let conn_str = odbc_conn_string(&parsed.engine, parsed);
     let env = odbc::Environment::new().map_err(|e| format!("ODBC 环境创建失败：{e:?}"))?;
     let conn = env
         .connect_with_connection_string(&conn_str)
@@ -1172,7 +1179,7 @@ pub fn query_inline(profile: &Value, sql: &str) -> Result<QueryOutcome, String> 
             oracle_run(&conn, sql)
         }
         "clickhouse" => clickhouse_query(&parsed, sql),
-        "dm" => odbc_query(&parsed, sql),
+        "dm" | "gbase" => odbc_query(&parsed, sql),
         other => {
             let label = engine_label(other).unwrap_or(other);
             Err(format!("数据库引擎未接入：{other}（{label}）"))
@@ -1298,7 +1305,7 @@ pub fn connect(profile: &Value) -> Result<String, String> {
             let scheme = if parsed.ssl { "https" } else { "http" };
             EngineConnection::ClickHouse(format!("{scheme}://{}:{}", parsed.host, parsed.port))
         }
-        "dm" => EngineConnection::Odbc(dm_odbc_conn_string(&parsed)),
+        "dm" | "gbase" => EngineConnection::Odbc(odbc_conn_string(&parsed.engine, &parsed)),
         other => return Err(format!("数据库引擎未接入：{other}")),
     };
     // Real handshake verification for both engines.
@@ -1415,6 +1422,7 @@ mod tests {
         assert!(engine_available("clickhouse"));
         assert!(engine_available("dm"));
         assert!(engine_available("kingbase"));
+        assert!(engine_available("gbase"));
         assert!(DB_ENGINES.iter().all(|(key, _)| {
             *key == "mysql"
                 || *key == "postgresql"
@@ -1425,6 +1433,7 @@ mod tests {
                 || *key == "clickhouse"
                 || *key == "dm"
                 || *key == "kingbase"
+                || *key == "gbase"
                 || !engine_available(key)
         }));
         assert_eq!(engine_list().len(), 15);
@@ -1659,6 +1668,21 @@ mod tests {
 
         let query_err = query_inline(&profile, "SELECT 1").expect_err("refused");
         assert!(query_err.contains("失败"), "got {query_err:?}");
+    }
+
+    #[test]
+    fn gbase_odbc_graceful_without_driver() {
+        let profile = json!({ "engine": "gbase", "host": "127.0.0.1", "port": 9088, "username": "gbasedbt", "password": "x", "connect_timeout_ms": 800 });
+        let connect_err = connect(&profile).expect_err("no gbase driver");
+        assert!(
+            connect_err.contains("失败") || connect_err.contains("ODBC"),
+            "got {connect_err:?}"
+        );
+        let query_err = query_inline(&profile, "SELECT 1").expect_err("no gbase driver");
+        assert!(
+            query_err.contains("失败") || query_err.contains("ODBC"),
+            "got {query_err:?}"
+        );
     }
 
     #[test]
