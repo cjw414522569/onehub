@@ -7,10 +7,15 @@
 //! (`examples/canary.rs`) is scanned by the contract to prove a secret can
 //! never reach emitted log output.
 
+pub mod crash;
 pub mod diagnostics;
 pub mod log;
 pub mod privacy;
 
+pub use crash::{
+    CrashDump, CrashRetention, CrashSanitizer, CrashUploadPolicy, CRASH_SCHEMA_VERSION,
+    DEFAULT_CRASH_DENYLIST,
+};
 pub use diagnostics::{
     DiagnosticMetric, DiagnosticReport, DiagnosticsSampler, ReportRow, SampleSet,
     DIAGNOSTIC_SCHEMA_VERSION,

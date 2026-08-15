@@ -53,3 +53,19 @@
 - `examples/diagnostics.rs` - samples all four paths and prints the report;
   `scripts/test-diagnostics.mjs` runs the diagnostic data privacy scan (no
   host/command/terminal/payload content in the exported report).
+
+## T149: crash capture, sanitization, retention, consent-gated upload
+
+`crates/telemetry/src/crash.rs`:
+
+- `CrashSanitizer` - scrubs dump messages and stack frames (denylist of
+  host/command/marker strings plus sensitive `key=value` redaction), so
+  dumps never carry content.
+- `CrashRetention` - clear retention period (30 days) and max-dump budget
+  with a `delete()` mechanism; `prune()` reports what to delete.
+- `CrashUploadPolicy` - dumps are uploaded only after explicit user
+  consent (off by default).
+- `examples/crash-trigger.rs` - triggers a test crash whose message carries
+  a canary + host + command, catches it, and emits only the sanitized dump;
+  `scripts/test-crash-diagnostics.mjs` audits the upload content for zero
+  leaks.
