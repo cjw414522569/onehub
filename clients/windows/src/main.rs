@@ -278,6 +278,9 @@ fn db_check() {
     let redis_available = engines
         .iter()
         .any(|e| e["engine"] == "redis" && e["available"] == serde_json::Value::Bool(true));
+    let mongodb_available = engines
+        .iter()
+        .any(|e| e["engine"] == "mongodb" && e["available"] == serde_json::Value::Bool(true));
     let other_engines_unavailable = engines.iter().all(|e| {
         e["engine"] == "mysql"
             || e["engine"] == "postgresql"
@@ -293,6 +296,7 @@ fn db_check() {
             || e["engine"] == "opengauss"
             || e["engine"] == "iotdb"
             || e["engine"] == "redis"
+            || e["engine"] == "mongodb"
             || e["available"] == serde_json::Value::Bool(false)
     });
     let tcp = db::test_connection(&serde_json::json!({
@@ -336,6 +340,15 @@ fn db_check() {
     let pg_query_err = db::query_inline(&pg_profile, "SELECT 1")
         .err()
         .unwrap_or_default();
+    let mongodb_profile = serde_json::json!({
+        "engine": "mongodb",
+        "host": "127.0.0.1",
+        "port": 1,
+        "username": "root",
+        "password": "x",
+        "connect_timeout_ms": 500,
+    });
+    let mongodb_connect_err = db::connect(&mongodb_profile).err().unwrap_or_default();
     let redis_profile = serde_json::json!({
         "engine": "redis",
         "host": "127.0.0.1",
@@ -555,6 +568,7 @@ fn db_check() {
         "opengauss_available": opengauss_available,
         "iotdb_available": iotdb_available,
         "redis_available": redis_available,
+        "mongodb_available": mongodb_available,
         "other_engines_unavailable": other_engines_unavailable,
         "tcp_refused_graceful": tcp["reachable"] == serde_json::Value::Bool(false),
         "sqlite_missing_reported": sqlite_missing["reachable"] == serde_json::Value::Bool(false),
@@ -568,6 +582,7 @@ fn db_check() {
         "mssql_connect_refused_graceful": mssql_connect_err.contains("失败"),
         "mssql_query_refused_graceful": mssql_query_err.contains("失败"),
         "redis_connect_refused_graceful": redis_connect_err.contains("失败"),
+        "mongodb_connect_refused_graceful": mongodb_connect_err.contains("失败"),
         "oracle_connect_refused_graceful": oracle_connect_err.contains("失败"),
         "oracle_query_refused_graceful": oracle_query_err.contains("失败"),
         "clickhouse_connect_refused_graceful": clickhouse_connect_err.contains("失败"),
@@ -2851,6 +2866,86 @@ fn handle_db_commands(
                 .and_then(serde_json::Value::as_str)
                 .unwrap_or("");
             db::redis_console(session_id, command)
+        }
+        "mongodb_collections" => {
+            let request = payload.get("request").cloned().unwrap_or(payload.clone());
+            let session_id = request
+                .get("session_id")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            db::mongodb_collections(session_id)
+        }
+        "mongodb_documents" => {
+            let request = payload.get("request").cloned().unwrap_or(payload.clone());
+            let session_id = request
+                .get("session_id")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            let collection = request
+                .get("collection")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            let filter = request
+                .get("filter")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("{}");
+            let limit = request
+                .get("limit")
+                .and_then(serde_json::Value::as_i64)
+                .unwrap_or(50);
+            db::mongodb_documents(session_id, collection, filter, limit)
+        }
+        "mongodb_insert" => {
+            let request = payload.get("request").cloned().unwrap_or(payload.clone());
+            let session_id = request
+                .get("session_id")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            let collection = request
+                .get("collection")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            let document = request
+                .get("document")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("{}");
+            db::mongodb_insert(session_id, collection, document)
+        }
+        "mongodb_update" => {
+            let request = payload.get("request").cloned().unwrap_or(payload.clone());
+            let session_id = request
+                .get("session_id")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            let collection = request
+                .get("collection")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            let filter = request
+                .get("filter")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("{}");
+            let update = request
+                .get("update")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("{}");
+            db::mongodb_update(session_id, collection, filter, update)
+        }
+        "mongodb_delete" => {
+            let request = payload.get("request").cloned().unwrap_or(payload.clone());
+            let session_id = request
+                .get("session_id")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            let collection = request
+                .get("collection")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            let filter = request
+                .get("filter")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("{}");
+            db::mongodb_delete(session_id, collection, filter)
         }
         "db_export" => {
             let request = payload.get("request").cloned().unwrap_or(payload.clone());

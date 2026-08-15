@@ -8,6 +8,11 @@ import type {
   DbEngineInfo,
   DbObjectInfo,
   DbProxyRoute,
+  MongoCollectionsResult,
+  MongoDeleteResult,
+  MongoDocumentsResult,
+  MongoInsertResult,
+  MongoUpdateResult,
   RedisConsoleResult,
   RedisDelResult,
   RedisKeyList,
@@ -1346,6 +1351,34 @@ export function redisType(sessionId: string, key: string) {
 export function redisConsole(sessionId: string, command: string) {
   return invoke<RedisConsoleResult>("redis_console", {
     request: { session_id: sessionId, command },
+  });
+}
+
+export function mongodbCollections(sessionId: string) {
+  return invoke<MongoCollectionsResult>("mongodb_collections", { request: { session_id: sessionId } });
+}
+
+export function mongodbDocuments(sessionId: string, collection: string, filter = "{}", limit = 50) {
+  return invoke<MongoDocumentsResult>("mongodb_documents", {
+    request: { session_id: sessionId, collection, filter, limit },
+  });
+}
+
+export function mongodbInsert(sessionId: string, collection: string, document: string) {
+  return invoke<MongoInsertResult>("mongodb_insert", {
+    request: { session_id: sessionId, collection, document },
+  });
+}
+
+export function mongodbUpdate(sessionId: string, collection: string, filter: string, update: string) {
+  return invoke<MongoUpdateResult>("mongodb_update", {
+    request: { session_id: sessionId, collection, filter, update },
+  });
+}
+
+export function mongodbDelete(sessionId: string, collection: string, filter: string) {
+  return invoke<MongoDeleteResult>("mongodb_delete", {
+    request: { session_id: sessionId, collection, filter },
   });
 }
 

@@ -160,3 +160,26 @@ export interface RedisConsoleResult {
   rows: unknown[][];
   affected_rows: number;
 }
+
+export interface MongoCollectionsResult {
+  database: string;
+  collections: string[];
+}
+
+export interface MongoDocumentsResult {
+  count: number;
+  documents: unknown[];
+}
+
+export interface MongoInsertResult {
+  inserted_id: unknown;
+}
+
+export interface MongoUpdateResult {
+  matched: number;
+  modified: number;
+}
+
+export interface MongoDeleteResult {
+  deleted: number;
+}

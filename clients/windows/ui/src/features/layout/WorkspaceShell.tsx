@@ -56,6 +56,7 @@ import {
 } from "lucide-react";
 import { DatabasePanel } from "../database/DatabasePanel";
 import { RedisPanel } from "../database/RedisPanel";
+import { MongoPanel } from "../database/MongoPanel";
 
 import { ConnectionPane } from "../connections/ConnectionPane";
 import { ConnectionSystemLogo } from "../connections/ConnectionSystemLogo";
@@ -11782,6 +11783,7 @@ function ConnectionHome({
   const [deleteTarget, setDeleteTarget] = useState<ConnectionProfile | null>(null);
   const [databaseOpen, setDatabaseOpen] = useState(false);
   const [redisOpen, setRedisOpen] = useState(false);
+  const [mongoOpen, setMongoOpen] = useState(false);
   const [latencyByConnectionId, setLatencyByConnectionId] = useState<Record<string, LatencyProbeState>>({});
   const latencyProbeRunRef = useRef(0);
   const rows = useMemo(() => {
@@ -11938,6 +11940,17 @@ function ConnectionHome({
               <span style={{ fontSize: 10 }}>Redis</span>
             </button>
           </Tooltip>
+          <Tooltip label="打开 MongoDB 控制台">
+            <button
+              className="repository-icon-button"
+              type="button"
+              aria-label="打开 MongoDB 控制台"
+              onClick={() => setMongoOpen(true)}
+            >
+              <Database className="ui-icon" aria-hidden="true" />
+              <span style={{ fontSize: 10 }}>Mongo</span>
+            </button>
+          </Tooltip>
           <Tooltip label="刷新连接并探测延迟">
             <button
               className="repository-icon-button"
@@ -11966,6 +11979,8 @@ function ConnectionHome({
         <DatabasePanel open={databaseOpen} onClose={() => setDatabaseOpen(false)} />
 
         <RedisPanel open={redisOpen} onClose={() => setRedisOpen(false)} />
+
+        <MongoPanel open={mongoOpen} onClose={() => setMongoOpen(false)} />
 
       <div className="connection-home-body">
         <section className="connection-board" aria-label="连接表格">

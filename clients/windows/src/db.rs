@@ -57,6 +57,7 @@ fn wired_engines() -> &'static [&'static str] {
         "opengauss",
         "iotdb",
         "redis",
+        "mongodb",
     ]
 }
 
@@ -717,6 +718,8 @@ enum EngineConnection {
     IotDb(String),
     /// Redis async connection manager (T039).
     Redis(std::sync::Arc<tokio::sync::Mutex<redis::aio::ConnectionManager>>),
+    /// MongoDB client (T040); Client is cheap to clone (Arc-backed).
+    MongoDb(mongodb::Client),
 }
 
 /// A live database session. `connection` holds the engine handle for wired
@@ -1692,6 +1695,7 @@ pub fn query_session(session_id: &str, sql: &str) -> Result<QueryOutcome, String
             Some(EngineConnection::Redis(conn)) => {
                 EngineConnection::Redis(std::sync::Arc::clone(conn))
             }
+            Some(EngineConnection::MongoDb(client)) => EngineConnection::MongoDb(client.clone()),
             None => return Err("会话没有活动连接。".to_string()),
         }
     };
@@ -1742,6 +1746,7 @@ pub fn query_session(session_id: &str, sql: &str) -> Result<QueryOutcome, String
             let mut guard = runtime().block_on(async { conn.lock().await });
             redis_run(&mut guard, sql)
         }
+        EngineConnection::MongoDb(client) => mongodb_run(&client, sql),
         EngineConnection::IotDb(_) => {
             let profile = {
                 let guard = sessions_map().lock().expect("db sessions lock");
@@ -1808,6 +1813,7 @@ pub fn connect(profile: &Value) -> Result<String, String> {
         "redis" => EngineConnection::Redis(std::sync::Arc::new(tokio::sync::Mutex::new(
             redis_connect(&parsed)?,
         ))),
+        "mongodb" => EngineConnection::MongoDb(mongodb_connect(&parsed)?),
         other => return Err(format!("数据库引擎未接入：{other}")),
     };
     // Real handshake verification for both engines.
@@ -1864,6 +1870,11 @@ pub fn connect(profile: &Value) -> Result<String, String> {
         EngineConnection::Redis(conn) => {
             let mut guard = runtime().block_on(async { conn.lock().await });
             redis_run(&mut guard, "PING").map_err(|e| format!("Redis 连接失败：{e}"))?;
+        }
+        EngineConnection::MongoDb(client) => {
+            runtime()
+                .block_on(async { client.list_database_names().await })
+                .map_err(|e| format!("MongoDB 连接失败：{e}"))?;
         }
     }
     let id = new_id("db");
@@ -2784,6 +2795,212 @@ fn redis_run(
         affected_rows: 0,
     })
 }
+/// Builds a MongoDB connection URI (mongodb://[:pass@]host:port/db).
+fn mongodb_uri(parsed: &DbProfile) -> String {
+    let db = if parsed.database.is_empty() {
+        "test"
+    } else {
+        parsed.database.as_str()
+    };
+    match &parsed.password {
+        Some(password) if !password.is_empty() => {
+            if parsed.username.is_empty() {
+                format!(
+                    "mongodb://:{}@{}:{}/{}",
+                    password, parsed.host, parsed.port, db
+                )
+            } else {
+                format!(
+                    "mongodb://{}:{}@{}:{}/{}",
+                    parsed.username, password, parsed.host, parsed.port, db
+                )
+            }
+        }
+        _ => format!("mongodb://{}:{}/{}", parsed.host, parsed.port, db),
+    }
+}
+
+/// Connects a MongoDB client (real server discovery handshake).
+fn mongodb_connect(parsed: &DbProfile) -> Result<mongodb::Client, String> {
+    let uri = mongodb_uri(parsed);
+    runtime().block_on(async {
+        mongodb::Client::with_uri_str(uri.as_str())
+            .await
+            .map_err(|e| format!("MongoDB 连接失败：{e}"))
+    })
+}
+
+/// Converts a bson document into a JSON value.
+fn bson_doc_to_json(doc: mongodb::bson::Document) -> Value {
+    mongodb::bson::from_bson::<Value>(mongodb::bson::Bson::Document(doc)).unwrap_or(Value::Null)
+}
+
+/// Parses a JSON string into a bson document (filter/update/document).
+fn bson_from_json(input: &str) -> Result<mongodb::bson::Document, String> {
+    let value: Value = if input.trim().is_empty() {
+        json!({})
+    } else {
+        serde_json::from_str(input).map_err(|e| format!("JSON 无效：{e}"))?
+    };
+    mongodb::bson::to_document(&value).map_err(|e| format!("JSON 转 BSON 失败：{e}"))
+}
+
+/// Returns a clone of the session's MongoDB client.
+fn mongodb_session_client(session_id: &str) -> Result<mongodb::Client, String> {
+    let guard = sessions_map().lock().expect("db sessions lock");
+    match guard
+        .as_ref()
+        .and_then(|m| m.get(session_id))
+        .and_then(|s| s.connection.as_ref())
+    {
+        Some(EngineConnection::MongoDb(client)) => Ok(client.clone()),
+        Some(_) => Err("会话不是 MongoDB 连接。".to_string()),
+        None => Err("数据库会话不存在或未连接。".to_string()),
+    }
+}
+
+/// Reads the session's configured database name (default "test").
+fn session_db(session_id: &str) -> Result<String, String> {
+    let guard = sessions_map().lock().expect("db sessions lock");
+    let profile = guard
+        .as_ref()
+        .and_then(|m| m.get(session_id))
+        .map(|s| s.profile.clone())
+        .ok_or_else(|| "数据库会话不存在。".to_string())?;
+    let database = profile
+        .get("database")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    Ok(if database.is_empty() {
+        "test".to_string()
+    } else {
+        database
+    })
+}
+
+/// Lists collection names in the session's database.
+pub fn mongodb_collections(session_id: &str) -> Result<Value, String> {
+    let client = mongodb_session_client(session_id)?;
+    let db_name = session_db(session_id)?;
+    runtime().block_on(async {
+        let db = client.database(&db_name);
+        let names = db
+            .list_collection_names()
+            .await
+            .map_err(|e| format!("MongoDB 集合列表失败：{e}"))?;
+        Ok::<Value, String>(json!({ "database": db_name, "collections": names }))
+    })
+}
+
+/// Queries documents in a collection with an optional JSON filter + limit.
+pub fn mongodb_documents(
+    session_id: &str,
+    collection: &str,
+    filter_json: &str,
+    limit: i64,
+) -> Result<Value, String> {
+    let client = mongodb_session_client(session_id)?;
+    let db_name = session_db(session_id)?;
+    let filter = bson_from_json(filter_json)?;
+    let limit = limit.clamp(1, 1000);
+    runtime().block_on(async {
+        use futures_util::stream::TryStreamExt;
+        let coll = client
+            .database(&db_name)
+            .collection::<mongodb::bson::Document>(collection);
+        let mut cursor = coll
+            .find(filter)
+            .limit(limit)
+            .await
+            .map_err(|e| format!("MongoDB 查询失败：{e}"))?;
+        let mut documents = Vec::new();
+        while let Some(doc) = cursor
+            .try_next()
+            .await
+            .map_err(|e| format!("MongoDB 读取失败：{e}"))?
+        {
+            documents.push(bson_doc_to_json(doc));
+        }
+        Ok::<Value, String>(json!({ "count": documents.len(), "documents": documents }))
+    })
+}
+
+/// Inserts one document into a collection.
+pub fn mongodb_insert(
+    session_id: &str,
+    collection: &str,
+    document_json: &str,
+) -> Result<Value, String> {
+    let client = mongodb_session_client(session_id)?;
+    let db_name = session_db(session_id)?;
+    let document = bson_from_json(document_json)?;
+    runtime().block_on(async {
+        let coll = client
+            .database(&db_name)
+            .collection::<mongodb::bson::Document>(collection);
+        let result = coll
+            .insert_one(document)
+            .await
+            .map_err(|e| format!("MongoDB 插入失败：{e}"))?;
+        let inserted_id =
+            mongodb::bson::from_bson::<Value>(result.inserted_id).unwrap_or(Value::Null);
+        Ok::<Value, String>(json!({ "inserted_id": inserted_id }))
+    })
+}
+
+/// Updates one matching document.
+pub fn mongodb_update(
+    session_id: &str,
+    collection: &str,
+    filter_json: &str,
+    update_json: &str,
+) -> Result<Value, String> {
+    let client = mongodb_session_client(session_id)?;
+    let db_name = session_db(session_id)?;
+    let filter = bson_from_json(filter_json)?;
+    let update = bson_from_json(update_json)?;
+    runtime().block_on(async {
+        let coll = client
+            .database(&db_name)
+            .collection::<mongodb::bson::Document>(collection);
+        let result = coll
+            .update_one(filter, update)
+            .await
+            .map_err(|e| format!("MongoDB 更新失败：{e}"))?;
+        Ok::<Value, String>(json!({
+            "matched": result.matched_count,
+            "modified": result.modified_count,
+        }))
+    })
+}
+
+/// Deletes one matching document.
+pub fn mongodb_delete(
+    session_id: &str,
+    collection: &str,
+    filter_json: &str,
+) -> Result<Value, String> {
+    let client = mongodb_session_client(session_id)?;
+    let db_name = session_db(session_id)?;
+    let filter = bson_from_json(filter_json)?;
+    runtime().block_on(async {
+        let coll = client
+            .database(&db_name)
+            .collection::<mongodb::bson::Document>(collection);
+        let result = coll
+            .delete_one(filter)
+            .await
+            .map_err(|e| format!("MongoDB 删除失败：{e}"))?;
+        Ok::<Value, String>(json!({ "deleted": result.deleted_count }))
+    })
+}
+
+/// MongoDB has no SQL console; the dedicated collection/document panel is the
+/// query surface. Returns a clear guidance error from the SQL path.
+fn mongodb_run(_client: &mongodb::Client, _sql: &str) -> Result<QueryOutcome, String> {
+    Err("MongoDB 不支持 SQL 查询，请使用 MongoDB 面板的集合/文档 CRUD。".to_string())
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2824,6 +3041,7 @@ mod tests {
                 || *key == "opengauss"
                 || *key == "iotdb"
                 || *key == "redis"
+                || *key == "mongodb"
                 || !engine_available(key)
         }));
         assert_eq!(engine_list().len(), 15);
@@ -3594,11 +3812,51 @@ mod tests {
 
     #[test]
     fn unwired_engine_connect_is_honest() {
-        let err = connect(
-            &json!({ "engine": "mongodb", "host": "127.0.0.1", "username": "root", "password": "x" }),
-        )
-        .expect_err("mongodb not wired");
-        assert!(err.contains("未接入"), "got {err:?}");
+        let err = connect(&json!({ "engine": "nosql-unknown", "host": "127.0.0.1" }))
+            .expect_err("unknown engine");
+        assert!(err.contains("未知数据库引擎"), "got {err:?}");
         assert!(!close_session("db-missing"));
+    }
+
+    #[test]
+    fn mongodb_refused_endpoints_are_graceful() {
+        let profile = json!({
+            "engine": "mongodb",
+            "host": "127.0.0.1",
+            "port": 1,
+            "username": "root",
+            "password": "x",
+            "connect_timeout_ms": 500,
+        });
+        let connect_err = connect(&profile).expect_err("refused");
+        assert!(
+            connect_err.contains("失败") || connect_err.contains("拒绝"),
+            "got {connect_err:?}"
+        );
+        assert!(mongodb_collections("no-such-session").is_err());
+    }
+
+    #[test]
+    fn mongodb_missing_session_is_graceful() {
+        for (label, result) in [
+            ("collections", mongodb_collections("no-session")),
+            ("documents", mongodb_documents("no-session", "c", "{}", 10)),
+            ("insert", mongodb_insert("no-session", "c", "{\"a\": 1}")),
+            (
+                "update",
+                mongodb_update("no-session", "c", "{}", "{\"$set\": {\"a\": 2}}"),
+            ),
+            ("delete", mongodb_delete("no-session", "c", "{}")),
+        ] {
+            assert!(result.is_err(), "{label} should fail for missing session");
+        }
+    }
+
+    #[test]
+    fn bson_json_roundtrip_preserves_values() {
+        let doc = bson_from_json("{\"name\": \"onehub\", \"n\": 42}").expect("parse");
+        let json = bson_doc_to_json(doc);
+        assert_eq!(json["name"], "onehub");
+        assert_eq!(json["n"], 42);
     }
 }
