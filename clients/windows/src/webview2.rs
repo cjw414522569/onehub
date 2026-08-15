@@ -71,6 +71,13 @@ pub(crate) unsafe fn init_webview2(
 
     controller.SetParentWindow(parent)?;
     let webview = controller.CoreWebView2()?;
+
+    // Disable WebView2's built-in default context menu and devtools so the
+    // right-click menu matches the mXterm/Tauri app: only in-app custom menus
+    // (React onContextMenu handlers) appear, never the browser-style menu.
+    let settings = webview.Settings()?;
+    settings.SetAreDefaultContextMenusEnabled(false)?;
+    settings.SetAreDevToolsEnabled(false)?;
     if !html.is_empty() {
         let wide: Vec<u16> = html.encode_utf16().chain(std::iter::once(0)).collect();
         let pcwstr = windows::core::PCWSTR(wide.as_ptr());
