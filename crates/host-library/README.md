@@ -306,3 +306,15 @@
 - `NotarizationAudit` - the pre-notarization checks: hardened runtime,
   sandbox, no `get-task-allow` in release, and no extra entitlements.
 - Real `codesign` / `spctl` / entitlement audits run on macOS hosts.
+
+## T125: Linux Wayland / X11, Secret Service, notifications, desktop entry
+
+`crates/host-library/src/linux_integration.rs`:
+
+- `DisplayServer` (X11 / Wayland) with per-server clipboard behavior and
+  `ScalingPolicy` (Wayland fractional scaling).
+- `SecretServiceState` - Secret Service availability with a no-keyring
+  fallback (`MemoryOnly` on GNOME/KDE without a keyring, `Refuse` headless).
+- `DesktopEntry` - generates a valid `.desktop` file.
+- `LinuxNotification` - secret-free notifications.
+- The real distro / display-server matrix runs on Linux hosts.

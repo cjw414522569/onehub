@@ -16,6 +16,7 @@ pub mod fingerprint;
 pub mod gestures;
 pub mod host;
 pub mod keyboard;
+pub mod linux_integration;
 pub mod macos_entitlements;
 pub mod macos_integration;
 pub mod mobile;
@@ -66,6 +67,10 @@ pub use host::{
 pub use keyboard::{
     key_label, parse_key, Chord, Direction, KeyAction, KeyBindingConfig, KeyCode, KeyEvent, KeyMap,
     ModifierKey, Modifiers, Platform, PlatformSemantics, PrimaryModifier,
+};
+pub use linux_integration::{
+    DesktopEntry, DesktopEnvironment, DisplayServer, LinuxNotification, NoKeyringPolicy,
+    ScalingPolicy, SecretServiceState,
 };
 pub use macos_entitlements::{AuditIssue, Entitlement, EntitlementSet, NotarizationAudit};
 pub use macos_integration::{
