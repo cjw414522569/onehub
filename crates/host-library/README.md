@@ -130,3 +130,17 @@
 - Password pasting has its own configurable policy (Allow / Confirm / Block).
 - Bracketed paste: `bracketed_payload` wraps the text in `ESC[200~ ... ESC[201~`.
 - Tests: newline / control-character / huge-clipboard cases.
+
+## T111: session state, latency, reconnect, read-only indicators
+
+`crates/host-library/src/session_status.rs`:
+
+- `SessionStatusModel` - a validated state machine over `SessionState`
+  (disconnected / connecting / connected / reconnecting / read-only / error /
+  closed), with reconnect attempts and error messages.
+- `StateIndicator` - every state is recognized by a **non-color** indicator:
+  a glyph, a label, a description, and a visual pattern (solid / dashed /
+  hatched / animated / hollow / blinking); the exhaustive test asserts all
+  seven states have unique (glyph, pattern) pairs.
+- Latency is shown as text ("12 ms", "1.5 s") with a quality label, never by
+  color alone.
