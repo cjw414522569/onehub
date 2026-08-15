@@ -102,6 +102,30 @@ fn main() {
         latency.push(start.elapsed().as_secs_f64() * 1_000_000.0); // us
     }
 
+    // 2b. End-to-end input-to-pixel: encode a key event, push through the
+    // bridge, snapshot the screen, and build the render plan (the full path
+    // to pixels). Over REPEATS runs -> P50/P95/P99.
+    let mut e2e_latency = Vec::with_capacity(REPEATS);
+    for _ in 0..REPEATS {
+        let mut bridge = TerminalBridge::new(1, 24, 80);
+        let start = Instant::now();
+        let event = terminal_state::input::KeyEvent {
+            key: terminal_state::input::Key::Char('x'),
+            modifiers: terminal_state::input::Modifiers::default(),
+            repeat: 1,
+        };
+        let bytes = terminal_state::input::encode_key(
+            &event,
+            terminal_state::input::KeyboardProtocol::Xterm,
+            false,
+            false,
+        );
+        bridge.push(&bytes);
+        let snapshot = bridge.snapshot();
+        let _ = wgpu_renderer::render::build_plan(&snapshot, &wgpu_renderer::render::DrawBudget::default());
+        e2e_latency.push(start.elapsed().as_secs_f64() * 1_000_000.0); // us
+    }
+
     // 3. Scrollback: insert 10k lines, measure per-insert cost.
     let mut scroll = Vec::with_capacity(REPEATS);
     for _ in 0..REPEATS {
@@ -120,6 +144,7 @@ fn main() {
         "benchmarks": {
             "parse_throughput_mbps": { "p50": format!("{p50_mbps:.1}"), "p95": format!("{p95_mbps:.1}") },
             "input_to_pixel_us": stats_us(&latency),
+            "e2e_input_to_pixel_us": stats_us(&e2e_latency),
             "scrollback_10k_lines_ms": stats_ms(&scroll),
         }
     });
