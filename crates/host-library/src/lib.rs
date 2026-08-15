@@ -22,6 +22,7 @@ pub mod session_status;
 pub mod settings;
 pub mod snippets;
 pub mod transfer_queue;
+pub mod windows_integration;
 pub mod workspace;
 
 pub use accessibility::{
@@ -67,6 +68,10 @@ pub use mobile::{
 pub use paste::{
     PasswordPastePolicy, PasteContent, PasteDecision, PastePayload, PastePolicy, PasteRisk,
     SecurePasteFlow, BRACKETED_PASTE_BEGIN, BRACKETED_PASTE_END,
+};
+pub use windows_integration::{
+    parse_ssh_link, DpiContext, LinkError, Monitor, MonitorLayout, ProtocolLink, Rect, Size,
+    SleepWakePolicy, TrayAction, WindowsArch, WindowsNotification,
 };
 pub use workspace::{
     FocusLocation, PaneModel, PaneSnapshot, RestoreError, ShortcutAction, ShortcutMap,

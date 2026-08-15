@@ -258,3 +258,17 @@
   search / port forward / disconnect).
 - The keyboard end-to-end test completes connect, switch, search, forward,
   and disconnect **without a mouse**.
+
+## T121: Windows window / tray / protocol / notification / install model
+
+`crates/host-library/src/windows_integration.rs`:
+
+- `WindowsArch` (x64 / arm64), `DpiContext` (logical <-> physical scaling),
+  and `MonitorLayout::constrain_restore` (a window saved on a now-unplugged
+  monitor is moved into a visible work area - multi-monitor correctness).
+- `TrayAction` (open / new tab / reconnect / quit), `SleepWakePolicy`
+  (sessions reconnect on wake), and secret-free `WindowsNotification`.
+- `parse_ssh_link` - parses `ssh://user@host:port` (the security policy and
+  explicit confirmation are T132; here the shape is parsed).
+- The real Win32 tray / message-loop / installer bindings run on Windows
+  hosts; this module locks the deterministic model.
