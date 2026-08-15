@@ -224,6 +224,10 @@ impl Store {
 
     // ---- connections ----
 
+    /// Gets one connection profile by id.
+    pub fn get_connection(&self, id: &str) -> rusqlite::Result<Option<Value>> {
+        self.get("connection", id)
+    }
     /// Lists all connection profiles (mXterm ConnectionProfile[]).
     pub fn list_connections(&self) -> rusqlite::Result<Vec<Value>> {
         self.list("connection")

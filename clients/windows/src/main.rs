@@ -21,6 +21,7 @@ use clients_windows::model::{
     GuiCommand, GuiModel, Rgb, SessionPhase, ACCENT, BORDER, CHROME_BG, DEFAULT_BG, DEFAULT_FG,
     PANEL_ACTIVE, PANEL_BG, TEXT_MAIN, TEXT_MUTED,
 };
+use clients_windows::probe;
 use windows_sys::core::w;
 use windows_sys::Win32::Foundation::{GetLastError, HWND, LPARAM, LRESULT, RECT, SIZE, WPARAM};
 use windows_sys::Win32::Graphics::Gdi::{
@@ -128,7 +129,57 @@ fn main() {
         vault_check();
         return;
     }
+    if std::env::args().any(|argument| argument == "--probe-check") {
+        probe_check();
+        return;
+    }
     run_gui();
+}
+
+/// End-to-end probe check (--probe-check): starts a local SSH-banner echo
+/// server, then runs test_connection / probe_latency / probe_system against it
+/// and against an unreachable port, printing JSON evidence (mxterm parity
+/// T003).
+fn probe_check() {
+    use std::io::Write;
+    use std::net::TcpListener;
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+    let port = listener.local_addr().expect("addr").port();
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut s) = stream else { continue };
+            let _ = s.write_all(b"SSH-2.0-OpenSSH_9.6 Ubuntu-3ubuntu3\r\n");
+            let _ = s.flush();
+        }
+    });
+    let timeout = std::time::Duration::from_secs(3);
+    let reachable = probe::test_connection(
+        &serde_json::json!({ "host": "127.0.0.1", "port": port, "username": "root" }),
+        timeout,
+    );
+    let unreachable = probe::test_connection(
+        &serde_json::json!({ "host": "127.0.0.1", "port": 1, "username": "root" }),
+        std::time::Duration::from_millis(800),
+    );
+    let latency = probe::probe_latency(
+        &serde_json::json!({ "host": "127.0.0.1", "port": port }),
+        timeout,
+    );
+    let system = probe::probe_system(
+        &serde_json::json!({ "host": "127.0.0.1", "port": port, "username": "root" }),
+        timeout,
+    );
+    let result = serde_json::json!({
+        "reachable_test": reachable,
+        "unreachable_test": unreachable,
+        "latency_probe": latency,
+        "system_probe": {
+            "remote_os_id": system["remote_os_id"],
+            "remote_os_name": system["remote_os_name"],
+            "reachable": system["reachable"],
+        },
+    });
+    println!("{}", serde_json::to_string(&result).expect("json"));
 }
 
 /// End-to-end vault check (--vault-check): enables a master password,
@@ -629,6 +680,98 @@ unsafe fn handle_key(state: &mut AppState, hwnd: HWND, wparam: WPARAM) {
     InvalidateRect(hwnd, std::ptr::null(), 1);
 }
 
+/// Handles network probe commands (mxterm parity T003): connection_test,
+/// connection_test_profile, connection_probe_latency, connection_probe_system.
+/// Resolves a saved connection by id from the store when present, otherwise
+/// uses the inline host/port. Returns the reply JSON or None to fall through.
+fn handle_network_commands(
+    state: &mut AppState,
+    cmd: &str,
+    parsed: &serde_json::Value,
+) -> Option<String> {
+    let request_id = parsed
+        .get("requestId")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+    let payload = parsed
+        .get("payload")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+    let request = payload.get("request").cloned().unwrap_or(payload.clone());
+    let timeout = std::time::Duration::from_secs(3);
+
+    // Resolve connection_id -> saved profile (host/port/username).
+    let mut resolved = request.clone();
+    if let Some(connection_id) = request
+        .get("connection_id")
+        .and_then(serde_json::Value::as_str)
+    {
+        if let Some(store) = &state.store {
+            if let Ok(Some(profile)) = store.get_connection(connection_id) {
+                resolved["host"] = profile
+                    .get("host")
+                    .cloned()
+                    .unwrap_or(serde_json::Value::Null);
+                resolved["port"] = profile
+                    .get("port")
+                    .cloned()
+                    .unwrap_or(serde_json::Value::Null);
+                resolved["username"] = profile
+                    .get("username")
+                    .cloned()
+                    .unwrap_or(serde_json::Value::Null);
+            }
+        }
+    }
+
+    let reply_payload: serde_json::Value = match cmd {
+        "connection_test" | "connection_test_profile" => probe::test_connection(&resolved, timeout),
+        "connection_probe_latency" => probe::probe_latency(&resolved, timeout),
+        "connection_probe_system" => {
+            let system = probe::probe_system(&resolved, timeout);
+            // Return a ConnectionProfile: merge probe-derived remote OS fields
+            // onto the saved/inline profile and keep the id for UI matching.
+            let mut profile = resolved;
+            let id = profile
+                .get("id")
+                .cloned()
+                .or_else(|| profile.get("connection_id").cloned())
+                .unwrap_or_else(|| serde_json::Value::String("".to_string()));
+            profile["id"] = id;
+            profile["host"] = system
+                .get("host")
+                .cloned()
+                .unwrap_or(serde_json::Value::Null);
+            profile["port"] = system
+                .get("port")
+                .cloned()
+                .unwrap_or(serde_json::Value::Null);
+            profile["username"] = system
+                .get("username")
+                .cloned()
+                .unwrap_or(serde_json::Value::Null);
+            profile["remote_os_id"] = system
+                .get("remote_os_id")
+                .cloned()
+                .unwrap_or(serde_json::Value::Null);
+            profile["remote_os_name"] = system
+                .get("remote_os_name")
+                .cloned()
+                .unwrap_or(serde_json::Value::Null);
+            profile["remote_os_version"] = system
+                .get("remote_os_version")
+                .cloned()
+                .unwrap_or(serde_json::Value::Null);
+            profile
+        }
+        _ => return None,
+    };
+    Some(
+        serde_json::json!({ "kind": "invoke-reply", "requestId": request_id, "payload": reply_payload })
+            .to_string(),
+    )
+}
+
 /// Handles secret-vault commands (mxterm parity T002): status/unlock/lock/
 /// enable/disable master password. Returns the reply JSON when the command is
 /// vault-backed, or None so the caller falls through to the pure bridge.
@@ -913,6 +1056,10 @@ fn on_web_message(hwnd: HWND, message: &str) -> Option<String> {
     }
 
     if let Some(reply) = handle_vault_commands(state, cmd, &parsed) {
+        return Some(reply);
+    }
+
+    if let Some(reply) = handle_network_commands(state, cmd, &parsed) {
         return Some(reply);
     }
 
