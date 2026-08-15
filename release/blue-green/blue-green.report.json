@@ -1,0 +1,72 @@
+{
+  "task": "T168",
+  "status": "pass",
+  "verified_at_utc": "2026-08-15T07:28:11Z",
+  "drill": [
+    {
+      "event": "deploy",
+      "detail": "deploy green (inactive)",
+      "at": "T168-drill"
+    },
+    {
+      "event": "health_check",
+      "detail": "green healthy",
+      "at": "T168-drill"
+    },
+    {
+      "event": "switch",
+      "detail": "traffic -> green",
+      "at": "T168-drill"
+    },
+    {
+      "event": "verify",
+      "detail": "green serving requests, blue draining",
+      "at": "T168-drill"
+    },
+    {
+      "event": "compat_window",
+      "detail": "N (green) + N-1 (blue) coexist; N+1 rejected",
+      "at": "T168-drill"
+    },
+    {
+      "event": "health_check",
+      "detail": "green post-switch health check FAILED",
+      "at": "T168-drill"
+    },
+    {
+      "event": "rollback",
+      "detail": "traffic -> blue",
+      "at": "T168-drill"
+    },
+    {
+      "event": "health_check",
+      "detail": "blue healthy after rollback",
+      "at": "T168-drill"
+    },
+    {
+      "event": "verify_rollback",
+      "detail": "blue serving, green rolled back",
+      "at": "T168-drill"
+    },
+    {
+      "event": "db_migrate",
+      "detail": "migrate blue DB 2 -> 3",
+      "at": "T168-drill"
+    },
+    {
+      "event": "db_health",
+      "detail": "schema 3 healthy",
+      "at": "T168-drill"
+    },
+    {
+      "event": "db_rollback",
+      "detail": "restore pre-migration backup (schema 2)",
+      "at": "T168-drill"
+    }
+  ],
+  "summary": {
+    "zero_downtime_window": "N + N-1 coexist during drain (T135/T164)",
+    "db_migration": "forward-only, idempotent (T101); rollback restores the pre-migration backup",
+    "rollback": "post-switch failure switches traffic back to blue"
+  }
+}
