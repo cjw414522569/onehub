@@ -650,9 +650,14 @@ mod tests {
 
     #[tokio::test]
     async fn unreachable_target_gets_connection_refused() {
-        let (mut server, addr) =
-            start_server(MapConnector::default(), config(AccessPolicy::AllowAll)).await;
-        let target = ProxyTarget::Hostname("nope.invalid".to_owned());
+        // Deterministic unreachable target: the connector maps "unreachable"
+        // to a closed loopback port (127.0.0.1:1), so the TCP connect fails
+        // with ECONNREFUSED without depending on external DNS (some networks
+        // resolve *.invalid to a blackhole address, which made the old
+        // nope.invalid variant environment-dependent).
+        let connector = MapConnector::new(&[("unreachable", ([127, 0, 0, 1], 1).into())]);
+        let (mut server, addr) = start_server(connector, config(AccessPolicy::AllowAll)).await;
+        let target = ProxyTarget::Hostname("unreachable".to_owned());
         let error = echo_round_trip(addr, &target, 443, &Socks5Config::default())
             .await
             .expect_err("unreachable target refused");
