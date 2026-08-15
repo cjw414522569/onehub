@@ -40,7 +40,7 @@ use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetClientRect, GetDlgItem,
     GetMessageW, GetWindowLongPtrW, GetWindowRect, GetWindowTextLengthW, GetWindowTextW, IsWindow,
-    KillTimer, LoadCursorW, PostQuitMessage, RegisterClassW, SendMessageW, SetTimer,
+    KillTimer, LoadCursorW, PostMessageW, PostQuitMessage, RegisterClassW, SendMessageW, SetTimer,
     SetWindowLongPtrW, ShowWindow, TranslateMessage, BS_PUSHBUTTON, CS_HREDRAW, CS_VREDRAW,
     CW_USEDEFAULT, ES_AUTOHSCROLL, GWLP_USERDATA, HMENU, IDCANCEL, IDC_ARROW, IDOK, MSG, SW_SHOW,
     SW_SHOWDEFAULT, WM_CHAR, WM_CLOSE, WM_COMMAND, WM_CREATE, WM_DESTROY, WM_KEYDOWN,
@@ -48,6 +48,11 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     WS_CAPTION, WS_CHILD, WS_EX_CLIENTEDGE, WS_OVERLAPPEDWINDOW, WS_POPUP, WS_SYSMENU, WS_TABSTOP,
     WS_VISIBLE,
 };
+
+use webview2_com::Microsoft::Web::WebView2::Win32::{ICoreWebView2, ICoreWebView2Controller};
+use windows::Win32::System::Com::{CoInitializeEx, COINIT_APARTMENTTHREADED};
+
+mod webview2;
 
 /// Timer id used for the periodic re-render / command drain.
 const TIMER_ID: usize = 1;
@@ -74,6 +79,11 @@ const IDC_HOST: i32 = 102;
 const IDC_PORT: i32 = 103;
 const IDC_USER: i32 = 104;
 
+/// Custom message that kicks off WebView2 initialization after the window exists.
+const WM_APP_INIT_WEBVIEW: u32 = 0x8000 + 1;
+/// T005 verification page: proves the WebView2 pipeline renders (blue + text).
+const T005_HTML: &str = "<body style=\"margin:0;background:#2374c6\"><div style=\"color:#ffffff;font:28px 'Segoe UI',sans-serif;padding:18px\">WebView2 OK - PC GUI</div></body>";
+
 /// What a click on the tabs bar means.
 enum TabAction {
     /// Open the "new SSH" dialog.
@@ -90,6 +100,8 @@ struct AppState {
     cell_w: i32,
     cell_h: i32,
     metrics_ready: bool,
+    controller: Option<ICoreWebView2Controller>,
+    webview: Option<ICoreWebView2>,
 }
 
 fn main() {
@@ -197,6 +209,9 @@ fn run_gui() {
     // The Win32 FFI below is the documented host-shell boundary; `unsafe` is
     // required to register the classes, create the windows, and pump messages.
     unsafe {
+        // COM apartment for WebView2 (host-shell boundary).
+        let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+
         // Best-effort per-monitor DPI awareness for crisp GDI text.
         SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
 
@@ -251,6 +266,7 @@ fn run_gui() {
 
         ShowWindow(hwnd, SW_SHOWDEFAULT);
         UpdateWindow(hwnd);
+        PostMessageW(hwnd, WM_APP_INIT_WEBVIEW, 0, 0);
 
         let mut message = MSG::default();
         while GetMessageW(&mut message, std::ptr::null_mut(), 0, 0) > 0 {
@@ -278,6 +294,9 @@ unsafe extern "system" fn wnd_proc(
                     ((height - TABS_H - STATUS_H - INPUT_H - 8).max(0) / state.cell_h) as usize;
                 let cols = ((width - PANEL_W - 16).max(0) / state.cell_w) as usize;
                 state.model.resize(rows.max(1), cols.max(1));
+                if let Some(controller) = &state.controller {
+                    let _ = webview2::set_bounds(controller, width, height);
+                }
             }
             InvalidateRect(hwnd, std::ptr::null(), 1);
             0
@@ -302,15 +321,15 @@ unsafe extern "system" fn wnd_proc(
             0
         }
         WM_LBUTTONDOWN => {
-            if let Some(state) = state_of(hwnd) {
-                handle_mouse(state, hwnd, lparam, false);
-            }
+            handle_mouse(hwnd, lparam, false);
             0
         }
         WM_LBUTTONDBLCLK => {
-            if let Some(state) = state_of(hwnd) {
-                handle_mouse(state, hwnd, lparam, true);
-            }
+            handle_mouse(hwnd, lparam, true);
+            0
+        }
+        WM_APP_INIT_WEBVIEW => {
+            init_webview(hwnd);
             0
         }
         WM_TIMER => {
@@ -425,6 +444,8 @@ unsafe fn wm_create(hwnd: HWND) -> LRESULT {
         cell_w: 8,
         cell_h: 16,
         metrics_ready: false,
+        controller: None,
+        webview: None,
     });
     SetWindowLongPtrW(hwnd, GWLP_USERDATA, Box::into_raw(state) as isize);
     SetTimer(hwnd, TIMER_ID, 250, None);
@@ -444,6 +465,9 @@ unsafe fn cleanup(hwnd: HWND) {
     }
     if !state.ui_font.is_null() {
         DeleteObject(state.ui_font);
+    }
+    if let Some(controller) = &state.controller {
+        webview2::close_webview2(controller);
     }
     KillTimer(hwnd, TIMER_ID);
     SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
@@ -478,11 +502,48 @@ unsafe fn handle_key(state: &mut AppState, hwnd: HWND, wparam: WPARAM) {
     InvalidateRect(hwnd, std::ptr::null(), 1);
 }
 
+/// Creates the WebView2 controller and hosts it over the client area.
+unsafe fn init_webview(hwnd: HWND) {
+    let raw = GetWindowLongPtrW(hwnd, GWLP_USERDATA);
+    if raw == 0 {
+        return;
+    }
+    match webview2::init_webview2(hwnd, T005_HTML) {
+        Ok((controller, webview)) => {
+            let state = &mut *(raw as *mut AppState);
+            state.controller = Some(controller);
+            state.webview = Some(webview);
+            let mut client = RECT {
+                left: 0,
+                top: 0,
+                right: 0,
+                bottom: 0,
+            };
+            GetClientRect(hwnd, &mut client);
+            if let Some(controller) = &state.controller {
+                let _ = webview2::set_bounds(
+                    controller,
+                    client.right - client.left,
+                    client.bottom - client.top,
+                );
+            }
+            InvalidateRect(hwnd, std::ptr::null(), 1);
+        }
+        Err(error) => {
+            eprintln!("PC GUI: WebView2 init failed: {error}");
+        }
+    }
+}
+
 /// Handles mouse clicks: tabs open sessions or the new-SSH dialog; the left
 /// repository selects on click and connects on double-click.
-unsafe fn handle_mouse(state: &mut AppState, hwnd: HWND, lparam: LPARAM, double_click: bool) {
+unsafe fn handle_mouse(hwnd: HWND, lparam: LPARAM, double_click: bool) {
     let x = (lparam & 0xffff) as i32;
     let y = ((lparam >> 16) & 0xffff) as i32;
+    let raw = GetWindowLongPtrW(hwnd, GWLP_USERDATA);
+    if raw == 0 {
+        return;
+    }
     let mut client = RECT {
         left: 0,
         top: 0,
@@ -490,26 +551,31 @@ unsafe fn handle_mouse(state: &mut AppState, hwnd: HWND, lparam: LPARAM, double_
         bottom: 0,
     };
     GetClientRect(hwnd, &mut client);
-    let width = client.right - client.left;
     let height = client.bottom - client.top;
 
     if y < TABS_H {
-        for (rect, action) in tab_rects(state) {
-            if x >= rect.left && x < rect.right && y >= rect.top && y < rect.bottom {
-                match action {
-                    TabAction::Add => {
-                        let raw = GetWindowLongPtrW(hwnd, GWLP_USERDATA);
-                        run_connect_dialog(hwnd, raw as *mut AppState);
-                    }
-                    TabAction::Connect(index) => {
-                        state.model.connect_profile(index);
-                        InvalidateRect(hwnd, std::ptr::null(), 1);
-                    }
-                }
-                return;
+        let action = {
+            let state = &mut *(raw as *mut AppState);
+            tab_rects(state)
+                .into_iter()
+                .find(|(rect, _)| {
+                    x >= rect.left && x < rect.right && y >= rect.top && y < rect.bottom
+                })
+                .map(|(_, action)| action)
+        };
+        match action {
+            Some(TabAction::Add) => {
+                run_connect_dialog(hwnd, raw as *mut AppState);
             }
+            Some(TabAction::Connect(index)) => {
+                let state = &mut *(raw as *mut AppState);
+                state.model.connect_profile(index);
+                InvalidateRect(hwnd, std::ptr::null(), 1);
+            }
+            None => {}
         }
     } else if x < PANEL_W && y >= TABS_H && y < height - STATUS_H - INPUT_H {
+        let state = &mut *(raw as *mut AppState);
         let list_top = TABS_H + PANEL_HEADER_H;
         let index = ((y - list_top) / ROW_H) as usize;
         if index < state.model.profile_count() {
@@ -521,7 +587,6 @@ unsafe fn handle_mouse(state: &mut AppState, hwnd: HWND, lparam: LPARAM, double_
             InvalidateRect(hwnd, std::ptr::null(), 1);
         }
     }
-    let _ = width;
 }
 
 /// Tab rectangles: one per saved profile, then the "+" tab.

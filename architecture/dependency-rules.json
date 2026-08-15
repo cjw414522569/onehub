@@ -411,7 +411,9 @@
       "external_imports": [
         "winui-3",
         "windows-app-sdk",
-        "windows-sys"
+        "windows-sys",
+        "windows",
+        "webview2"
       ]
     },
     {
