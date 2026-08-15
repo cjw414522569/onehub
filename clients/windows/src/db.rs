@@ -2,9 +2,9 @@
 //!
 //! Provides the database-engine registry, connection-profile parsing, the
 //! `db_connection_*`/`db_query`/`db_exec` command surface (routed by main.rs),
-//! and live engine sessions. MySQL is wired in T019 (real connection -> query
-//! -> result set); other engines are wired in later rows. Nothing is faked:
-//! unwired engines return a clear recoverable error.
+//! and live engine sessions. MySQL (T019) and PostgreSQL (T020) are wired with
+//! real connections -> query -> result sets; other engines are wired in later
+//! rows. Nothing is faked: unwired engines return a clear recoverable error.
 
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -14,6 +14,8 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crate::probe;
 use mysql_async::prelude::Queryable;
+use tokio_postgres::types::Type;
+use tokio_postgres::NoTls;
 
 /// Known database engines `(key, label)`. Extensions (DM/Kingbase/GBase/...)
 /// are listed so the UI picker and profile validation are complete; real
@@ -38,7 +40,7 @@ pub const DB_ENGINES: &[(&str, &str)] = &[
 
 /// Engines whose real connection is implemented (wired by later rows).
 fn wired_engines() -> &'static [&'static str] {
-    &["mysql"]
+    &["mysql", "postgresql"]
 }
 
 /// Returns true when the engine key is part of the known catalog.
@@ -251,14 +253,20 @@ pub fn test_connection(profile: &Value) -> Value {
     })
 }
 
-/// A live database session. `pool` holds the engine connection for wired
-/// engines (MySQL in T019); unwired engines never create a session.
+/// A live engine connection held by a session.
+enum EngineConnection {
+    MySql(mysql_async::Pool),
+    Postgres(std::sync::Arc<tokio_postgres::Client>),
+}
+
+/// A live database session. `connection` holds the engine handle for wired
+/// engines; unwired engines never create a session.
 pub struct DbSession {
     pub id: String,
     pub engine: String,
     pub profile: Value,
     pub created_at: String,
-    pub pool: Option<mysql_async::Pool>,
+    connection: Option<EngineConnection>,
 }
 
 static DB_SESSIONS: Mutex<Option<HashMap<String, DbSession>>> = Mutex::new(None);
@@ -298,8 +306,39 @@ fn build_mysql_pool(parsed: &DbProfile) -> Result<mysql_async::Pool, String> {
     Ok(mysql_async::Pool::new(mysql_async::Opts::from(builder)))
 }
 
-/// Converts a mysql_async value into a JSON value (null/bytes/int/uint/float/
-/// date/time), so results survive serde round-trips.
+/// Connects a PostgreSQL client (plain TCP) and spawns its connection task.
+fn pg_connect(parsed: &DbProfile) -> Result<std::sync::Arc<tokio_postgres::Client>, String> {
+    let client = runtime().block_on(async {
+        let mut config = tokio_postgres::config::Config::new();
+        config
+            .host(&parsed.host)
+            .port(parsed.port)
+            .user(&parsed.username);
+        if let Some(password) = &parsed.password {
+            config.password(password);
+        }
+        if !parsed.database.is_empty() {
+            config.dbname(&parsed.database);
+        }
+        let (client, connection) = config
+            .connect(NoTls)
+            .await
+            .map_err(|e| format!("PostgreSQL 连接失败：{e}"))?;
+        runtime().spawn(async move {
+            let _ = connection.await;
+        });
+        // Verify authentication with a trivial round-trip.
+        let row = client
+            .query_one("SELECT 1", &[])
+            .await
+            .map_err(|e| format!("PostgreSQL 认证失败：{e}"))?;
+        let _ = row;
+        Ok::<std::sync::Arc<tokio_postgres::Client>, String>(std::sync::Arc::new(client))
+    })?;
+    Ok(client)
+}
+
+/// Converts a mysql_async value into a JSON value.
 fn mysql_value_to_json(value: mysql_async::Value) -> Value {
     match value {
         mysql_async::Value::NULL => Value::Null,
@@ -330,7 +369,87 @@ fn mysql_value_to_json(value: mysql_async::Value) -> Value {
     }
 }
 
-/// Outcome of a MySQL statement: columns, row values, and affected rows.
+/// Converts a PostgreSQL cell into a JSON value, dispatching on the column
+/// type so ints/floats/text/json/dates/bytea all survive round-trips.
+fn pg_cell_to_json(row: &tokio_postgres::Row, index: usize, ty: &Type) -> Value {
+    if *ty == Type::BOOL {
+        return row
+            .try_get::<usize, bool>(index)
+            .map(|v| serde_json::json!(v))
+            .unwrap_or(Value::Null);
+    }
+    if *ty == Type::INT2 {
+        return row
+            .try_get::<usize, i16>(index)
+            .map(|v| serde_json::json!(v))
+            .unwrap_or(Value::Null);
+    }
+    if *ty == Type::INT4 {
+        return row
+            .try_get::<usize, i32>(index)
+            .map(|v| serde_json::json!(v))
+            .unwrap_or(Value::Null);
+    }
+    if *ty == Type::INT8 {
+        return row
+            .try_get::<usize, i64>(index)
+            .map(|v| serde_json::json!(v))
+            .unwrap_or(Value::Null);
+    }
+    if *ty == Type::FLOAT4 {
+        return row
+            .try_get::<usize, f32>(index)
+            .map(|v| serde_json::json!(v))
+            .unwrap_or(Value::Null);
+    }
+    if *ty == Type::FLOAT8 {
+        return row
+            .try_get::<usize, f64>(index)
+            .map(|v| serde_json::json!(v))
+            .unwrap_or(Value::Null);
+    }
+    if *ty == Type::JSON || *ty == Type::JSONB {
+        return row
+            .try_get::<usize, serde_json::Value>(index)
+            .unwrap_or(Value::Null);
+    }
+    if *ty == Type::BYTEA {
+        return row
+            .try_get::<usize, Vec<u8>>(index)
+            .map(|bytes| Value::String(String::from_utf8_lossy(&bytes).to_string()))
+            .unwrap_or(Value::Null);
+    }
+    if *ty == Type::DATE {
+        return row
+            .try_get::<usize, chrono::NaiveDate>(index)
+            .map(|date| Value::String(date.to_string()))
+            .unwrap_or(Value::Null);
+    }
+    if *ty == Type::TIME {
+        return row
+            .try_get::<usize, chrono::NaiveTime>(index)
+            .map(|time| Value::String(time.to_string()))
+            .unwrap_or(Value::Null);
+    }
+    if *ty == Type::TIMESTAMP {
+        return row
+            .try_get::<usize, chrono::NaiveDateTime>(index)
+            .map(|stamp| Value::String(stamp.to_string()))
+            .unwrap_or(Value::Null);
+    }
+    if *ty == Type::TIMESTAMPTZ {
+        return row
+            .try_get::<usize, chrono::DateTime<chrono::Utc>>(index)
+            .map(|stamp| Value::String(stamp.to_string()))
+            .unwrap_or(Value::Null);
+    }
+    // Fallback: text-ish columns (text/varchar/name/unknown/...).
+    row.try_get::<usize, String>(index)
+        .map(Value::String)
+        .unwrap_or(Value::Null)
+}
+
+/// Outcome of a statement: columns, row values, and affected rows.
 #[derive(Debug)]
 pub struct QueryOutcome {
     pub columns: Vec<String>,
@@ -339,7 +458,7 @@ pub struct QueryOutcome {
 }
 
 /// Runs a statement against a MySQL pool: SELECT yields columns+rows, DML
-/// yields affected_rows. Uses query_iter so both shapes come from one path.
+/// yields affected_rows.
 async fn mysql_run(pool: &mysql_async::Pool, sql: &str) -> Result<QueryOutcome, String> {
     let mut conn = pool
         .get_conn()
@@ -380,18 +499,71 @@ async fn mysql_run(pool: &mysql_async::Pool, sql: &str) -> Result<QueryOutcome, 
     })
 }
 
+/// Runs a statement against a PostgreSQL client.
+async fn pg_run(client: &tokio_postgres::Client, sql: &str) -> Result<QueryOutcome, String> {
+    let stmt = client
+        .prepare(sql)
+        .await
+        .map_err(|e| format!("SQL 准备失败：{e}"))?;
+    if stmt.columns().is_empty() {
+        let affected = client
+            .execute(&stmt, &[])
+            .await
+            .map_err(|e| format!("SQL 执行失败：{e}"))?;
+        return Ok(QueryOutcome {
+            columns: Vec::new(),
+            rows: Vec::new(),
+            affected_rows: affected,
+        });
+    }
+    let columns: Vec<String> = stmt
+        .columns()
+        .iter()
+        .map(|column| column.name().to_string())
+        .collect();
+    let rows = client
+        .query(&stmt, &[])
+        .await
+        .map_err(|e| format!("查询失败：{e}"))?;
+    let mut result_rows = Vec::new();
+    for row in rows {
+        let mut values = Vec::new();
+        for index in 0..columns.len() {
+            let ty = stmt.columns()[index].type_();
+            values.push(pg_cell_to_json(&row, index, ty));
+        }
+        result_rows.push(values);
+    }
+    Ok(QueryOutcome {
+        columns,
+        rows: result_rows,
+        affected_rows: 0,
+    })
+}
+
 /// Runs a statement with an inline profile (per-call connection).
 pub fn query_inline(profile: &Value, sql: &str) -> Result<QueryOutcome, String> {
     if sql.trim().is_empty() {
         return Err("SQL 为空。".to_string());
     }
     let parsed = DbProfile::parse(profile)?;
-    if parsed.engine != "mysql" {
-        let label = engine_label(&parsed.engine).unwrap_or(&parsed.engine);
-        return Err(format!("数据库引擎未接入：{}（{label}）", parsed.engine));
+    match parsed.engine.as_str() {
+        "mysql" => {
+            let pool = build_mysql_pool(&parsed)?;
+            runtime().block_on(mysql_run(&pool, sql))
+        }
+        "postgresql" => {
+            if parsed.ssl {
+                return Err("PostgreSQL TLS 暂未接入（当前为明文 TCP）。".to_string());
+            }
+            let client = pg_connect(&parsed)?;
+            runtime().block_on(pg_run(&client, sql))
+        }
+        other => {
+            let label = engine_label(other).unwrap_or(other);
+            Err(format!("数据库引擎未接入：{other}（{label}）"))
+        }
     }
-    let pool = build_mysql_pool(&parsed)?;
-    runtime().block_on(mysql_run(&pool, sql))
 }
 
 /// Runs a statement against an existing session's live connection.
@@ -399,22 +571,27 @@ pub fn query_session(session_id: &str, sql: &str) -> Result<QueryOutcome, String
     if sql.trim().is_empty() {
         return Err("SQL 为空。".to_string());
     }
-    let pool = {
+    let connection = {
         let guard = sessions_map().lock().expect("db sessions lock");
         let session = guard
             .as_ref()
             .and_then(|m| m.get(session_id))
             .ok_or_else(|| "数据库会话不存在。".to_string())?;
-        session
-            .pool
-            .as_ref()
-            .cloned()
-            .ok_or_else(|| "会话没有活动连接。".to_string())?
+        match &session.connection {
+            Some(EngineConnection::MySql(pool)) => EngineConnection::MySql(pool.clone()),
+            Some(EngineConnection::Postgres(client)) => {
+                EngineConnection::Postgres(std::sync::Arc::clone(client))
+            }
+            None => return Err("会话没有活动连接。".to_string()),
+        }
     };
-    runtime().block_on(mysql_run(&pool, sql))
+    match connection {
+        EngineConnection::MySql(pool) => runtime().block_on(mysql_run(&pool, sql)),
+        EngineConnection::Postgres(client) => runtime().block_on(pg_run(client.as_ref(), sql)),
+    }
 }
 
-/// Opens a database session for a wired engine. MySQL (T019) verifies the
+/// Opens a database session for a wired engine. MySQL/PostgreSQL verify the
 /// connection with a real handshake; unwired engines return a clear error.
 pub fn connect(profile: &Value) -> Result<String, String> {
     let parsed = DbProfile::parse(profile)?;
@@ -425,22 +602,35 @@ pub fn connect(profile: &Value) -> Result<String, String> {
             parsed.engine
         ));
     }
-    let pool = match parsed.engine.as_str() {
-        "mysql" => build_mysql_pool(&parsed)?,
-        other => {
-            return Err(format!("数据库引擎未接入：{other}"));
+    let connection = match parsed.engine.as_str() {
+        "mysql" => EngineConnection::MySql(build_mysql_pool(&parsed)?),
+        "postgresql" => {
+            if parsed.ssl {
+                return Err("PostgreSQL TLS 暂未接入（当前为明文 TCP）。".to_string());
+            }
+            EngineConnection::Postgres(pg_connect(&parsed)?)
         }
+        other => return Err(format!("数据库引擎未接入：{other}")),
     };
-    // Real handshake: obtain a connection and ping the server.
-    runtime().block_on(async {
-        let mut conn = pool
-            .get_conn()
-            .await
-            .map_err(|e| format!("MySQL 连接失败：{e}"))?;
-        conn.ping()
-            .await
-            .map_err(|e| format!("MySQL 认证失败：{e}"))
-    })?;
+    // Real handshake verification for both engines.
+    match &connection {
+        EngineConnection::MySql(pool) => {
+            runtime().block_on(async {
+                let mut conn = pool
+                    .get_conn()
+                    .await
+                    .map_err(|e| format!("MySQL 连接失败：{e}"))?;
+                conn.ping()
+                    .await
+                    .map_err(|e| format!("MySQL 认证失败：{e}"))
+            })?;
+        }
+        EngineConnection::Postgres(client) => {
+            runtime()
+                .block_on(client.query_one("SELECT 1", &[]))
+                .map_err(|e| format!("PostgreSQL 连接失败：{e}"))?;
+        }
+    }
     let id = new_id("db");
     let created_at = new_id("ts");
     sessions_map()
@@ -454,7 +644,7 @@ pub fn connect(profile: &Value) -> Result<String, String> {
                 engine: parsed.engine,
                 profile: profile.clone(),
                 created_at,
-                pool: Some(pool),
+                connection: Some(connection),
             },
         );
     Ok(id)
@@ -496,11 +686,12 @@ mod tests {
         assert!(is_known_engine("iotdb"));
         assert!(!is_known_engine("nosql-unknown"));
         assert_eq!(engine_label("mysql"), Some("MySQL"));
-        // T019 wires MySQL; every other engine must still report unwired.
+        // T019/T020 wire MySQL and PostgreSQL; others must stay unwired.
         assert!(engine_available("mysql"));
+        assert!(engine_available("postgresql"));
         assert!(DB_ENGINES
             .iter()
-            .all(|(key, _)| *key == "mysql" || !engine_available(key)));
+            .all(|(key, _)| { *key == "mysql" || *key == "postgresql" || !engine_available(key) }));
         assert_eq!(engine_list().len(), 15);
     }
 
@@ -528,7 +719,7 @@ mod tests {
     #[test]
     fn tcp_test_refused_is_graceful() {
         let result = test_connection(&json!({
-            "engine": "mysql",
+            "engine": "postgresql",
             "host": "127.0.0.1",
             "port": 1,
             "connect_timeout_ms": 800,
@@ -588,9 +779,26 @@ mod tests {
     }
 
     #[test]
+    fn pg_refused_endpoints_are_graceful() {
+        let profile = json!({ "engine": "postgresql", "host": "127.0.0.1", "port": 1, "username": "postgres", "password": "x", "connect_timeout_ms": 800 });
+        let connect_err = connect(&profile).expect_err("refused");
+        assert!(connect_err.contains("失败"), "got {connect_err:?}");
+
+        let query_err = query_inline(&profile, "SELECT 1").expect_err("refused");
+        assert!(query_err.contains("失败"), "got {query_err:?}");
+
+        let ssl_err = query_inline(
+            &json!({ "engine": "postgresql", "host": "127.0.0.1", "port": 5432, "username": "u", "ssl": true }),
+            "SELECT 1",
+        )
+        .expect_err("tls not wired");
+        assert!(ssl_err.contains("TLS"), "got {ssl_err:?}");
+    }
+
+    #[test]
     fn unwired_engine_connect_is_honest() {
-        let err = connect(&json!({ "engine": "postgresql", "host": "127.0.0.1", "username": "root", "password": "x" }))
-            .expect_err("pg not wired in T019");
+        let err = connect(&json!({ "engine": "sqlserver", "host": "127.0.0.1", "username": "sa", "password": "x" }))
+            .expect_err("sqlserver not wired");
         assert!(err.contains("未接入"), "got {err:?}");
         assert!(!close_session("db-missing"));
         assert!(active_db_session_ids().is_empty());

@@ -225,6 +225,11 @@ fn main() {
 /// validates the engine catalog, MySQL wiring, TCP/path reachability tests,
 /// graceful refusal for MySQL connect/query, honest unwired-engine errors, and
 /// a store round-trip for db_connection_save/list/delete. Prints JSON evidence.
+/// End-to-end database check (--db-check, navop parity T018/T019/T020):
+/// validates the engine catalog, MySQL+PostgreSQL wiring, TCP/path reachability
+/// tests, graceful refusal for MySQL/PostgreSQL connect+query, honest
+/// unwired-engine errors, and a store round-trip for db_connection_save/list/
+/// delete. Prints JSON evidence.
 fn db_check() {
     use clients_windows::db;
     use clients_windows::store::Store;
@@ -232,9 +237,14 @@ fn db_check() {
     let mysql_available = engines
         .iter()
         .any(|e| e["engine"] == "mysql" && e["available"] == serde_json::Value::Bool(true));
-    let other_engines_unavailable = engines
+    let postgresql_available = engines
         .iter()
-        .all(|e| e["engine"] == "mysql" || e["available"] == serde_json::Value::Bool(false));
+        .any(|e| e["engine"] == "postgresql" && e["available"] == serde_json::Value::Bool(true));
+    let other_engines_unavailable = engines.iter().all(|e| {
+        e["engine"] == "mysql"
+            || e["engine"] == "postgresql"
+            || e["available"] == serde_json::Value::Bool(false)
+    });
     let tcp = db::test_connection(&serde_json::json!({
         "engine": "mysql",
         "host": "127.0.0.1",
@@ -264,14 +274,18 @@ fn db_check() {
     let mysql_query_err = db::query_inline(&mysql_profile, "SELECT 1")
         .err()
         .unwrap_or_default();
-    let pg_connect_err = db::connect(&serde_json::json!({
+    let pg_profile = serde_json::json!({
         "engine": "postgresql",
         "host": "127.0.0.1",
-        "username": "root",
+        "port": 1,
+        "username": "postgres",
         "password": "x",
-    }))
-    .err()
-    .unwrap_or_default();
+        "connect_timeout_ms": 800,
+    });
+    let pg_connect_err = db::connect(&pg_profile).err().unwrap_or_default();
+    let pg_query_err = db::query_inline(&pg_profile, "SELECT 1")
+        .err()
+        .unwrap_or_default();
     let store_path =
         std::env::temp_dir().join(format!("onehub-db-check-{}.sqlite", std::process::id()));
     let mut store = Store::open(&store_path).expect("store");
@@ -304,13 +318,15 @@ fn db_check() {
     let result = serde_json::json!({
         "engine_count": engines.len(),
         "mysql_available": mysql_available,
+        "postgresql_available": postgresql_available,
         "other_engines_unavailable": other_engines_unavailable,
         "tcp_refused_graceful": tcp["reachable"] == serde_json::Value::Bool(false),
         "sqlite_missing_reported": sqlite_missing["reachable"] == serde_json::Value::Bool(false),
         "sqlite_present_reported": sqlite_present["reachable"] == serde_json::Value::Bool(true),
         "mysql_connect_refused_graceful": mysql_connect_err.contains("失败"),
         "mysql_query_refused_graceful": mysql_query_err.contains("失败"),
-        "pg_connect_not_wired": pg_connect_err.contains("未接入"),
+        "pg_connect_refused_graceful": pg_connect_err.contains("失败"),
+        "pg_query_refused_graceful": pg_query_err.contains("失败"),
         "db_connection_save_list_delete_ok": db_listed >= 1 && deleted,
     });
     println!("{}", serde_json::to_string(&result).expect("json"));
