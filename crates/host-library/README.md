@@ -355,3 +355,15 @@
   truthful.
 - `RecoveryState` - restored sessions match the saved state after relaunch.
 - Real simulator + device lifecycle tests run on Apple hosts.
+
+## T130: iOS Keychain, biometrics, file import, sharing
+
+`crates/host-library/src/ios_security.rs`:
+
+- `DataProtectionClass` - chosen correctly per secret kind: key material and
+  auth tokens are device-only (`WhenUnlockedThisDeviceOnly`), so they never
+  restore to another device on backup restore; settings may restore.
+- `IosKeychainImport` - imports with the correct class and cleans up every
+  temporary import file immediately.
+- `IosBiometricPrompt` - confirm / cancel per device state.
+- Real lock-screen / restart / backup-restore tests run on Apple hosts.
