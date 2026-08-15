@@ -1285,8 +1285,20 @@ export function dbConnectionDisconnect(sessionId: string) {
   return invoke<boolean>("db_connection_disconnect", { request: { session_id: sessionId } });
 }
 
+export function dbExport(request: { session_id: string; sql: string; format: string; table?: string }) {
+  return invoke<{ format: string; rows: number; chars: number; path: string | null; content: string }>("db_export", { request });
+}
+
+export function dbImport(request: { session_id: string; table: string; format: string; content: string }) {
+  return invoke<{ format: string; statements: number; imported: boolean }>("db_import", { request });
+}
+
 export function dbObjectList(sessionId: string, kind?: string) {
   return invoke<DbObjectInfo[]>("db_object_list", { request: { session_id: sessionId, kind } });
+}
+
+export function dbExplain(sessionId: string, sql: string) {
+  return invoke<DbQueryResult>("db_explain", { request: { session_id: sessionId, sql } });
 }
 
 export function dbQuery(request: DbQueryRequest) {

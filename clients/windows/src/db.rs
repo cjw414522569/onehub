@@ -1586,6 +1586,272 @@ pub fn list_objects(session_id: &str, kind_filter: Option<&str>) -> Result<Vec<V
     Ok(objects)
 }
 
+/// Quotes a CSV field when needed (commas, quotes, newlines).
+fn csv_field(value: &str) -> String {
+    if value.contains(',') || value.contains('"') || value.contains('\n') || value.contains('\r') {
+        format!("\"{}\"", value.replace('"', "\"\""))
+    } else {
+        value.to_string()
+    }
+}
+
+/// Splits one CSV line into fields, honoring double-quoted segments.
+fn split_csv_line(line: &str) -> Result<Vec<String>, String> {
+    let mut fields = Vec::new();
+    let mut current = String::new();
+    let mut in_quotes = false;
+    let mut chars = line.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if in_quotes {
+            if ch == '"' {
+                if chars.peek() == Some(&'"') {
+                    current.push('"');
+                    chars.next();
+                } else {
+                    in_quotes = false;
+                }
+            } else {
+                current.push(ch);
+            }
+        } else if ch == '"' {
+            in_quotes = true;
+        } else if ch == ',' {
+            fields.push(current.trim().to_string());
+            current = String::new();
+        } else {
+            current.push(ch);
+        }
+    }
+    if in_quotes {
+        return Err("CSV 引号未闭合。".to_string());
+    }
+    fields.push(current.trim().to_string());
+    Ok(fields)
+}
+
+/// Serializes a query outcome to CSV text (header + rows).
+fn rows_to_csv(columns: &[String], rows: &[Vec<Value>]) -> String {
+    let mut out = columns
+        .iter()
+        .map(|column| csv_field(column))
+        .collect::<Vec<_>>()
+        .join(",");
+    out.push('\n');
+    for row in rows {
+        let fields = row
+            .iter()
+            .map(|value| match value {
+                Value::Null => String::new(),
+                Value::String(text) => csv_field(text),
+                other => csv_field(&other.to_string()),
+            })
+            .collect::<Vec<_>>()
+            .join(",");
+        out.push_str(&fields);
+        out.push('\n');
+    }
+    out
+}
+
+/// Converts a JSON value into a SQL literal.
+fn value_to_sql_literal(value: &Value) -> String {
+    match value {
+        Value::Null => "NULL".to_string(),
+        Value::Bool(b) => {
+            if *b {
+                "1".to_string()
+            } else {
+                "0".to_string()
+            }
+        }
+        Value::Number(number) => number.to_string(),
+        Value::String(text) => format!("'{}'", text.replace('\'', "''")),
+        _ => "NULL".to_string(),
+    }
+}
+
+/// Builds INSERT statements for a table from columns + rows.
+fn build_inserts(table: &str, columns: &[String], rows: &[Vec<Value>]) -> String {
+    let column_list = columns
+        .iter()
+        .map(|column| format!("\"{}\"", column.replace('"', "\"\"")))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let mut out = format!(
+        "INSERT INTO \"{}\" ({column_list}) VALUES\n",
+        table.replace('"', "\"\"")
+    );
+    for (index, row) in rows.iter().enumerate() {
+        let values = row
+            .iter()
+            .map(value_to_sql_literal)
+            .collect::<Vec<_>>()
+            .join(", ");
+        out.push_str(&format!("({values})"));
+        out.push_str(if index + 1 < rows.len() { ",\n" } else { ";\n" });
+    }
+    out
+}
+
+/// Exports a query result as CSV/JSON/SQL text (optionally to a local file).
+pub fn export_data(
+    session_id: &str,
+    sql: &str,
+    format: &str,
+    table: Option<&str>,
+    path: Option<&str>,
+) -> Result<Value, String> {
+    let outcome = query_session(session_id, sql)?;
+    let text = match format {
+        "csv" => rows_to_csv(&outcome.columns, &outcome.rows),
+        "json" => serde_json::to_string_pretty(&serde_json::json!({
+            "columns": outcome.columns,
+            "rows": outcome.rows,
+        }))
+        .map_err(|e| format!("JSON 序列化失败：{e}"))?,
+        "sql" => {
+            let table = table.unwrap_or("exported_table");
+            build_inserts(table, &outcome.columns, &outcome.rows)
+        }
+        other => return Err(format!("不支持的导出格式：{other}")),
+    };
+    if let Some(path) = path {
+        std::fs::write(path, &text).map_err(|e| format!("写入文件失败：{e}"))?;
+    }
+    Ok(serde_json::json!({
+        "format": format,
+        "rows": outcome.rows.len(),
+        "chars": text.chars().count(),
+        "path": path,
+        "content": text,
+    }))
+}
+
+/// Imports CSV/JSON/SQL content into a table for a session.
+pub fn import_data(
+    session_id: &str,
+    table: &str,
+    format: &str,
+    content: &str,
+) -> Result<Value, String> {
+    if content.trim().is_empty() {
+        return Err("导入内容为空。".to_string());
+    }
+    let statements: Vec<String> = match format {
+        "sql" => split_sql_statements(content),
+        "csv" => {
+            let mut rows = Vec::new();
+            let mut columns = Vec::new();
+            for (index, line) in content.lines().enumerate() {
+                let fields = split_csv_line(line)?;
+                if index == 0 {
+                    columns = fields;
+                } else {
+                    rows.push(fields.into_iter().map(Value::String).collect::<Vec<_>>());
+                }
+            }
+            if columns.is_empty() {
+                return Err("CSV 缺少表头。".to_string());
+            }
+            vec![build_inserts(table, &columns, &rows)]
+        }
+        "json" => {
+            let parsed: Value =
+                serde_json::from_str(content).map_err(|e| format!("JSON 解析失败：{e}"))?;
+            let (columns, rows) = match parsed {
+                Value::Object(map) => {
+                    let cols = map
+                        .get("columns")
+                        .and_then(Value::as_array)
+                        .map(|array| {
+                            array
+                                .iter()
+                                .filter_map(|v| v.as_str().map(str::to_string))
+                                .collect::<Vec<_>>()
+                        })
+                        .ok_or_else(|| "JSON 缺少 columns 数组。".to_string())?;
+                    let rows = map
+                        .get("rows")
+                        .and_then(Value::as_array)
+                        .map(|array| {
+                            array
+                                .iter()
+                                .filter_map(|row| row.as_array().cloned())
+                                .collect::<Vec<_>>()
+                        })
+                        .unwrap_or_default();
+                    (cols, rows)
+                }
+                Value::Array(array) => {
+                    let mut cols: Vec<String> = Vec::new();
+                    let mut rows = Vec::new();
+                    for item in &array {
+                        if let Value::Object(obj) = item {
+                            for key in obj.keys() {
+                                if !cols.contains(key) {
+                                    cols.push(key.clone());
+                                }
+                            }
+                        }
+                    }
+                    for item in array {
+                        if let Value::Object(obj) = item {
+                            rows.push(
+                                cols.iter()
+                                    .map(|col| obj.get(col).cloned().unwrap_or(Value::Null))
+                                    .collect(),
+                            );
+                        }
+                    }
+                    (cols, rows)
+                }
+                _ => return Err("JSON 结构不识别。".to_string()),
+            };
+            vec![build_inserts(table, &columns, &rows)]
+        }
+        other => return Err(format!("不支持的导入格式：{other}")),
+    };
+    for statement in &statements {
+        query_session(session_id, statement)?;
+    }
+    Ok(serde_json::json!({
+        "format": format,
+        "statements": statements.len(),
+        "imported": true,
+    }))
+}
+
+/// Splits a SQL text into statements on semicolons outside quotes.
+fn split_sql_statements(sql: &str) -> Vec<String> {
+    let mut statements = Vec::new();
+    let mut current = String::new();
+    let mut in_single = false;
+    let mut in_double = false;
+    for ch in sql.chars() {
+        match ch {
+            '\'' if !in_double => {
+                in_single = !in_single;
+                current.push(ch);
+            }
+            '"' if !in_single => {
+                in_double = !in_double;
+                current.push(ch);
+            }
+            ';' if !in_single && !in_double => {
+                if !current.trim().is_empty() {
+                    statements.push(current.trim().to_string());
+                }
+                current = String::new();
+            }
+            _ => current.push(ch),
+        }
+    }
+    if !current.trim().is_empty() {
+        statements.push(current.trim().to_string());
+    }
+    statements
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2000,6 +2266,86 @@ mod tests {
         }
     }
 
+    #[test]
+    fn csv_export_import_roundtrip_on_sqlite() {
+        let dir =
+            std::env::temp_dir().join(format!("onehub-sqlite-xfer-{}.sqlite", std::process::id()));
+        let _ = std::fs::remove_file(&dir);
+        let profile = json!({ "engine": "sqlite", "database": dir.to_string_lossy() });
+        let session = connect(&profile).expect("connect");
+        let _ = query_session(
+            &session,
+            "CREATE TABLE demo (id INTEGER PRIMARY KEY, name TEXT, note TEXT)",
+        );
+        let _ = query_session(
+            &session,
+            "INSERT INTO demo(name, note) VALUES ('alice', 'a, \"quoted\"')",
+        );
+        let exported =
+            export_data(&session, "SELECT * FROM demo", "csv", None, None).expect("export csv");
+        assert_eq!(exported["rows"], json!(1));
+        let csv = exported["content"].as_str().expect("csv content");
+        assert!(csv.contains("alice"), "csv={csv}");
+        assert!(csv.contains("\"a, \"\"quoted\"\"\""), "csv quoted field");
+        let json_out =
+            export_data(&session, "SELECT * FROM demo", "json", None, None).expect("export json");
+        assert!(json_out["content"]
+            .as_str()
+            .expect("json")
+            .contains("alice"));
+        let sql_out = export_data(&session, "SELECT * FROM demo", "sql", Some("demo"), None)
+            .expect("export sql");
+        assert!(sql_out["content"]
+            .as_str()
+            .expect("sql")
+            .contains("INSERT INTO"));
+        let _ = query_session(&session, "CREATE TABLE import_demo (name TEXT, note TEXT)");
+        let imported = import_data(
+            &session,
+            "import_demo",
+            "csv",
+            "name,note\nbob,hello world\ncarol,\"x, y\"\n",
+        )
+        .expect("import csv");
+        assert_eq!(imported["imported"], true);
+        let check =
+            query_session(&session, "SELECT count(*) AS n FROM import_demo").expect("count");
+        assert_eq!(check.rows[0][0], json!(2));
+        let sql_import = import_data(
+            &session,
+            "import_demo",
+            "sql",
+            "INSERT INTO import_demo VALUES ('dave', 'z');",
+        )
+        .expect("import sql");
+        assert_eq!(sql_import["statements"], json!(1));
+        let json_import = import_data(
+            &session,
+            "import_demo",
+            "json",
+            "[{\"name\":\"erin\",\"note\":\"n1\"},{\"name\":\"frank\",\"note\":\"n2\"}]",
+        )
+        .expect("import json");
+        assert_eq!(json_import["imported"], true);
+        let _ = close_session(&session);
+        let _ = std::fs::remove_file(&dir);
+    }
+
+    #[test]
+    fn export_rejects_unknown_format() {
+        let dir = std::env::temp_dir().join(format!(
+            "onehub-sqlite-xferbad-{}.sqlite",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&dir);
+        let profile = json!({ "engine": "sqlite", "database": dir.to_string_lossy() });
+        let session = connect(&profile).expect("connect");
+        let _ = query_session(&session, "CREATE TABLE t (id INTEGER)");
+        let err = export_data(&session, "SELECT * FROM t", "xml", None, None).expect_err("xml");
+        assert!(err.contains("不支持的导出格式"));
+        let _ = close_session(&session);
+        let _ = std::fs::remove_file(&dir);
+    }
     #[test]
     fn unwired_engine_connect_is_honest() {
         let err = connect(

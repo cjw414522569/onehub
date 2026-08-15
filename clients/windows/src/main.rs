@@ -2706,6 +2706,55 @@ fn handle_db_commands(
                 .unwrap_or("");
             Ok(serde_json::Value::Bool(db::close_session(session_id)))
         }
+        "db_export" => {
+            let request = payload.get("request").cloned().unwrap_or(payload.clone());
+            let session_id = request
+                .get("session_id")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            let sql = request
+                .get("sql")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("")
+                .to_string();
+            let format = request
+                .get("format")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("csv")
+                .to_string();
+            let table = request
+                .get("table")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_string);
+            let path = request
+                .get("path")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_string);
+            db::export_data(session_id, &sql, &format, table.as_deref(), path.as_deref())
+        }
+        "db_import" => {
+            let request = payload.get("request").cloned().unwrap_or(payload.clone());
+            let session_id = request
+                .get("session_id")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            let table = request
+                .get("table")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("")
+                .to_string();
+            let format = request
+                .get("format")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("csv")
+                .to_string();
+            let content = request
+                .get("content")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("")
+                .to_string();
+            db::import_data(session_id, &table, &format, &content)
+        }
         "db_object_list" => {
             let request = payload.get("request").cloned().unwrap_or(payload.clone());
             let session_id = request

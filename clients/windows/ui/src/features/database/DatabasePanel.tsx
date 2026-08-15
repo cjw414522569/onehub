@@ -8,6 +8,8 @@ import {
   dbConnectionTest,
   dbEngineList,
   dbExplain,
+  dbExport,
+  dbImport,
   dbObjectList,
   dbQuery,
 } from "../../shared/tauri/commands";
@@ -89,6 +91,10 @@ export function DatabasePanel({ open, onClose }: DatabasePanelProps) {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(100);
   const [planResult, setPlanResult] = useState<DbQueryResult | null>(null);
+  const [transferFormat, setTransferFormat] = useState("csv");
+  const [transferTable, setTransferTable] = useState("");
+  const [importContent, setImportContent] = useState("");
+  const [exportContent, setExportContent] = useState("");
   const [objects, setObjects] = useState<DbObjectInfo[]>([]);
   const [objectsLoaded, setObjectsLoaded] = useState(false);
 
@@ -216,6 +222,51 @@ export function DatabasePanel({ open, onClose }: DatabasePanelProps) {
       const result = await dbExplain(sessionId, activeSqlTab.sql);
       setPlanResult(result);
       setMessage(`执行计划已返回 ${result.rows.length} 行。`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const runExport = async () => {
+    if (!sessionId || !activeSqlTab.sql.trim()) {
+      setMessage("请先连接并输入要导出的 SQL。");
+      return;
+    }
+    setBusy(true);
+    setMessage(null);
+    try {
+      const result = await dbExport({
+        session_id: sessionId,
+        sql: activeSqlTab.sql,
+        format: transferFormat,
+        table: transferFormat === "sql" ? transferTable || undefined : undefined,
+      });
+      setExportContent(result.content);
+      setMessage(`已导出 ${result.rows} 行（${result.format}）。`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const runImport = async () => {
+    if (!sessionId || !transferTable.trim() || !importContent.trim()) {
+      setMessage("请先连接、填写目标表并粘贴导入内容。");
+      return;
+    }
+    setBusy(true);
+    setMessage(null);
+    try {
+      const result = await dbImport({
+        session_id: sessionId,
+        table: transferTable.trim(),
+        format: transferFormat,
+        content: importContent,
+      });
+      setMessage(`导入成功（${result.statements} 条语句）。`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error));
     } finally {
@@ -561,6 +612,37 @@ export function DatabasePanel({ open, onClose }: DatabasePanelProps) {
               </table>
             </div>
           ) : null}
+        </section>
+
+        <section style={{ marginTop: 14 }}>
+          <h3 style={{ margin: "0 0 8px", fontSize: 13 }}>导入 / 导出{sessionId ? "（已连接）" : ""}</h3>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+            <label style={{ display: "grid", gap: 2, fontSize: 12 }}>
+              格式
+              <select value={transferFormat} onChange={(event) => setTransferFormat(event.target.value)}>
+                <option value="csv">CSV</option>
+                <option value="json">JSON</option>
+                <option value="sql">SQL</option>
+              </select>
+            </label>
+            <label style={{ display: "grid", gap: 2, fontSize: 12 }}>
+              目标表（SQL 导出/导入必填）
+              <input value={transferTable} onChange={(event) => setTransferTable(event.target.value)} placeholder="表名" />
+            </label>
+          </div>
+          <button type="button" onClick={() => void runExport()} disabled={busy || !sessionId || !activeSqlTab.sql.trim()}>
+            导出当前 SQL 结果
+          </button>
+          {exportContent ? (
+            <textarea readOnly value={exportContent} rows={4} style={{ width: "100%", boxSizing: "border-box", fontFamily: "monospace", fontSize: 11, marginTop: 6 }} />
+          ) : null}
+          <div style={{ display: "grid", gap: 2, marginTop: 8, fontSize: 12 }}>
+            导入内容
+            <textarea value={importContent} onChange={(event) => setImportContent(event.target.value)} rows={3} placeholder={transferFormat === "csv" ? "name,note\nbob,hello" : transferFormat === "json" ? "[{\"name\":\"bob\"}]" : "INSERT INTO t VALUES (...);"} style={{ width: "100%", boxSizing: "border-box", fontFamily: "monospace", fontSize: 11 }} />
+          </div>
+          <button type="button" onClick={() => void runImport()} disabled={busy || !sessionId || !transferTable.trim() || !importContent.trim()} style={{ marginTop: 6 }}>
+            导入到目标表
+          </button>
         </section>
 
         {message ? (
