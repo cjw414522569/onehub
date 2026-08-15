@@ -58,3 +58,17 @@
   Windows Hello).
 - The authentication interaction matrix test covers submit / cancel /
   cancel-then-submit for every prompt kind.
+
+## T106: desktop window, multi-tab, split, and focus model
+
+`crates/host-library/src/workspace.rs`:
+
+- `Workspace` - multiple `WindowModel`s, each with tabs and splittable panes;
+  a single global focus location (window -> tab -> pane) stays consistent.
+- Drag-drop: `move_tab` moves a tab between windows (focus follows); tabs can
+  also be moved with the `MoveTabToNextWindow` shortcut.
+- Shortcuts: `ShortcutMap` resolves Ctrl+T / Ctrl+W / Ctrl+Tab /
+  Ctrl+Shift+[ ] / split / focus-ring chords to the same operations.
+- Focus ring: `focus_next` / `focus_prev` cycle panes, tabs, and windows.
+- Restore: `snapshot` / `restore` serialize the whole multi-window layout to a
+  versioned snapshot (validated on restore; invalid indices rejected).

@@ -9,6 +9,7 @@ pub mod auth_prompt;
 pub mod editor;
 pub mod fingerprint;
 pub mod host;
+pub mod workspace;
 
 pub use auth_prompt::{
     AuthPrompt, ConfirmState, HardwareConfirmation, KeyOption, KeySelection, PromptError,
@@ -24,6 +25,11 @@ pub use fingerprint::{
 };
 pub use host::{
     GroupSummary, HostLibrary, HostRecord, SelectionModel, SortField, SortOrder, TagSummary,
+};
+pub use workspace::{
+    FocusLocation, PaneModel, PaneSnapshot, RestoreError, ShortcutAction, ShortcutMap,
+    SplitDirection, TabModel, TabSnapshot, WindowModel, WindowSnapshot, Workspace,
+    WorkspaceSnapshot,
 };
 
 /// Module identity used by diagnostics and architecture tooling.
