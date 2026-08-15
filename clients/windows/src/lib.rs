@@ -7,6 +7,7 @@
 //! `ssh-gui` binary (`src/main.rs`): it only renders the model and feeds it
 //! keystrokes, so every GUI behavior is verifiable without opening a window.
 
+pub mod local_sessions;
 pub mod model;
 pub mod network_diagnostic;
 pub mod probe;

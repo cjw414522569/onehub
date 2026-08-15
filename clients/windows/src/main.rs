@@ -17,6 +17,7 @@
 //!   cargo run -p clients-windows -- --check  # headless self-test (CI-safe)
 
 use abi_c::{BatchItem, EventBatch, EVENT_BATCH_VERSION};
+use clients_windows::local_sessions;
 use clients_windows::model::{
     GuiCommand, GuiModel, Rgb, SessionPhase, ACCENT, BORDER, CHROME_BG, DEFAULT_BG, DEFAULT_FG,
     PANEL_ACTIVE, PANEL_BG, TEXT_MAIN, TEXT_MUTED,
@@ -162,7 +163,37 @@ fn main() {
         diag_check();
         return;
     }
+    if std::env::args().any(|argument| argument == "--local-check") {
+        local_check();
+        return;
+    }
     run_gui();
+}
+
+/// End-to-end local session check (--local-check): lists local profiles and
+/// serial ports, opens/closes a local session, printing JSON evidence
+/// (mxterm parity T010).
+fn local_check() {
+    use clients_windows::local_sessions as ls;
+    let profiles = ls::list_local_profiles();
+    let ports = ls::list_serial_ports();
+    let id = ls::open_local("powershell.exe").expect("open");
+    let closed = ls::close_session(&id);
+    let profile_kinds: Vec<String> = profiles
+        .as_array()
+        .expect("arr")
+        .iter()
+        .filter_map(|p| p["kind"].as_str().map(|s| s.to_string()))
+        .collect();
+    let result = serde_json::json!({
+        "profile_count": profiles.as_array().expect("arr").len(),
+        "has_powershell": profile_kinds.iter().any(|k| k == "powershell"),
+        "has_cmd": profile_kinds.iter().any(|k| k == "cmd"),
+        "serial_port_count": ports.as_array().expect("arr").len(),
+        "local_open_id": id.starts_with("local-"),
+        "close_ok": closed,
+    });
+    println!("{}", serde_json::to_string(&result).expect("json"));
 }
 
 /// End-to-end network diagnostic check (--diag-check): runs TCP/DNS/HTTP
@@ -951,6 +982,87 @@ unsafe fn handle_key(state: &mut AppState, hwnd: HWND, wparam: WPARAM) {
         state.model.delete_forward();
     }
     InvalidateRect(hwnd, std::ptr::null(), 1);
+}
+
+/// Handles local terminal / Telnet / serial commands (mxterm parity T010):
+/// local_terminal_list_profiles/open, telnet_terminal_open,
+/// serial_list_ports/open.
+fn handle_local_session_commands(
+    state: &mut AppState,
+    cmd: &str,
+    parsed: &serde_json::Value,
+) -> Option<String> {
+    let is_cmd = matches!(
+        cmd,
+        "local_terminal_list_profiles"
+            | "local_terminal_open"
+            | "telnet_terminal_open"
+            | "serial_list_ports"
+            | "serial_terminal_open"
+    );
+    if !is_cmd {
+        return None;
+    }
+    let request_id = parsed
+        .get("requestId")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+    let payload = parsed
+        .get("payload")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+    let request = payload.get("request").cloned().unwrap_or(payload.clone());
+    let _state = state;
+
+    let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
+    let result: Result<serde_json::Value, String> = match cmd {
+        "local_terminal_list_profiles" => Ok(local_sessions::list_local_profiles()),
+        "local_terminal_open" => {
+            let profile = request.get("profile").cloned().unwrap_or_default();
+            let command = profile
+                .get("command")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("")
+                .to_string();
+            local_sessions::open_local(&command).map(serde_json::Value::String)
+        }
+        "telnet_terminal_open" => {
+            let host = request
+                .get("host")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            let port = request
+                .get("port")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(23) as u16;
+            rt.block_on(local_sessions::open_telnet(host, port))
+                .map(serde_json::Value::String)
+        }
+        "serial_list_ports" => Ok(local_sessions::list_serial_ports()),
+        "serial_terminal_open" => {
+            let port_name = request
+                .get("port_name")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            let baud = request
+                .get("baud_rate")
+                .and_then(serde_json::Value::as_u64)
+                .map(|b| b as u32);
+            rt.block_on(local_sessions::open_serial(port_name, baud))
+                .map(serde_json::Value::String)
+        }
+        _ => Err("未知命令".to_string()),
+    };
+    let reply_payload = match result {
+        Ok(value) => value,
+        Err(message) => serde_json::json!({
+            "error": { "code": "local_session_error", "message": message, "recoverable": true }
+        }),
+    };
+    Some(
+        serde_json::json!({ "kind": "invoke-reply", "requestId": request_id, "payload": reply_payload })
+            .to_string(),
+    )
 }
 
 /// Handles network_diagnostic_run (mxterm parity T009).
@@ -1900,6 +2012,10 @@ fn on_web_message(hwnd: HWND, message: &str) -> Option<String> {
     }
 
     if let Some(reply) = handle_network_diagnostic_command(cmd, &parsed) {
+        return Some(reply);
+    }
+
+    if let Some(reply) = handle_local_session_commands(state, cmd, &parsed) {
         return Some(reply);
     }
 
