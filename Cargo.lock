@@ -434,6 +434,7 @@ version = "0.1.0"
 dependencies = [
  "policy-engine",
  "proxy",
+ "serde_json",
  "session-orchestrator",
  "ssh-backend",
 ]

@@ -15,3 +15,5 @@ proxy = { path = "../../crates/proxy" }
 session-orchestrator = { path = "../../crates/session-orchestrator" }
 ssh-backend = { path = "../../crates/ssh-backend" }
 
+[dev-dependencies]
+serde_json = "1"

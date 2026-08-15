@@ -6,7 +6,7 @@
 //! every access re-checks the tenant boundary so one tenant can never reach
 //! another tenant's session.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 /// A tenant identifier.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -100,11 +100,12 @@ struct Session {
 }
 
 /// Session registry: owns every session and enforces tenant isolation and
-/// single-use tokens.
+/// single-use tokens. Consumed tokens are tracked with their expiry so a
+/// long-running gateway can prune them (bounded memory over a 72-hour soak).
 #[derive(Debug, Clone, Default)]
 pub struct SessionRegistry {
     sessions: HashMap<u64, Session>,
-    consumed_tokens: HashSet<u64>,
+    consumed_tokens: HashMap<u64, u64>,
 }
 
 impl SessionRegistry {
@@ -143,7 +144,7 @@ impl SessionRegistry {
         if token.is_expired(now) {
             return Err(AuthError::TokenExpired);
         }
-        if !self.consumed_tokens.insert(token.token_id) {
+        if self.consumed_tokens.contains_key(&token.token_id) {
             return Err(AuthError::ReplayDetected);
         }
         let session = self
@@ -153,7 +154,24 @@ impl SessionRegistry {
         if session.tenant != token.tenant {
             return Err(AuthError::TenantIsolationViolation);
         }
+        self.consumed_tokens
+            .insert(token.token_id, token.expires_at);
         Ok((session.tenant, token.session_id))
+    }
+
+    /// Prunes consumed tokens that have expired, keeping the replay window
+    /// bounded over long soak runs. Returns the number of entries removed.
+    pub fn prune_expired(&mut self, now: u64) -> usize {
+        let before = self.consumed_tokens.len();
+        self.consumed_tokens
+            .retain(|_, expires_at| *expires_at >= now);
+        before - self.consumed_tokens.len()
+    }
+
+    /// The number of consumed (replay-tracked) tokens; the bounded-memory
+    /// soak metric.
+    pub fn consumed_token_count(&self) -> usize {
+        self.consumed_tokens.len()
     }
 
     /// Enforces the tenant boundary for a session-bound operation: `tenant`
@@ -245,6 +263,11 @@ mod tests {
             registry.authenticate(&token, 1100),
             Err(AuthError::ReplayDetected)
         );
+        // Expired consumed tokens are pruned so the replay window stays
+        // bounded over a long soak.
+        assert_eq!(registry.consumed_token_count(), 1);
+        assert_eq!(registry.prune_expired(1301), 1);
+        assert_eq!(registry.consumed_token_count(), 0);
     }
 
     #[test]
