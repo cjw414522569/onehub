@@ -1,0 +1,333 @@
+import { AlertTriangle, FolderOpen, Loader2, RefreshCw, RotateCcw, Save, Search, X } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import * as monaco from "monaco-editor";
+import CssWorker from "monaco-editor/esm/vs/language/css/css.worker?worker";
+import EditorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
+import HtmlWorker from "monaco-editor/esm/vs/language/html/html.worker?worker";
+import JsonWorker from "monaco-editor/esm/vs/language/json/json.worker?worker";
+import TsWorker from "monaco-editor/esm/vs/language/typescript/ts.worker?worker";
+
+import type { ThemeMode } from "../settings/settingsTypes";
+import type { DesktopPlatform } from "../../shared/tauri/platformCapabilities";
+import { Tooltip } from "../../shared/ui/Tooltip";
+import {
+  registerRemoteFileEditorLanguages,
+  remoteFileLanguageForPath,
+} from "./remoteFileLanguages";
+import type { RemoteFileEditorTab } from "./remoteFileEditorTypes";
+
+const monacoGlobal = self as unknown as {
+  MonacoEnvironment?: monaco.Environment;
+};
+
+monacoGlobal.MonacoEnvironment = {
+  getWorker(_workerId: string, label: string) {
+    if (label === "json") {
+      return new JsonWorker();
+    }
+    if (label === "css" || label === "scss" || label === "less") {
+      return new CssWorker();
+    }
+    if (label === "html" || label === "handlebars" || label === "razor") {
+      return new HtmlWorker();
+    }
+    if (label === "typescript" || label === "javascript") {
+      return new TsWorker();
+    }
+    return new EditorWorker();
+  },
+};
+
+registerRemoteFileEditorLanguages(monaco);
+
+interface RemoteFileEditorProps {
+  active: boolean;
+  desktopPlatform: DesktopPlatform;
+  fontFamily: string;
+  fontSize: number;
+  tab: RemoteFileEditorTab;
+  themeMode: ThemeMode;
+  onChange: (tabId: string, content: string) => void;
+  onClose: (tabId: string) => void;
+  onDiscard: (tabId: string) => void;
+  onLocateFolder: (tabId: string) => void;
+  onReload: (tabId: string) => void;
+  onSave: (tabId: string) => void;
+}
+
+export function RemoteFileEditor({
+  active,
+  desktopPlatform,
+  fontFamily,
+  fontSize,
+  onChange,
+  onClose,
+  onDiscard,
+  onLocateFolder,
+  onReload,
+  onSave,
+  tab,
+  themeMode,
+}: RemoteFileEditorProps) {
+  const hostRef = useRef<HTMLDivElement | null>(null);
+  const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
+  const modelRef = useRef<monaco.editor.ITextModel | null>(null);
+  const onChangeRef = useRef(onChange);
+  const onSaveRef = useRef(onSave);
+  const applyingContentRef = useRef(false);
+  const layoutFrameRef = useRef<number | null>(null);
+  const [systemPrefersDark, setSystemPrefersDark] = useState(readSystemPrefersDark);
+  const editorTheme = resolveRemoteEditorTheme(desktopPlatform, themeMode, systemPrefersDark);
+  const editorThemeRef = useRef(editorTheme);
+
+  onChangeRef.current = onChange;
+  onSaveRef.current = onSave;
+  editorThemeRef.current = editorTheme;
+
+  const scheduleEditorLayout = useCallback(() => {
+    if (layoutFrameRef.current !== null) {
+      window.cancelAnimationFrame(layoutFrameRef.current);
+    }
+
+    layoutFrameRef.current = window.requestAnimationFrame(() => {
+      layoutFrameRef.current = window.requestAnimationFrame(() => {
+        layoutFrameRef.current = null;
+        editorRef.current?.layout();
+      });
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!hostRef.current) {
+      return;
+    }
+
+    const uri = monaco.Uri.parse(`mxterm-remote://${encodeURIComponent(tab.connectionId)}${tab.path}`);
+    const model =
+      monaco.editor.getModel(uri) ||
+      monaco.editor.createModel(tab.content, remoteFileLanguageForPath(tab.path), uri);
+    const editor = monaco.editor.create(hostRef.current, {
+      automaticLayout: true,
+      contextmenu: true,
+      cursorBlinking: "smooth",
+      fontFamily,
+      fontSize,
+      glyphMargin: false,
+      lineNumbers: "on",
+      minimap: { enabled: false },
+      model,
+      padding: { top: 10, bottom: 10 },
+      renderLineHighlight: "line",
+      scrollBeyondLastLine: false,
+      tabSize: 2,
+      theme: editorThemeRef.current,
+      wordWrap: "off",
+    });
+
+    modelRef.current = model;
+    editorRef.current = editor;
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => onSaveRef.current(tab.id));
+    const changeDisposable = model.onDidChangeContent(() => {
+      if (!applyingContentRef.current) {
+        onChangeRef.current(tab.id, model.getValue());
+      }
+    });
+
+    return () => {
+      if (layoutFrameRef.current !== null) {
+        window.cancelAnimationFrame(layoutFrameRef.current);
+        layoutFrameRef.current = null;
+      }
+      changeDisposable.dispose();
+      editor.dispose();
+      model.dispose();
+      editorRef.current = null;
+      modelRef.current = null;
+    };
+  }, [scheduleEditorLayout, tab.connectionId, tab.id, tab.path]);
+
+  useEffect(() => {
+    monaco.editor.setTheme(editorTheme);
+  }, [editorTheme]);
+
+  useEffect(() => {
+    if (desktopPlatform !== "macos" || themeMode !== "system" || typeof window === "undefined") {
+      return;
+    }
+
+    const query = window.matchMedia("(prefers-color-scheme: dark)");
+    const syncSystemTheme = () => setSystemPrefersDark(query.matches);
+    syncSystemTheme();
+    query.addEventListener("change", syncSystemTheme);
+
+    return () => query.removeEventListener("change", syncSystemTheme);
+  }, [desktopPlatform, themeMode]);
+
+  useEffect(() => {
+    const model = modelRef.current;
+    if (!model || model.getValue() === tab.content) {
+      return;
+    }
+
+    applyingContentRef.current = true;
+    model.setValue(tab.content);
+    applyingContentRef.current = false;
+    scheduleEditorLayout();
+  }, [scheduleEditorLayout, tab.content]);
+
+  useEffect(() => {
+    const model = modelRef.current;
+    if (!model) {
+      return;
+    }
+    const language = remoteFileLanguageForPath(tab.path);
+    if (model.getLanguageId() !== language) {
+      monaco.editor.setModelLanguage(model, language);
+    }
+    scheduleEditorLayout();
+  }, [scheduleEditorLayout, tab.path]);
+
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor) {
+      return;
+    }
+
+    editor.updateOptions({ fontFamily, fontSize });
+    scheduleEditorLayout();
+  }, [fontFamily, fontSize, scheduleEditorLayout]);
+
+  useEffect(() => {
+    if (active) {
+      scheduleEditorLayout();
+      editorRef.current?.focus();
+    }
+  }, [active, scheduleEditorLayout]);
+
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) {
+      return;
+    }
+
+    const observer = new ResizeObserver(() => scheduleEditorLayout());
+    observer.observe(host);
+    scheduleEditorLayout();
+
+    return () => observer.disconnect();
+  }, [scheduleEditorLayout]);
+
+  return (
+    <section
+      className={`remote-file-editor ${active ? "" : "is-hidden"}`}
+      aria-label={`${tab.name} 文件编辑器`}
+    >
+      <header className="remote-file-editor-compactbar" data-state={tab.saveState}>
+        <div className="remote-file-editor-path" title={tab.path}>
+          <span className="remote-file-editor-path-text">{tab.path}</span>
+          <span className="remote-file-editor-status" data-state={tab.saveState} aria-live="polite">
+            {tab.saveState === "loading" || tab.saveState === "saving" ? (
+              <Loader2 className="ui-icon spin" aria-hidden="true" />
+            ) : null}
+            {tab.saveState === "error" || tab.saveState === "conflict" ? (
+              <AlertTriangle className="ui-icon" aria-hidden="true" />
+            ) : null}
+            <span>{remoteFileStatusLabel(tab)}</span>
+          </span>
+        </div>
+        <div className="remote-file-editor-toolbar" aria-label="文件编辑器工具栏">
+          <Tooltip label="定位所在文件夹">
+            <button
+              className="mini-action"
+              type="button"
+              aria-label="定位所在文件夹"
+              onClick={() => onLocateFolder(tab.id)}
+            >
+              <FolderOpen className="ui-icon" aria-hidden="true" />
+            </button>
+          </Tooltip>
+          <Tooltip label="保存">
+            <button
+              className="mini-action"
+              type="button"
+              aria-label="保存"
+              disabled={tab.saveState === "loading" || tab.saveState === "saving" || !tab.dirty}
+              onClick={() => onSave(tab.id)}
+            >
+              {tab.saveState === "saving" ? (
+                <Loader2 className="ui-icon spin" aria-hidden="true" />
+              ) : (
+                <Save className="ui-icon" aria-hidden="true" />
+              )}
+            </button>
+          </Tooltip>
+          <Tooltip label="重新加载">
+            <button
+              className="mini-action"
+              type="button"
+              aria-label="重新加载"
+              disabled={tab.saveState === "loading" || tab.saveState === "saving"}
+              onClick={() => onReload(tab.id)}
+            >
+              <RefreshCw className="ui-icon" aria-hidden="true" />
+            </button>
+          </Tooltip>
+          <Tooltip label="放弃更改">
+            <button
+              className="mini-action"
+              type="button"
+              aria-label="放弃更改"
+              disabled={!tab.dirty || tab.saveState === "saving"}
+              onClick={() => onDiscard(tab.id)}
+            >
+              <RotateCcw className="ui-icon" aria-hidden="true" />
+            </button>
+          </Tooltip>
+          <Tooltip label="查找">
+            <button
+              className="mini-action"
+              type="button"
+              aria-label="查找"
+              onClick={() => void editorRef.current?.getAction("actions.find")?.run()}
+            >
+              <Search className="ui-icon" aria-hidden="true" />
+            </button>
+          </Tooltip>
+          <Tooltip label="关闭文件">
+            <button className="mini-action" type="button" aria-label="关闭文件" onClick={() => onClose(tab.id)}>
+              <X className="ui-icon" aria-hidden="true" />
+            </button>
+          </Tooltip>
+        </div>
+      </header>
+      <div className="remote-file-monaco" ref={hostRef} />
+    </section>
+  );
+}
+
+function remoteFileStatusLabel(tab: RemoteFileEditorTab) {
+  if (tab.statusMessage) {
+    return tab.statusMessage;
+  }
+  if (tab.saveState === "loading") return "读取中";
+  if (tab.saveState === "saving") return "保存中";
+  if (tab.saveState === "saved") return "已保存";
+  if (tab.saveState === "dirty" || tab.dirty) return "已修改";
+  if (tab.saveState === "conflict") return "远端已变化";
+  if (tab.saveState === "error") return tab.error || "操作失败";
+  return "就绪";
+}
+
+function readSystemPrefersDark() {
+  return typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches;
+}
+
+function resolveRemoteEditorTheme(
+  desktopPlatform: DesktopPlatform,
+  themeMode: ThemeMode,
+  systemPrefersDark: boolean,
+) {
+  const useMacosDarkEditor =
+    desktopPlatform === "macos" && (themeMode === "dark" || (themeMode === "system" && systemPrefersDark));
+  return useMacosDarkEditor ? "vs-dark" : "vs";
+}

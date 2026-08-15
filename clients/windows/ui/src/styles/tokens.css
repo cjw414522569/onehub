@@ -1,0 +1,573 @@
+:root {
+  --mx-primary-light: #2374c6;
+  --mx-primary-dark: #73b7ff;
+  --mx-bg: #f5f6f8;
+  --mx-panel: #ffffff;
+  --mx-panel-soft: #f8f9fb;
+  --mx-title: rgba(255, 255, 255, 0.86);
+  --mx-line: #dde1e7;
+  --mx-line-soft: #edf0f4;
+  --mx-line-strong: #c9ced6;
+  --mx-text: #20242a;
+  --mx-muted: #626b78;
+  --mx-subtle: #8a93a0;
+  --mx-active: rgba(148, 148, 148, 0.13);
+  --mx-active-strong: rgba(105, 105, 105, 0.16);
+  --mx-chrome-active: #e9ecef;
+  --mx-primary: var(--mx-primary-light);
+  --mx-success: #15803d;
+  --mx-warning: #d97706;
+  --mx-danger: #dc2626;
+  --mx-terminal: #111827;
+  --mx-terminal-text: #f8fafc;
+  --mx-terminal-line: #263241;
+  --mx-material-bg: linear-gradient(180deg, #f7f8fa, #eef1f5);
+  --mx-material-panel: rgb(255 255 255 / 90%);
+  --mx-material-panel-soft: rgb(248 249 251 / 86%);
+  --mx-chrome-fill: rgb(242 244 247 / 100%);
+  --mx-chrome-line: rgb(148 163 184 / 26%);
+  --mx-chrome-glow: rgb(255 255 255 / 0%);
+  --mx-chrome-blur: 0px;
+  --mx-material-content-blur: 0px;
+  --mx-sidebar-surface: var(--mx-chrome-fill);
+  --mx-sidebar-border: color-mix(in srgb, var(--mx-line) 50%, transparent);
+  --mx-sidebar-hover: rgb(15 23 42 / 4.5%);
+  --mx-sidebar-active: rgb(0 0 0 / 5%);
+  --mx-sidebar-sheen-top: rgb(255 255 255 / 12%);
+  --mx-sidebar-sheen-edge: rgb(255 255 255 / 8%);
+  --mx-sidebar-shadow: none;
+  --mx-window-corner-radius: 12px;
+  --mx-macos-traffic-close: #ff5f57;
+  --mx-macos-traffic-minimize: #febc2e;
+  --mx-macos-traffic-zoom: #28c840;
+  --mx-macos-traffic-glyph: rgb(54 58 64 / 72%);
+  --mx-glass-border: rgb(214 218 224 / 70%);
+  --mx-glass-bg:
+    linear-gradient(145deg, rgb(255 255 255 / 36%), rgb(246 248 250 / 30%)),
+    rgb(248 250 252 / 32%);
+  --mx-glass-bg-strong:
+    linear-gradient(145deg, rgb(255 255 255 / 48%), rgb(246 248 250 / 38%)),
+    rgb(248 250 252 / 40%);
+  --mx-glass-highlight:
+    radial-gradient(ellipse at 18% 0%, rgb(255 255 255 / 16%), transparent 42%),
+    linear-gradient(180deg, rgb(255 255 255 / 10%), transparent 36%);
+  --mx-glass-shadow:
+    0 22px 48px rgb(15 23 42 / 15%),
+    0 8px 20px rgb(15 23 42 / 7%),
+    inset 0 1px 0 rgb(255 255 255 / 94%),
+    inset 0 -1px 0 rgb(148 163 184 / 16%);
+  --mx-glass-hover:
+    linear-gradient(180deg, rgb(255 255 255 / 32%), rgb(255 255 255 / 12%)),
+    rgb(142 142 147 / 16%);
+  --font-ui: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+  --font-mono: "Cascadia Mono", Consolas, "Microsoft YaHei UI", monospace;
+  color-scheme: light;
+  color: var(--mx-text);
+  background: transparent;
+  font-family: var(--font-ui);
+}
+
+.app-shell {
+  --mx-primary: var(--mx-primary-light, #2374c6);
+  color-scheme: light;
+  color: var(--mx-text);
+}
+
+.app-shell[data-window-material="auto"] {
+  --mx-material-bg:
+    radial-gradient(circle at 22% 0%, color-mix(in srgb, var(--mx-primary) 10%, transparent), transparent 30%),
+    linear-gradient(180deg, var(--mx-bg), color-mix(in srgb, var(--mx-bg) 84%, var(--mx-panel) 16%));
+  --mx-title: #eef0f4;
+  --mx-chrome-fill: rgb(242 244 247 / 100%);
+  --mx-chrome-line: rgb(148 163 184 / 26%);
+  --mx-chrome-glow: rgb(255 255 255 / 0%);
+  --mx-chrome-blur: 0px;
+  --mx-sidebar-surface: rgb(242 244 247 / 100%);
+  --mx-sidebar-border: rgb(148 163 184 / 24%);
+  --mx-sidebar-hover: rgb(15 23 42 / 4.5%);
+  --mx-sidebar-active: rgb(0 0 0 / 5%);
+  --mx-sidebar-sheen-top: rgb(255 255 255 / 0%);
+  --mx-sidebar-sheen-edge: rgb(255 255 255 / 0%);
+  --mx-sidebar-shadow: none;
+}
+
+.app-shell[data-window-material="mica"] {
+  --mx-material-bg:
+    radial-gradient(circle at 18% 0%, color-mix(in srgb, var(--mx-primary) 13%, transparent), transparent 34%),
+    linear-gradient(145deg, rgb(255 255 255 / 72%), rgb(235 239 245 / 74%)),
+    var(--mx-bg);
+  --mx-material-panel: rgb(255 255 255 / 84%);
+  --mx-material-panel-soft: rgb(248 250 252 / 76%);
+  --mx-chrome-fill: rgb(236 240 246 / 0%);
+  --mx-chrome-line: rgb(86 98 118 / 10%);
+  --mx-chrome-active: rgb(0 0 0 / 5%);
+  --mx-chrome-glow: rgb(255 255 255 / 12%);
+  --mx-chrome-blur: 60px;
+  --mx-sidebar-surface: transparent;
+  --mx-sidebar-border: color-mix(in srgb, var(--mx-line) 38%, transparent);
+  --mx-sidebar-hover: color-mix(in srgb, var(--mx-text) 6%, transparent);
+  --mx-sidebar-active: rgb(0 0 0 / 5%);
+  --mx-sidebar-sheen-top: rgb(255 255 255 / 0%);
+  --mx-sidebar-sheen-edge: rgb(255 255 255 / 0%);
+  --mx-sidebar-shadow: none;
+}
+
+.app-shell[data-window-material="acrylic"] {
+  --mx-material-bg:
+    radial-gradient(circle at 20% 0%, color-mix(in srgb, var(--mx-primary) 18%, transparent), transparent 36%),
+    linear-gradient(145deg, rgb(255 255 255 / 62%), rgb(230 235 242 / 58%)),
+    var(--mx-bg);
+  --mx-material-panel: rgb(255 255 255 / 76%);
+  --mx-material-panel-soft: rgb(248 250 252 / 66%);
+  --mx-chrome-fill: rgb(238 242 248 / 62%);
+  --mx-chrome-line: rgb(86 98 118 / 14%);
+  --mx-chrome-active: rgb(0 0 0 / 5%);
+  --mx-chrome-glow: rgb(255 255 255 / 18%);
+  --mx-chrome-blur: 72px;
+  --mx-sidebar-surface: transparent;
+  --mx-sidebar-border: color-mix(in srgb, var(--mx-line) 42%, transparent);
+  --mx-sidebar-hover: color-mix(in srgb, var(--mx-text) 6%, transparent);
+  --mx-sidebar-active: rgb(0 0 0 / 5%);
+  --mx-sidebar-sheen-top: rgb(255 255 255 / 0%);
+  --mx-sidebar-sheen-edge: rgb(255 255 255 / 0%);
+  --mx-sidebar-shadow: none;
+}
+
+.app-shell[data-window-material="micaAlt"] {
+  --mx-material-bg:
+    radial-gradient(circle at 16% 0%, color-mix(in srgb, var(--mx-primary) 16%, transparent), transparent 34%),
+    linear-gradient(145deg, rgb(250 252 255 / 78%), rgb(226 232 240 / 76%)),
+    var(--mx-bg);
+  --mx-material-panel: rgb(255 255 255 / 82%);
+  --mx-material-panel-soft: rgb(245 248 252 / 72%);
+  --mx-chrome-fill: rgb(232 238 246 / 0%);
+  --mx-chrome-line: rgb(86 98 118 / 12%);
+  --mx-chrome-active: rgb(0 0 0 / 5%);
+  --mx-chrome-glow: rgb(255 255 255 / 10%);
+  --mx-chrome-blur: 64px;
+  --mx-sidebar-surface: transparent;
+  --mx-sidebar-border: color-mix(in srgb, var(--mx-line) 40%, transparent);
+  --mx-sidebar-hover: color-mix(in srgb, var(--mx-text) 6%, transparent);
+  --mx-sidebar-active: rgb(0 0 0 / 5%);
+  --mx-sidebar-sheen-top: rgb(255 255 255 / 0%);
+  --mx-sidebar-sheen-edge: rgb(255 255 255 / 0%);
+  --mx-sidebar-shadow: none;
+}
+
+.app-shell[data-platform="macos"][data-window-material="auto"],
+body[data-platform="macos"][data-window-material="auto"] {
+  --mx-bg: transparent;
+  --mx-panel: rgb(255 255 255 / 68%);
+  --mx-panel-soft: rgb(249 250 252 / 48%);
+  --mx-material-bg:
+    linear-gradient(180deg, rgb(255 255 255 / 24%), rgb(239 243 248 / 12%)),
+    transparent;
+  --mx-material-panel: rgb(255 255 255 / 52%);
+  --mx-material-panel-soft: rgb(249 250 252 / 36%);
+  --mx-chrome-fill: rgb(246 248 251 / 0%);
+  --mx-chrome-line: rgb(82 94 112 / 9%);
+  --mx-chrome-active: rgb(0 0 0 / 5%);
+  --mx-chrome-glow: rgb(255 255 255 / 10%);
+  --mx-chrome-blur: 58px;
+  --mx-material-content-blur: 30px;
+  --mx-sidebar-surface: rgb(246 248 251 / 0%);
+  --mx-sidebar-border: color-mix(in srgb, var(--mx-line) 22%, transparent);
+  --mx-sidebar-hover: rgb(15 23 42 / 4%);
+  --mx-sidebar-active: rgb(0 0 0 / 5%);
+  --mx-sidebar-sheen-top: rgb(255 255 255 / 8%);
+  --mx-sidebar-sheen-edge: rgb(255 255 255 / 5%);
+  --mx-sidebar-shadow: none;
+}
+
+.app-shell[data-platform="macos"][data-window-material="macosGlass"],
+body[data-platform="macos"][data-window-material="macosGlass"] {
+  --mx-bg: transparent;
+  --mx-panel: rgb(255 255 255 / 56%);
+  --mx-panel-soft: rgb(249 250 252 / 34%);
+  --mx-material-bg:
+    linear-gradient(180deg, rgb(255 255 255 / 18%), rgb(236 240 246 / 8%)),
+    transparent;
+  --mx-material-panel: rgb(255 255 255 / 40%);
+  --mx-material-panel-soft: rgb(249 250 252 / 26%);
+  --mx-chrome-fill: rgb(246 248 251 / 0%);
+  --mx-chrome-line: rgb(82 94 112 / 7%);
+  --mx-chrome-active: rgb(0 0 0 / 5.5%);
+  --mx-chrome-glow: rgb(255 255 255 / 10%);
+  --mx-chrome-blur: 74px;
+  --mx-material-content-blur: 42px;
+  --mx-sidebar-surface: rgb(246 248 251 / 0%);
+  --mx-sidebar-border: color-mix(in srgb, var(--mx-line) 18%, transparent);
+  --mx-sidebar-hover: rgb(15 23 42 / 4%);
+  --mx-sidebar-active: rgb(0 0 0 / 5.5%);
+  --mx-sidebar-sheen-top: rgb(255 255 255 / 7%);
+  --mx-sidebar-sheen-edge: rgb(255 255 255 / 4%);
+  --mx-sidebar-shadow: none;
+}
+
+.app-shell[data-theme-mode="dark"],
+body[data-theme-mode="dark"] {
+  --mx-bg: #101318;
+  --mx-panel: #171b21;
+  --mx-panel-soft: #1d222a;
+  --mx-title: rgb(17 20 26 / 82%);
+  --mx-line: #2a3039;
+  --mx-line-soft: #222832;
+  --mx-line-strong: #3a4250;
+  --mx-text: #e6e9ee;
+  --mx-muted: #a4adb9;
+  --mx-subtle: #737d8b;
+  --mx-active: rgb(255 255 255 / 10%);
+  --mx-active-strong: rgb(255 255 255 / 16%);
+  --mx-chrome-active: #343434;
+  --mx-primary: var(--mx-primary-dark, #73b7ff);
+  --mx-success: #57d8ae;
+  --mx-warning: #f7c66b;
+  --mx-danger: #ff8f9b;
+  --mx-terminal-text: #f8fafc;
+  --mx-terminal-line: #2f3b4b;
+  --mx-material-bg:
+    radial-gradient(circle at 18% 0%, color-mix(in srgb, var(--mx-primary) 12%, transparent), transparent 36%),
+    linear-gradient(180deg, #101318, #0c0f14);
+  --mx-material-panel: rgb(23 27 33 / 86%);
+  --mx-material-panel-soft: rgb(29 34 42 / 78%);
+  --mx-chrome-fill: rgb(32 32 34 / 100%);
+  --mx-chrome-line: rgb(255 255 255 / 10%);
+  --mx-chrome-glow: rgb(255 255 255 / 0%);
+  --mx-chrome-blur: 0px;
+  --mx-sidebar-surface: rgb(32 32 34 / 100%);
+  --mx-sidebar-border: rgb(255 255 255 / 10%);
+  --mx-sidebar-hover: rgb(255 255 255 / 9%);
+  --mx-sidebar-active: rgb(255 255 255 / 7%);
+  --mx-sidebar-sheen-top: rgb(255 255 255 / 5%);
+  --mx-sidebar-sheen-edge: rgb(255 255 255 / 3%);
+  --mx-sidebar-shadow: none;
+  --mx-glass-border: rgb(82 94 112 / 56%);
+  --mx-glass-bg:
+    linear-gradient(145deg, rgb(42 49 60 / 52%), rgb(20 24 30 / 44%)),
+    rgb(20 24 30 / 50%);
+  --mx-glass-bg-strong:
+    linear-gradient(145deg, rgb(48 56 68 / 58%), rgb(21 25 32 / 52%)),
+    rgb(18 22 28 / 62%);
+  --mx-glass-highlight:
+    radial-gradient(ellipse at 18% 0%, rgb(255 255 255 / 7%), transparent 42%),
+    linear-gradient(180deg, rgb(255 255 255 / 5%), transparent 36%);
+  --mx-glass-shadow:
+    0 24px 52px rgb(0 0 0 / 32%),
+    0 8px 20px rgb(0 0 0 / 22%),
+    inset 0 1px 0 rgb(255 255 255 / 9%),
+    inset 0 -1px 0 rgb(0 0 0 / 24%);
+  --mx-glass-hover:
+    linear-gradient(180deg, rgb(255 255 255 / 9%), rgb(255 255 255 / 4%)),
+    rgb(148 163 184 / 12%);
+  color-scheme: dark;
+}
+
+.app-shell[data-theme-mode="dark"][data-window-material="auto"],
+body[data-theme-mode="dark"][data-window-material="auto"] {
+  --mx-title: #1b1f26;
+}
+
+.app-shell[data-theme-mode="dark"][data-window-material="mica"],
+body[data-theme-mode="dark"][data-window-material="mica"] {
+  --mx-chrome-fill: rgb(28 28 28 / 100%);
+  --mx-chrome-line: rgb(255 255 255 / 7%);
+  --mx-chrome-active: rgb(255 255 255 / 7%);
+  --mx-chrome-glow: rgb(255 255 255 / 5%);
+  --mx-chrome-blur: 60px;
+  --mx-sidebar-surface: var(--mx-chrome-fill);
+  --mx-sidebar-border: color-mix(in srgb, var(--mx-line) 40%, transparent);
+  --mx-sidebar-hover: color-mix(in srgb, var(--mx-text) 7%, transparent);
+  --mx-sidebar-active: rgb(255 255 255 / 7%);
+  --mx-sidebar-sheen-top: rgb(255 255 255 / 0%);
+  --mx-sidebar-sheen-edge: rgb(255 255 255 / 0%);
+  --mx-sidebar-shadow: none;
+}
+
+.app-shell[data-theme-mode="dark"][data-window-material="acrylic"],
+body[data-theme-mode="dark"][data-window-material="acrylic"] {
+  --mx-chrome-fill: rgb(30 31 34 / 64%);
+  --mx-chrome-line: rgb(255 255 255 / 8%);
+  --mx-chrome-active: rgb(255 255 255 / 7%);
+  --mx-chrome-glow: rgb(255 255 255 / 6%);
+  --mx-chrome-blur: 72px;
+  --mx-sidebar-surface: transparent;
+  --mx-sidebar-border: color-mix(in srgb, var(--mx-line) 42%, transparent);
+  --mx-sidebar-hover: color-mix(in srgb, var(--mx-text) 7%, transparent);
+  --mx-sidebar-active: rgb(255 255 255 / 7%);
+  --mx-sidebar-sheen-top: rgb(255 255 255 / 0%);
+  --mx-sidebar-sheen-edge: rgb(255 255 255 / 0%);
+  --mx-sidebar-shadow: none;
+}
+
+.app-shell[data-theme-mode="dark"][data-window-material="micaAlt"],
+body[data-theme-mode="dark"][data-window-material="micaAlt"] {
+  --mx-chrome-fill: rgb(28 29 32 / 100%);
+  --mx-chrome-line: rgb(255 255 255 / 7%);
+  --mx-chrome-active: rgb(255 255 255 / 7%);
+  --mx-chrome-glow: rgb(255 255 255 / 4%);
+  --mx-chrome-blur: 64px;
+  --mx-sidebar-surface: var(--mx-chrome-fill);
+  --mx-sidebar-border: color-mix(in srgb, var(--mx-line) 40%, transparent);
+  --mx-sidebar-hover: color-mix(in srgb, var(--mx-text) 7%, transparent);
+  --mx-sidebar-active: rgb(255 255 255 / 7%);
+  --mx-sidebar-sheen-top: rgb(255 255 255 / 0%);
+  --mx-sidebar-sheen-edge: rgb(255 255 255 / 0%);
+  --mx-sidebar-shadow: none;
+}
+
+.app-shell[data-platform="macos"][data-theme-mode="dark"][data-window-material="auto"],
+body[data-platform="macos"][data-theme-mode="dark"][data-window-material="auto"] {
+  --mx-bg: transparent;
+  --mx-panel: rgb(18 21 27 / 82%);
+  --mx-panel-soft: rgb(24 29 37 / 72%);
+  --mx-material-bg:
+    linear-gradient(180deg, rgb(23 27 35 / 44%), rgb(9 12 17 / 30%)),
+    transparent;
+  --mx-material-panel: rgb(18 21 27 / 76%);
+  --mx-material-panel-soft: rgb(24 29 37 / 64%);
+  --mx-chrome-fill: rgb(15 18 24 / 38%);
+  --mx-chrome-line: rgb(255 255 255 / 12%);
+  --mx-chrome-active: rgb(255 255 255 / 14%);
+  --mx-chrome-glow: rgb(255 255 255 / 5%);
+  --mx-chrome-blur: 58px;
+  --mx-material-content-blur: 30px;
+  --mx-sidebar-surface: rgb(15 18 24 / 46%);
+  --mx-sidebar-border: color-mix(in srgb, var(--mx-line) 62%, transparent);
+  --mx-sidebar-hover: color-mix(in srgb, var(--mx-text) 12%, transparent);
+  --mx-sidebar-active: rgb(255 255 255 / 16%);
+  --mx-sidebar-sheen-top: rgb(255 255 255 / 6%);
+  --mx-sidebar-sheen-edge: rgb(255 255 255 / 4%);
+  --mx-sidebar-shadow: none;
+}
+
+.app-shell[data-platform="macos"][data-theme-mode="dark"][data-window-material="macosGlass"],
+body[data-platform="macos"][data-theme-mode="dark"][data-window-material="macosGlass"] {
+  --mx-bg: transparent;
+  --mx-panel: rgb(18 21 27 / 76%);
+  --mx-panel-soft: rgb(24 29 37 / 64%);
+  --mx-material-bg:
+    linear-gradient(180deg, rgb(23 27 35 / 36%), rgb(9 12 17 / 24%)),
+    transparent;
+  --mx-material-panel: rgb(18 21 27 / 66%);
+  --mx-material-panel-soft: rgb(24 29 37 / 54%);
+  --mx-chrome-fill: rgb(13 16 22 / 34%);
+  --mx-chrome-line: rgb(255 255 255 / 11%);
+  --mx-chrome-active: rgb(255 255 255 / 14%);
+  --mx-chrome-glow: rgb(255 255 255 / 6%);
+  --mx-chrome-blur: 74px;
+  --mx-material-content-blur: 42px;
+  --mx-sidebar-surface: rgb(13 16 22 / 42%);
+  --mx-sidebar-border: color-mix(in srgb, var(--mx-line) 58%, transparent);
+  --mx-sidebar-hover: color-mix(in srgb, var(--mx-text) 12%, transparent);
+  --mx-sidebar-active: rgb(255 255 255 / 16%);
+  --mx-sidebar-sheen-top: rgb(255 255 255 / 6%);
+  --mx-sidebar-sheen-edge: rgb(255 255 255 / 4%);
+  --mx-sidebar-shadow: none;
+}
+
+.app-shell[data-platform="macos"][data-theme-mode="dark"],
+body[data-platform="macos"][data-theme-mode="dark"] {
+  --mx-glass-border: rgb(118 132 154 / 44%);
+  --mx-glass-bg:
+    linear-gradient(145deg, rgb(38 45 56 / 72%), rgb(15 18 24 / 66%)),
+    rgb(13 16 22 / 72%);
+  --mx-glass-bg-strong:
+    linear-gradient(145deg, rgb(42 49 61 / 84%), rgb(14 17 23 / 80%)),
+    rgb(12 15 21 / 84%);
+  --mx-glass-highlight:
+    radial-gradient(ellipse at 18% 0%, rgb(255 255 255 / 9%), transparent 42%),
+    linear-gradient(180deg, rgb(255 255 255 / 6%), transparent 36%);
+  --mx-glass-shadow:
+    0 26px 56px rgb(0 0 0 / 40%),
+    0 9px 22px rgb(0 0 0 / 28%),
+    inset 0 1px 0 rgb(255 255 255 / 10%),
+    inset 0 -1px 0 rgb(0 0 0 / 28%);
+  --mx-glass-hover:
+    linear-gradient(180deg, rgb(255 255 255 / 11%), rgb(255 255 255 / 5%)),
+    rgb(148 163 184 / 14%);
+}
+
+@media (prefers-color-scheme: dark) {
+  .app-shell[data-theme-mode="system"],
+  body[data-theme-mode="system"] {
+    --mx-bg: #101318;
+    --mx-panel: #171b21;
+    --mx-panel-soft: #1d222a;
+    --mx-title: rgb(17 20 26 / 82%);
+    --mx-line: #2a3039;
+    --mx-line-soft: #222832;
+    --mx-line-strong: #3a4250;
+    --mx-text: #e6e9ee;
+    --mx-muted: #a4adb9;
+    --mx-subtle: #737d8b;
+    --mx-active: rgb(255 255 255 / 10%);
+    --mx-active-strong: rgb(255 255 255 / 16%);
+    --mx-chrome-active: #343434;
+    --mx-primary: var(--mx-primary-dark, #73b7ff);
+    --mx-success: #57d8ae;
+    --mx-warning: #f7c66b;
+    --mx-danger: #ff8f9b;
+    --mx-terminal-text: #f8fafc;
+    --mx-terminal-line: #2f3b4b;
+    --mx-material-bg:
+      radial-gradient(circle at 18% 0%, color-mix(in srgb, var(--mx-primary) 12%, transparent), transparent 36%),
+      linear-gradient(180deg, #101318, #0c0f14);
+    --mx-material-panel: rgb(23 27 33 / 86%);
+    --mx-material-panel-soft: rgb(29 34 42 / 78%);
+    --mx-chrome-fill: rgb(32 32 34 / 100%);
+    --mx-chrome-line: rgb(255 255 255 / 10%);
+    --mx-chrome-glow: rgb(255 255 255 / 0%);
+    --mx-chrome-blur: 0px;
+    --mx-sidebar-surface: rgb(32 32 34 / 100%);
+    --mx-sidebar-border: rgb(255 255 255 / 10%);
+    --mx-sidebar-hover: rgb(255 255 255 / 9%);
+    --mx-sidebar-active: rgb(255 255 255 / 7%);
+    --mx-sidebar-sheen-top: rgb(255 255 255 / 5%);
+    --mx-sidebar-sheen-edge: rgb(255 255 255 / 3%);
+    --mx-sidebar-shadow: none;
+    --mx-glass-border: rgb(82 94 112 / 56%);
+    --mx-glass-bg:
+      linear-gradient(145deg, rgb(42 49 60 / 52%), rgb(20 24 30 / 44%)),
+      rgb(20 24 30 / 50%);
+    --mx-glass-bg-strong:
+      linear-gradient(145deg, rgb(48 56 68 / 58%), rgb(21 25 32 / 52%)),
+      rgb(18 22 28 / 62%);
+    --mx-glass-highlight:
+      radial-gradient(ellipse at 18% 0%, rgb(255 255 255 / 7%), transparent 42%),
+      linear-gradient(180deg, rgb(255 255 255 / 5%), transparent 36%);
+    --mx-glass-shadow:
+      0 24px 52px rgb(0 0 0 / 32%),
+      0 8px 20px rgb(0 0 0 / 22%),
+      inset 0 1px 0 rgb(255 255 255 / 9%),
+      inset 0 -1px 0 rgb(0 0 0 / 24%);
+    --mx-glass-hover:
+      linear-gradient(180deg, rgb(255 255 255 / 9%), rgb(255 255 255 / 4%)),
+      rgb(148 163 184 / 12%);
+    color-scheme: dark;
+  }
+
+  .app-shell[data-theme-mode="system"][data-window-material="auto"],
+  body[data-theme-mode="system"][data-window-material="auto"] {
+    --mx-title: #1b1f26;
+  }
+
+  .app-shell[data-theme-mode="system"][data-window-material="mica"],
+  body[data-theme-mode="system"][data-window-material="mica"] {
+    --mx-chrome-fill: rgb(28 28 28 / 100%);
+    --mx-chrome-line: rgb(255 255 255 / 7%);
+    --mx-chrome-active: rgb(255 255 255 / 7%);
+    --mx-chrome-glow: rgb(255 255 255 / 5%);
+    --mx-chrome-blur: 60px;
+    --mx-sidebar-surface: var(--mx-chrome-fill);
+    --mx-sidebar-border: color-mix(in srgb, var(--mx-line) 40%, transparent);
+    --mx-sidebar-hover: color-mix(in srgb, var(--mx-text) 7%, transparent);
+    --mx-sidebar-active: rgb(255 255 255 / 7%);
+    --mx-sidebar-sheen-top: rgb(255 255 255 / 0%);
+    --mx-sidebar-sheen-edge: rgb(255 255 255 / 0%);
+    --mx-sidebar-shadow: none;
+  }
+
+  .app-shell[data-theme-mode="system"][data-window-material="acrylic"],
+  body[data-theme-mode="system"][data-window-material="acrylic"] {
+    --mx-chrome-fill: rgb(30 31 34 / 64%);
+    --mx-chrome-line: rgb(255 255 255 / 8%);
+    --mx-chrome-active: rgb(255 255 255 / 7%);
+    --mx-chrome-glow: rgb(255 255 255 / 6%);
+    --mx-chrome-blur: 72px;
+    --mx-sidebar-surface: transparent;
+    --mx-sidebar-border: color-mix(in srgb, var(--mx-line) 42%, transparent);
+    --mx-sidebar-hover: color-mix(in srgb, var(--mx-text) 7%, transparent);
+    --mx-sidebar-active: rgb(255 255 255 / 7%);
+    --mx-sidebar-sheen-top: rgb(255 255 255 / 0%);
+    --mx-sidebar-sheen-edge: rgb(255 255 255 / 0%);
+    --mx-sidebar-shadow: none;
+  }
+
+  .app-shell[data-theme-mode="system"][data-window-material="micaAlt"],
+  body[data-theme-mode="system"][data-window-material="micaAlt"] {
+    --mx-chrome-fill: rgb(28 29 32 / 100%);
+    --mx-chrome-line: rgb(255 255 255 / 7%);
+    --mx-chrome-active: rgb(255 255 255 / 7%);
+    --mx-chrome-glow: rgb(255 255 255 / 4%);
+    --mx-chrome-blur: 64px;
+    --mx-sidebar-surface: var(--mx-chrome-fill);
+    --mx-sidebar-border: color-mix(in srgb, var(--mx-line) 40%, transparent);
+    --mx-sidebar-hover: color-mix(in srgb, var(--mx-text) 7%, transparent);
+    --mx-sidebar-active: rgb(255 255 255 / 7%);
+    --mx-sidebar-sheen-top: rgb(255 255 255 / 0%);
+    --mx-sidebar-sheen-edge: rgb(255 255 255 / 0%);
+    --mx-sidebar-shadow: none;
+  }
+
+  .app-shell[data-platform="macos"][data-theme-mode="system"][data-window-material="auto"],
+  body[data-platform="macos"][data-theme-mode="system"][data-window-material="auto"] {
+    --mx-bg: transparent;
+    --mx-panel: rgb(18 21 27 / 82%);
+    --mx-panel-soft: rgb(24 29 37 / 72%);
+    --mx-material-bg:
+      linear-gradient(180deg, rgb(23 27 35 / 44%), rgb(9 12 17 / 30%)),
+      transparent;
+    --mx-material-panel: rgb(18 21 27 / 76%);
+    --mx-material-panel-soft: rgb(24 29 37 / 64%);
+    --mx-chrome-fill: rgb(15 18 24 / 38%);
+    --mx-chrome-line: rgb(255 255 255 / 12%);
+    --mx-chrome-active: rgb(255 255 255 / 14%);
+    --mx-chrome-glow: rgb(255 255 255 / 5%);
+    --mx-chrome-blur: 58px;
+    --mx-material-content-blur: 30px;
+    --mx-sidebar-surface: rgb(15 18 24 / 46%);
+    --mx-sidebar-border: color-mix(in srgb, var(--mx-line) 62%, transparent);
+    --mx-sidebar-hover: color-mix(in srgb, var(--mx-text) 12%, transparent);
+    --mx-sidebar-active: rgb(255 255 255 / 16%);
+    --mx-sidebar-sheen-top: rgb(255 255 255 / 6%);
+    --mx-sidebar-sheen-edge: rgb(255 255 255 / 4%);
+    --mx-sidebar-shadow: none;
+  }
+
+  .app-shell[data-platform="macos"][data-theme-mode="system"][data-window-material="macosGlass"],
+  body[data-platform="macos"][data-theme-mode="system"][data-window-material="macosGlass"] {
+    --mx-bg: transparent;
+    --mx-panel: rgb(18 21 27 / 76%);
+    --mx-panel-soft: rgb(24 29 37 / 64%);
+    --mx-material-bg:
+      linear-gradient(180deg, rgb(23 27 35 / 36%), rgb(9 12 17 / 24%)),
+      transparent;
+    --mx-material-panel: rgb(18 21 27 / 66%);
+    --mx-material-panel-soft: rgb(24 29 37 / 54%);
+    --mx-chrome-fill: rgb(13 16 22 / 34%);
+    --mx-chrome-line: rgb(255 255 255 / 11%);
+    --mx-chrome-active: rgb(255 255 255 / 14%);
+    --mx-chrome-glow: rgb(255 255 255 / 6%);
+    --mx-chrome-blur: 74px;
+    --mx-material-content-blur: 42px;
+    --mx-sidebar-surface: rgb(13 16 22 / 42%);
+    --mx-sidebar-border: color-mix(in srgb, var(--mx-line) 58%, transparent);
+    --mx-sidebar-hover: color-mix(in srgb, var(--mx-text) 12%, transparent);
+    --mx-sidebar-active: rgb(255 255 255 / 16%);
+    --mx-sidebar-sheen-top: rgb(255 255 255 / 6%);
+    --mx-sidebar-sheen-edge: rgb(255 255 255 / 4%);
+    --mx-sidebar-shadow: none;
+  }
+
+  .app-shell[data-platform="macos"][data-theme-mode="system"],
+  body[data-platform="macos"][data-theme-mode="system"] {
+    --mx-glass-border: rgb(118 132 154 / 44%);
+    --mx-glass-bg:
+      linear-gradient(145deg, rgb(38 45 56 / 72%), rgb(15 18 24 / 66%)),
+      rgb(13 16 22 / 72%);
+    --mx-glass-bg-strong:
+      linear-gradient(145deg, rgb(42 49 61 / 84%), rgb(14 17 23 / 80%)),
+      rgb(12 15 21 / 84%);
+    --mx-glass-highlight:
+      radial-gradient(ellipse at 18% 0%, rgb(255 255 255 / 9%), transparent 42%),
+      linear-gradient(180deg, rgb(255 255 255 / 6%), transparent 36%);
+    --mx-glass-shadow:
+      0 26px 56px rgb(0 0 0 / 40%),
+      0 9px 22px rgb(0 0 0 / 28%),
+      inset 0 1px 0 rgb(255 255 255 / 10%),
+      inset 0 -1px 0 rgb(0 0 0 / 28%);
+    --mx-glass-hover:
+      linear-gradient(180deg, rgb(255 255 255 / 11%), rgb(255 255 255 / 5%)),
+      rgb(148 163 184 / 14%);
+  }
+}
