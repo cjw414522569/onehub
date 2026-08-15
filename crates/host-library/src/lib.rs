@@ -6,6 +6,7 @@
 //! Host library model: list, grouping, tags, search, and sorting (T102).
 
 pub mod auth_prompt;
+pub mod diagnostics;
 pub mod editor;
 pub mod file_manager;
 pub mod fingerprint;
@@ -24,6 +25,10 @@ pub mod workspace;
 pub use auth_prompt::{
     AuthPrompt, ConfirmState, HardwareConfirmation, KeyOption, KeySelection, PromptError,
     PromptKind, PromptState, SelectionError, SelectionState,
+};
+pub use diagnostics::{
+    DiagnosticBundle, DiagnosticCategory, DiagnosticExporter, DiagnosticInput, DiagnosticPreview,
+    DiagnosticSection, RedactionPolicy, Redactor, REDACTED,
 };
 pub use editor::{
     default_spec, state_map, AccessibilityReport, FieldKind, FieldSpec, FieldState, HostEditorForm,

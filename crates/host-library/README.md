@@ -215,3 +215,17 @@
 - `reset_to_defaults` - restores defaults.
 - Tests: persistence round-trip, migration, defaults restore, and invalid /
   unknown value handling.
+
+## T117: diagnostic bundle export with redaction
+
+`crates/host-library/src/diagnostics.rs`:
+
+- `DiagnosticExporter::preview` - shows which categories will be included /
+  excluded before anything is exported (user confirmation).
+- `RedactionPolicy::defaults()` - exports logs / config summary / system info
+  only; commands, hosts, usernames, session bodies, and keys are excluded by
+  default (categories can be opted in explicitly).
+- `Redactor` - scrubs secrets, `user@host` tokens, and private-key blocks
+  from the included categories.
+- Tests: the canary-secret scan proves the default export contains none of
+  the command / host / user / body / key canaries.
