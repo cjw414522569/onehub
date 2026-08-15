@@ -229,3 +229,18 @@
   from the included categories.
 - Tests: the canary-secret scan proves the default export contains none of
   the command / host / user / body / key canaries.
+
+## T119: accessibility semantics, screen readers, reduce-motion
+
+`crates/host-library/src/accessibility.rs`:
+
+- `A11yTree` - a semantic tree (roles + accessible names + states) with a
+  deterministic focus order and an audit that runs the WCAG 2.2 AA
+  critical-path checks that are modelable here (4.1.2 names, 2.4.3 focus
+  order, 2.1.1 keyboard).
+- `ReduceMotionPolicy` - disables animation / smooth scrolling / cursor
+  blink when the OS requests reduced motion (WCAG 2.3.3).
+- `TerminalAccessibleMode` - exposes the visible screen as a screen-reader
+  text buffer with a cursor announcement.
+- `screen_reader_checklist` - automated in-model checks plus the
+  VoiceOver / NVDA / TalkBack live-check matrix (run on native hosts).

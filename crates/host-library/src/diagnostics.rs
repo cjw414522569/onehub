@@ -271,8 +271,8 @@ impl Redactor {
 #[cfg(test)]
 mod tests {
     use super::{
-        DiagnosticCategory, DiagnosticExporter, DiagnosticInput, RedactionPolicy,
-        Redactor, REDACTED,
+        DiagnosticCategory, DiagnosticExporter, DiagnosticInput, RedactionPolicy, Redactor,
+        REDACTED,
     };
 
     fn canary_input() -> DiagnosticInput {
