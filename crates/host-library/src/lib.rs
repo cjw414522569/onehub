@@ -13,6 +13,7 @@ pub mod host;
 pub mod keyboard;
 pub mod mobile;
 pub mod paste;
+pub mod port_forwarding;
 pub mod session_status;
 pub mod snippets;
 pub mod workspace;

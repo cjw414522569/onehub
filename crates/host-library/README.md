@@ -159,3 +159,16 @@
 - `VariableHints` - prefix-based autocomplete candidates.
 - Tests: template injection, history leak, missing-variable validation, and
   hint resolution.
+
+## T113: port forwarding management and occupancy diagnosis
+
+`crates/host-library/src/port_forwarding.rs`:
+
+- `ForwardManager` - create local / remote / dynamic forwards (invalid or
+  occupied listen ports fail with an actionable message via the occupancy
+  diagnostic), pause / resume / reconnect / confirm / remove.
+- `PortForward` - copy-ready `address_label` (`127.0.0.1:2222 -> 10.0.0.5:22`)
+  and risk warnings (all-interfaces listen = high, privileged port = medium).
+- `diagnose` - free / occupied status for the port-occupancy diagnosis UI.
+- Tests cover create, pause/resume/reconnect, occupied-port failure, address
+  copy, and risk warnings.
