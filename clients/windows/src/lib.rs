@@ -4,7 +4,7 @@
 //!
 //! The library holds the pure, headless-testable UI model ([`model`]) plus
 //! the host-shell identity constants. The native Win32 shell lives in the
-//! `ssh-gui` binary (`src/main.rs`): it only renders the model and feeds it
+//! `onehub` binary (`src/main.rs`): it only renders the model and feeds it
 //! keystrokes, so every GUI behavior is verifiable without opening a window.
 
 pub mod ai_assistant;

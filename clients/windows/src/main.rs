@@ -1711,7 +1711,7 @@ fn run_gui() {
         let hwnd = CreateWindowExW(
             0,
             w!("SshGuiClass"),
-            w!("SSH Client — PC GUI (host shell)"),
+            w!("OneHub — PC Client (host shell)"),
             WS_POPUP | WS_THICKFRAME | WS_VISIBLE,
             CW_USEDEFAULT,
             CW_USEDEFAULT,
@@ -4205,7 +4205,7 @@ unsafe fn paint(hwnd: HWND) {
         hdc,
         10,
         (TABS_H - cell_h) / 2,
-        "SSH Client",
+        "OneHub",
         TEXT_MAIN,
         state.ui_font,
     );

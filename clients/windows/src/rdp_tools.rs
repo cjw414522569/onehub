@@ -753,7 +753,7 @@ fn write_temp_rdp_file(connection_id: &str, content: &str) -> Result<PathBuf, St
             }
         })
         .collect::<String>();
-    let dir = std::env::temp_dir().join("ssh-gui-rdp");
+    let dir = std::env::temp_dir().join("onehub-rdp");
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let path = dir.join(format!("{stem}-{}.rdp", now_ms()));
     std::fs::write(&path, content).map_err(|e| e.to_string())?;

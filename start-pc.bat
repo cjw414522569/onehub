@@ -3,7 +3,7 @@ setlocal
 cd /d "%~dp0"
 
 set "ROOT=%CD%"
-set "EXE=%ROOT%\target\debug\ssh-gui.exe"
+set "EXE=%ROOT%\target\debug\onehub.exe"
 set "DIST=%ROOT%\clients\windows\ui\dist\index.html"
 
 echo [PC client] working dir: %ROOT%
@@ -33,7 +33,7 @@ if errorlevel 1 goto cargo_failed
 REM 3) Launch.
 echo [PC client] launching ...
 start "" "%EXE%"
-echo [PC client] started (window title: SSH Client - PC GUI).
+echo [PC client] started (window title: OneHub - PC Client).
 goto done
 
 :npm_failed

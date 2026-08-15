@@ -7,7 +7,7 @@
 
 ## What is implemented
 
-A real, native Windows GUI binary (`ssh-gui`) implemented in Rust with the
+A real, native Windows GUI binary (`onehub`) implemented in Rust with the
 `windows-sys` Win32 bindings (GDI text rendering + message loop). The chrome
 references the mXterm light-neutral design (`mxterm/prototype`): a top
 connection-tab bar with an add (`+`) tab, a left session repository, a dark

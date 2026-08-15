@@ -29,7 +29,7 @@ if (!/windows-sys\s*=\s*\{/.test(cargoToml)) {
 for (const forbidden of ['ssh-backend', 'sftp-backend', 'storage-sqlite', 'secure-store', 'sync-service']) {
   if (cargoToml.includes(forbidden)) errors.push(`forbidden dependency present: ${forbidden}`);
 }
-if (!cargoToml.includes('name = "ssh-gui"')) errors.push('Cargo.toml must declare the ssh-gui [[bin]]');
+if (!cargoToml.includes('name = "onehub"')) errors.push('Cargo.toml must declare the onehub [[bin]]');
 
 const rules = JSON.parse(readFileSync(join(ROOT, 'architecture/dependency-rules.json'), 'utf8'));
 const module = rules.modules?.find((item) => item.id === 'clients-windows');
@@ -88,9 +88,9 @@ const selfCheck = spawnSync(
   { cwd: ROOT, encoding: 'utf8', timeout: 600000 }
 );
 const selfCheckOk = selfCheck.status === 0 && (selfCheck.stdout ?? '').includes('PC GUI self-check PASS');
-results.push({ label: 'ssh-gui --check', status: selfCheckOk ? 'pass' : 'fail' });
+results.push({ label: 'onehub --check', status: selfCheckOk ? 'pass' : 'fail' });
 if (!selfCheckOk) {
-  errors.push(`ssh-gui --check failed:\n${selfCheck.stdout}\n${selfCheck.stderr}`);
+  errors.push(`onehub --check failed:\n${selfCheck.stdout}\n${selfCheck.stderr}`);
 }
 
 const bridgeCheck = spawnSync(
@@ -99,9 +99,9 @@ const bridgeCheck = spawnSync(
   { cwd: ROOT, encoding: 'utf8', timeout: 600000 }
 );
 const bridgeOk = bridgeCheck.status === 0 && (bridgeCheck.stdout ?? '').includes('[bridge-check] PASS');
-results.push({ label: 'ssh-gui --bridge-check', status: bridgeOk ? 'pass' : 'fail' });
+results.push({ label: 'onehub --bridge-check', status: bridgeOk ? 'pass' : 'fail' });
 if (!bridgeOk) {
-  errors.push(`ssh-gui --bridge-check failed:\n${bridgeCheck.stdout}\n${bridgeCheck.stderr}`);
+  errors.push(`onehub --bridge-check failed:\n${bridgeCheck.stdout}\n${bridgeCheck.stderr}`);
 }
 
 const uiFlow = spawnSync('node', [join(ROOT, 'scripts/test-mxterm-ui-flow.mjs'), ROOT], {
@@ -155,7 +155,7 @@ if (process.argv.includes('--write')) {
     ],
     coverage: {
       native_window:
-        'Win32 GDI window (windows-sys) created and pumped by the ssh-gui binary; WinUI 3 / Windows App SDK remains the target toolkit',
+        'Win32 GDI window (windows-sys) created and pumped by the onehub binary; WinUI 3 / Windows App SDK remains the target toolkit',
       layout:
         'top connection tabs + add tab, left session repository with select/connect, dark terminal, light input line and status bar',
       pure_model:
@@ -180,8 +180,8 @@ if (process.argv.includes('--write')) {
       cargo_check: 'pass (cargo check -p clients-windows --locked)',
       cargo_fmt: 'pass (cargo fmt -p clients-windows --check)',
       clippy: 'pass (cargo clippy -p clients-windows --all-targets --all-features -- -D warnings)',
-      self_check: 'pass (ssh-gui --check)',
-      bridge_check: 'pass (ssh-gui --bridge-check: invoke round-trip + terminal:output event round-trip + render root=1/errors=[])',
+      self_check: 'pass (onehub --check)',
+      bridge_check: 'pass (onehub --bridge-check: invoke round-trip + terminal:output event round-trip + render root=1/errors=[])',
       ui_flow: 'pass (test-mxterm-ui-flow.mjs)',
       feature_matrix: 'pass (test-mxterm-feature-matrix.mjs)',
       contract_test: 'pass (node scripts/test-pc-gui.mjs .)',
@@ -199,7 +199,7 @@ Status: **PASS** on ${verifiedAt} (verified_at_utc=${verifiedAt}).
 
 ## Delivered
 
-A real, runnable Windows desktop GUI binary (\`ssh-gui\`) built on the
+A real, runnable Windows desktop GUI binary (\`onehub\`) built on the
 \`windows-sys\` Win32 bindings (GDI text rendering + message loop), plus the
 pure, headless-testable UI model in \`clients/windows/src/model.rs\`.
 
