@@ -1,0 +1,45 @@
+{
+  "task": "T169",
+  "status": "pass",
+  "verified_at_utc": "2026-08-15T07:34:36Z",
+  "sbom": {
+    "format": "CycloneDX",
+    "spec_version": "1.5",
+    "components": 367,
+    "dependencies": 244
+  },
+  "license": {
+    "status": "pass_with_restrictions",
+    "spdx_identifiers": "see report"
+  },
+  "provenance": {
+    "schema_version": 1,
+    "source_commit": "2cecbdae11ba99c7a6540e0f7dd64eac871401f0",
+    "toolchain": {
+      "rustc": "rustc 1.97.1 (8bab26f4f 2026-07-14)",
+      "cargo": "cargo 1.97.1 (c980f4866 2026-06-30)",
+      "node": "v22.23.2"
+    },
+    "dependency_lock": {
+      "cargo_lock_sha256": "377803250cc9025a325d775b85991b247e6557b0480c48b41617864d9fd3c227"
+    },
+    "artifacts": [
+      {
+        "name": "ssh-cli",
+        "path": "target/release/ssh-cli.exe",
+        "sha256": "42e7490ca4ac8df793ae1bfb4ea70652a5c4566807b010b98a58dde8e35d43b2"
+      },
+      {
+        "name": "wasm",
+        "path": "target/wasm32-unknown-unknown/release/wasm.wasm",
+        "sha256": "84e8358174906ed7797428c6555ee4971a47aed2ee021395087921801e84a44c"
+      }
+    ]
+  },
+  "reproducible_build": {
+    "first_sha256": "42e7490ca4ac8df793ae1bfb4ea70652a5c4566807b010b98a58dde8e35d43b2",
+    "rebuild_sha256": "42e7490ca4ac8df793ae1bfb4ea70652a5c4566807b010b98a58dde8e35d43b2",
+    "byte_identical": true,
+    "note": "rebuild is byte-identical (same host/toolchain)"
+  }
+}
