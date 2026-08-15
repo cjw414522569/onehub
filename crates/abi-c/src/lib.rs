@@ -28,9 +28,16 @@
 /// Module identity used by diagnostics and architecture tooling.
 pub const MODULE_ID: &str = "abi-c";
 
+pub mod event_stream;
 pub mod handle;
+pub mod scheduler;
 
+pub use event_stream::{
+    BatchItem, EventBatch, EventStream, PushResult, EVENT_BATCH_MAX_BYTES, EVENT_BATCH_MAX_EVENTS,
+    EVENT_BATCH_VERSION,
+};
 pub use handle::{HandleResource, HandleTable, INVALID_HANDLE};
+pub use scheduler::{Scheduler, UiScheduler, WindowsUiScheduler};
 
 /// ABI schema version (1).
 pub const ABI_SCHEMA_VERSION: u32 = 1;

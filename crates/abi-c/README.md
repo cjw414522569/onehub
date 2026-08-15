@@ -48,3 +48,23 @@ crate contains no unsafe blocks.
   stress with zero residual handles, stale-handle rejection, opaque unique
   ids. Sanitizer runs are blocked (no MSan/ASan toolchain on this host);
   leak/stress tests run in-crate.
+
+## T099: batch event streams, backpressure, and UI scheduler adapters
+
+`crates/abi-c/src/event_stream.rs` + `crates/abi-c/src/scheduler.rs`:
+
+- `EventStream` - events accumulate into versioned `EventBatch`es (the ABI
+  transfer unit); never one character at a time. Flushes at size/count
+  thresholds. Never blocks the producer: a full queue drops the oldest batch
+  (bounded memory), counts `dropped`, and the next batch carries
+  `BatchItem::SnapshotRequired`; the consumer requests `produce_snapshot` and
+  rebuilds the full state, so a stalled UI recovers from a snapshot.
+- `Scheduler` - non-blocking UI dispatch contract; `UiScheduler`
+  (deterministic memory-backed) and `WindowsUiScheduler` (Windows-first
+  adapter; real Win32 message-loop posting is blocked_environment without a
+  native loop). Other platforms stay interface-only.
+- Tests: batching (1000 events -> 16 batches), backpressure drops +
+  snapshot request, slow-UI snapshot recovery converges to the latest state,
+  10k-event flood with a stalled consumer (producer never blocks, bounded
+  queue, snapshot recovery), threshold flushing, scheduler dispatch/poll and
+  backpressure.
