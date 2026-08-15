@@ -21,6 +21,7 @@ pub mod sftp;
 pub mod store;
 pub mod transfer_bundle;
 pub mod tunnels;
+pub mod vnc_tools;
 
 /// Platform identity used by diagnostics and architecture tooling.
 pub const PLATFORM: &str = "windows";

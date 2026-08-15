@@ -34,6 +34,7 @@ use clients_windows::sftp;
 use clients_windows::store;
 use clients_windows::transfer_bundle;
 use clients_windows::tunnels;
+use clients_windows::vnc_tools;
 use windows_sys::core::w;
 use windows_sys::Win32::Foundation::{GetLastError, HWND, LPARAM, LRESULT, RECT, SIZE, WPARAM};
 use windows_sys::Win32::Graphics::Gdi::{
@@ -192,7 +193,219 @@ fn main() {
         rdp_check();
         return;
     }
+    if std::env::args().any(|argument| argument == "--vnc-check") {
+        vnc_check();
+        return;
+    }
     run_gui();
+}
+
+/// End-to-end VNC check (--vnc-check): verifies runner probing, preview plans
+/// for embedded/external modes, protocol gating, the custom-runner error path,
+/// and a real embedded WebSocket bridge round-trip against a fake VNC echo
+/// server (mxterm parity T016).
+fn vnc_check() {
+    use clients_windows::store::Store;
+    use clients_windows::vnc_tools as vt;
+    use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+    let dir = std::env::temp_dir().join(format!(
+        "vnc-e2e-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    ));
+    let _ = std::fs::create_dir_all(&dir);
+    let db = dir.join("vnc.db");
+    let mut store = Store::open(&db).expect("store");
+
+    // Probe: embedded noVNC is always available.
+    let probe = vt::probe_runner(&serde_json::json!({ "config": null }));
+    assert!(probe["available_runners"]
+        .as_array()
+        .expect("arr")
+        .iter()
+        .any(|r| r == "novnc"));
+    assert_eq!(probe["supports_embedded"].as_bool(), Some(true));
+
+    // Embedded profile preview.
+    store
+        .upsert_connection(&serde_json::json!({
+            "id": "conn-vnc-embedded",
+            "name": "vnc",
+            "protocol": "vnc",
+            "host": "127.0.0.1",
+            "port": 5900,
+            "username": "u",
+            "vnc": {
+                "display": { "scale_mode": "fit", "resize_session": true, "clip_viewport": false },
+                "input": { "view_only": false, "clipboard": true, "shared": false },
+                "performance": { "preset": "auto", "quality_level": null, "compression_level": null },
+                "security": { "credential_mode": "prompt" },
+                "runner": { "render_mode": "embedded", "preferred_runner": null, "custom_executable": null, "custom_args_template": null },
+                "raw_runner_args": null
+            }
+        }))
+        .expect("upsert embedded");
+    let preview = vt::preview_launch(
+        &store,
+        &serde_json::json!({ "connection_id": "conn-vnc-embedded" }),
+    )
+    .expect("preview embedded");
+    assert_eq!(preview["runner"], "novnc");
+    assert_eq!(preview["embedded"].as_bool(), Some(true));
+    assert!(preview["websocket_url"]
+        .as_str()
+        .expect("url")
+        .starts_with("ws://127.0.0.1:"));
+
+    // External profile preview.
+    store
+        .upsert_connection(&serde_json::json!({
+            "id": "conn-vnc-external",
+            "name": "vnc-ext",
+            "protocol": "vnc",
+            "host": "10.0.0.9",
+            "port": 5901,
+            "username": "u",
+            "vnc": {
+                "display": { "scale_mode": "fit", "resize_session": true, "clip_viewport": false },
+                "input": { "view_only": true, "clipboard": true, "shared": false },
+                "performance": { "preset": "auto", "quality_level": null, "compression_level": null },
+                "security": { "credential_mode": "prompt" },
+                "runner": { "render_mode": "external", "preferred_runner": "vncviewer", "custom_executable": null, "custom_args_template": null },
+                "raw_runner_args": null
+            }
+        }))
+        .expect("upsert external");
+    let preview_ext_result = vt::preview_launch(
+        &store,
+        &serde_json::json!({ "connection_id": "conn-vnc-external" }),
+    );
+    let preview_ext = match &preview_ext_result {
+        Ok(p) => p.clone(),
+        Err(e) => {
+            // No external viewer installed: assert the clear error path.
+            assert!(e.contains("VNC 客户端"), "unexpected error: {e}");
+            serde_json::json!({ "embedded": false, "args": [], "runner": "vncviewer", "error": e })
+        }
+    };
+    assert_eq!(preview_ext["embedded"].as_bool(), Some(false));
+    if preview_ext_result.is_ok() {
+        assert!(preview_ext["args"]
+            .as_array()
+            .expect("args")
+            .iter()
+            .any(|a| a == "10.0.0.9::5901"));
+    }
+
+    // Protocol gating + missing connection.
+    store
+        .upsert_connection(&serde_json::json!({
+            "id": "conn-ssh",
+            "name": "ssh",
+            "protocol": "ssh",
+            "host": "10.0.0.6",
+            "port": 22,
+            "username": "root",
+        }))
+        .expect("upsert ssh");
+    let wrong_protocol =
+        vt::preview_launch(&store, &serde_json::json!({ "connection_id": "conn-ssh" }));
+    assert!(wrong_protocol.is_err());
+    assert!(wrong_protocol.unwrap_err().contains("仅支持 VNC"));
+    assert!(vt::preview_launch(&store, &serde_json::json!({ "connection_id": "nope" })).is_err());
+
+    // Custom runner with missing executable => clear error before spawn.
+    store
+        .upsert_connection(&serde_json::json!({
+            "id": "conn-vnc-custom",
+            "name": "vnc-custom",
+            "protocol": "vnc",
+            "host": "10.0.0.10",
+            "port": 5902,
+            "username": "u",
+            "vnc": {
+                "display": { "scale_mode": "fit", "resize_session": true, "clip_viewport": false },
+                "input": { "view_only": false, "clipboard": true, "shared": false },
+                "performance": { "preset": "auto", "quality_level": null, "compression_level": null },
+                "security": { "credential_mode": "prompt" },
+                "runner": { "render_mode": "custom", "custom_executable": "C:/definitely/missing-vnc.exe", "custom_args_template": "{target}" }
+            }
+        }))
+        .expect("upsert custom");
+    assert!(vt::launch_connection(
+        &mut store,
+        &serde_json::json!({ "connection_id": "conn-vnc-custom" })
+    )
+    .is_err());
+
+    // Full embedded bridge round-trip against a fake VNC echo server.
+    let fake = std::net::TcpListener::bind("127.0.0.1:0").expect("bind fake");
+    let fake_port = fake.local_addr().expect("addr").port();
+    store
+        .upsert_connection(&serde_json::json!({
+            "id": "conn-vnc-bridge",
+            "name": "vnc-bridge",
+            "protocol": "vnc",
+            "host": "127.0.0.1",
+            "port": fake_port,
+            "username": "u",
+            "vnc": {
+                "display": { "scale_mode": "fit", "resize_session": true, "clip_viewport": false },
+                "input": { "view_only": false, "clipboard": true, "shared": false },
+                "performance": { "preset": "auto", "quality_level": null, "compression_level": null },
+                "security": { "credential_mode": "prompt" },
+                "runner": { "render_mode": "embedded", "preferred_runner": null, "custom_executable": null, "custom_args_template": null },
+                "raw_runner_args": null
+            }
+        }))
+        .expect("upsert bridge");
+    let rt = tokio::runtime::Runtime::new().expect("rt");
+    let (bridge_roundtrip_ok, session_closed, echo_len) = rt.block_on(async {
+        let fake = tokio::net::TcpListener::from_std(fake).expect("from_std");
+        let fake_handle = tokio::spawn(async move {
+            let (mut stream, _) = fake.accept().await.expect("fake accept");
+            let mut buf = [0u8; 4096];
+            let n = stream.read(&mut buf).await.expect("fake read");
+            stream.write_all(&buf[..n]).await.expect("fake echo");
+        });
+        let launched = vt::launch_connection(
+            &mut store,
+            &serde_json::json!({ "connection_id": "conn-vnc-bridge" }),
+        )
+        .expect("launch embedded");
+        assert_eq!(launched["embedded"].as_bool(), Some(true));
+        let url = launched["websocket_url"].as_str().expect("url").to_string();
+        let session_id = launched["session_id"].as_str().expect("sid").to_string();
+        let payload = b"vnc-e2e-echo";
+        let echoed = vt::ws_roundtrip(&url, payload).await.expect("roundtrip");
+        let close = vt::close_session(&serde_json::json!({ "session_id": session_id }));
+        let _ = fake_handle.await;
+        (
+            echoed == payload,
+            close["ok"].as_bool() == Some(true),
+            echoed.len(),
+        )
+    });
+    assert!(bridge_roundtrip_ok, "bridge echo must match payload");
+    assert!(session_closed);
+
+    let result = serde_json::json!({
+        "probe_novnc": true,
+        "preview_embedded_runner": preview["runner"],
+        "preview_external_args": preview_ext["args"],
+        "protocol_gate": true,
+        "custom_missing_executable_errors": true,
+        "bridge_roundtrip_ok": bridge_roundtrip_ok,
+        "bridge_echo_bytes": echo_len,
+        "bridge_session_closed": session_closed,
+        "db": db.display().to_string(),
+    });
+    println!("{}", serde_json::to_string(&result).expect("json"));
+    let _ = std::fs::remove_file(&db);
+    let _ = std::fs::remove_dir_all(&dir);
 }
 
 /// End-to-end RDP check (--rdp-check): verifies runner probing, launch-plan
@@ -1529,6 +1742,45 @@ unsafe fn handle_key(state: &mut AppState, hwnd: HWND, wparam: WPARAM) {
         state.model.delete_forward();
     }
     InvalidateRect(hwnd, std::ptr::null(), 1);
+}
+
+/// Handles VNC commands (mxterm parity T016): runner probing, launch preview,
+/// embedded noVNC bridge / external launch, and session close.
+fn handle_vnc_commands(
+    state: &mut AppState,
+    cmd: &str,
+    parsed: &serde_json::Value,
+) -> Option<String> {
+    if !cmd.starts_with("vnc_") {
+        return None;
+    }
+    let request_id = parsed
+        .get("requestId")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+    let payload = parsed
+        .get("payload")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+    let request = payload.get("request").cloned().unwrap_or(payload.clone());
+    let store = state.store.as_mut()?;
+    let result: Result<serde_json::Value, String> = match cmd {
+        "vnc_test_runner" => Ok(vnc_tools::probe_runner(&request)),
+        "vnc_preview_launch" => vnc_tools::preview_launch(store, &request),
+        "vnc_launch_connection" => vnc_tools::launch_connection(store, &request),
+        "vnc_close_session" => Ok(vnc_tools::close_session(&request)),
+        _ => return None,
+    };
+    let reply_payload = match result {
+        Ok(value) => value,
+        Err(message) => serde_json::json!({
+            "error": { "code": "vnc_error", "message": message, "recoverable": true }
+        }),
+    };
+    Some(
+        serde_json::json!({ "kind": "invoke-reply", "requestId": request_id, "payload": reply_payload })
+            .to_string(),
+    )
 }
 
 /// Handles RDP commands (mxterm parity T015): runner probing, launch preview,
@@ -3061,6 +3313,9 @@ fn on_web_message(hwnd: HWND, message: &str) -> Option<String> {
         return Some(reply);
     }
     if let Some(reply) = handle_rdp_commands(state, cmd, &parsed) {
+        return Some(reply);
+    }
+    if let Some(reply) = handle_vnc_commands(state, cmd, &parsed) {
         return Some(reply);
     }
 
