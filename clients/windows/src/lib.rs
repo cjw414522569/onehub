@@ -12,6 +12,7 @@ pub mod local_sessions;
 pub mod model;
 pub mod network_diagnostic;
 pub mod probe;
+pub mod remote_monitor;
 pub mod scheduled_tasks;
 pub mod sftp;
 pub mod store;
