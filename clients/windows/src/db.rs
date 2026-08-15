@@ -56,6 +56,7 @@ fn wired_engines() -> &'static [&'static str] {
         "oceanbase",
         "opengauss",
         "iotdb",
+        "redis",
     ]
 }
 
@@ -714,6 +715,8 @@ enum EngineConnection {
     Odbc(String),
     /// IoTDB HTTP REST endpoint (base URL); stateless like ClickHouse.
     IotDb(String),
+    /// Redis async connection manager (T039).
+    Redis(std::sync::Arc<tokio::sync::Mutex<redis::aio::ConnectionManager>>),
 }
 
 /// A live database session. `connection` holds the engine handle for wired
@@ -1686,6 +1689,9 @@ pub fn query_session(session_id: &str, sql: &str) -> Result<QueryOutcome, String
             Some(EngineConnection::ClickHouse(base)) => EngineConnection::ClickHouse(base.clone()),
             Some(EngineConnection::Odbc(conn_str)) => EngineConnection::Odbc(conn_str.clone()),
             Some(EngineConnection::IotDb(base)) => EngineConnection::IotDb(base.clone()),
+            Some(EngineConnection::Redis(conn)) => {
+                EngineConnection::Redis(std::sync::Arc::clone(conn))
+            }
             None => return Err("会话没有活动连接。".to_string()),
         }
     };
@@ -1731,6 +1737,10 @@ pub fn query_session(session_id: &str, sql: &str) -> Result<QueryOutcome, String
             };
             let parsed = DbProfile::parse(&profile)?;
             odbc_query(&parsed, sql)
+        }
+        EngineConnection::Redis(conn) => {
+            let mut guard = runtime().block_on(async { conn.lock().await });
+            redis_run(&mut guard, sql)
         }
         EngineConnection::IotDb(_) => {
             let profile = {
@@ -1795,6 +1805,9 @@ pub fn connect(profile: &Value) -> Result<String, String> {
         }
         "dm" | "gbase" => EngineConnection::Odbc(odbc_conn_string(&parsed.engine, &parsed)),
         "iotdb" => EngineConnection::IotDb(format!("http://{}:{}", parsed.host, parsed.port)),
+        "redis" => EngineConnection::Redis(std::sync::Arc::new(tokio::sync::Mutex::new(
+            redis_connect(&parsed)?,
+        ))),
         other => return Err(format!("数据库引擎未接入：{other}")),
     };
     // Real handshake verification for both engines.
@@ -1847,6 +1860,10 @@ pub fn connect(profile: &Value) -> Result<String, String> {
         }
         EngineConnection::IotDb(_) => {
             iotdb_query(&parsed, "SHOW VERSION").map_err(|e| format!("IoTDB 连接失败：{e}"))?;
+        }
+        EngineConnection::Redis(conn) => {
+            let mut guard = runtime().block_on(async { conn.lock().await });
+            redis_run(&mut guard, "PING").map_err(|e| format!("Redis 连接失败：{e}"))?;
         }
     }
     let id = new_id("db");
@@ -2536,6 +2553,237 @@ pub fn er_metadata(session_id: &str) -> Result<Value, String> {
     }))
 }
 
+/// Builds a Redis URL from a parsed profile (redis://[:pass@]host:port/db).
+fn redis_url(parsed: &DbProfile) -> String {
+    let db = parsed.database.parse::<i64>().unwrap_or(0);
+    match &parsed.password {
+        Some(password) if !password.is_empty() => {
+            if parsed.username.is_empty() {
+                format!(
+                    "redis://:{}@{}:{}/{}",
+                    password, parsed.host, parsed.port, db
+                )
+            } else {
+                format!(
+                    "redis://{}:{}@{}:{}/{}",
+                    parsed.username, password, parsed.host, parsed.port, db
+                )
+            }
+        }
+        _ => format!("redis://{}:{}/{}", parsed.host, parsed.port, db),
+    }
+}
+
+/// Connects a Redis session (real ConnectionManager handshake).
+fn redis_connect(parsed: &DbProfile) -> Result<redis::aio::ConnectionManager, String> {
+    let url = redis_url(parsed);
+    runtime().block_on(async {
+        let client =
+            redis::Client::open(url.as_str()).map_err(|e| format!("Redis 配置失败：{e}"))?;
+        redis::aio::ConnectionManager::new(client)
+            .await
+            .map_err(|e| format!("Redis 连接失败：{e}"))
+    })
+}
+
+/// Converts a redis value into a JSON value.
+fn redis_value_to_json(value: redis::Value) -> Value {
+    match value {
+        redis::Value::Nil => Value::Null,
+        redis::Value::Int(i) => json!(i),
+        redis::Value::BulkString(bytes) => {
+            Value::String(String::from_utf8_lossy(&bytes).to_string())
+        }
+        redis::Value::SimpleString(s) => Value::String(s),
+        redis::Value::Okay => Value::String("OK".to_string()),
+        redis::Value::Double(f) => json!(f),
+        redis::Value::Boolean(b) => json!(b),
+        redis::Value::VerbatimString { text, .. } => Value::String(text),
+        redis::Value::Array(items) => {
+            Value::Array(items.into_iter().map(redis_value_to_json).collect())
+        }
+        redis::Value::Set(items) => {
+            Value::Array(items.into_iter().map(redis_value_to_json).collect())
+        }
+        redis::Value::Map(entries) => Value::Object(
+            entries
+                .into_iter()
+                .map(|(key, value)| {
+                    (
+                        redis_value_to_json(key).to_string(),
+                        redis_value_to_json(value),
+                    )
+                })
+                .collect(),
+        ),
+        redis::Value::Attribute { data, .. } => redis_value_to_json(*data),
+        other => Value::String(format!("{other:?}")),
+    }
+}
+
+/// Returns a clone of the session's Redis connection handle.
+fn redis_session_conn(
+    session_id: &str,
+) -> Result<std::sync::Arc<tokio::sync::Mutex<redis::aio::ConnectionManager>>, String> {
+    let guard = sessions_map().lock().expect("db sessions lock");
+    match guard
+        .as_ref()
+        .and_then(|m| m.get(session_id))
+        .and_then(|s| s.connection.as_ref())
+    {
+        Some(EngineConnection::Redis(conn)) => Ok(std::sync::Arc::clone(conn)),
+        Some(_) => Err("会话不是 Redis 连接。".to_string()),
+        None => Err("数据库会话不存在或未连接。".to_string()),
+    }
+}
+
+/// Lists keys matching a SCAN pattern (default "*").
+pub fn redis_keys(session_id: &str, pattern: &str) -> Result<Value, String> {
+    let conn = redis_session_conn(session_id)?;
+    let mut guard = runtime().block_on(async { conn.lock().await });
+    let pattern = if pattern.trim().is_empty() {
+        "*".to_string()
+    } else {
+        pattern.to_string()
+    };
+    runtime().block_on(async {
+        let mut cmd = redis::Cmd::new();
+        cmd.arg("SCAN")
+            .arg(0)
+            .arg("MATCH")
+            .arg(&pattern)
+            .arg("COUNT")
+            .arg(1000);
+        let (_, keys): (u64, Vec<String>) = cmd
+            .query_async(&mut *guard)
+            .await
+            .map_err(|e| format!("Redis SCAN 失败：{e}"))?;
+        Ok::<Value, String>(json!({ "pattern": pattern, "keys": keys }))
+    })
+}
+
+/// Reads a key's value via GET (raw value as JSON).
+pub fn redis_get(session_id: &str, key: &str) -> Result<Value, String> {
+    let conn = redis_session_conn(session_id)?;
+    let mut guard = runtime().block_on(async { conn.lock().await });
+    runtime().block_on(async {
+        let value: redis::Value = redis::cmd("GET")
+            .arg(key)
+            .query_async(&mut *guard)
+            .await
+            .map_err(|e| format!("Redis GET 失败：{e}"))?;
+        Ok::<Value, String>(json!({ "key": key, "value": redis_value_to_json(value) }))
+    })
+}
+
+/// Writes a key via SET with optional TTL (seconds).
+pub fn redis_set(
+    session_id: &str,
+    key: &str,
+    value: &str,
+    ttl_seconds: Option<i64>,
+) -> Result<Value, String> {
+    let conn = redis_session_conn(session_id)?;
+    let mut guard = runtime().block_on(async { conn.lock().await });
+    runtime().block_on(async {
+        let mut cmd = redis::Cmd::new();
+        cmd.arg("SET").arg(key).arg(value);
+        if let Some(ttl) = ttl_seconds {
+            if ttl > 0 {
+                cmd.arg("EX").arg(ttl);
+            }
+        }
+        let result: String = cmd
+            .query_async(&mut *guard)
+            .await
+            .map_err(|e| format!("Redis SET 失败：{e}"))?;
+        Ok::<Value, String>(json!({
+            "key": key,
+            "ok": result == "OK",
+            "ttl_seconds": ttl_seconds,
+        }))
+    })
+}
+
+/// Reads a key's TTL (seconds; -1 = no expiry, -2 = missing).
+pub fn redis_ttl(session_id: &str, key: &str) -> Result<Value, String> {
+    let conn = redis_session_conn(session_id)?;
+    let mut guard = runtime().block_on(async { conn.lock().await });
+    runtime().block_on(async {
+        let ttl: i64 = redis::cmd("TTL")
+            .arg(key)
+            .query_async(&mut *guard)
+            .await
+            .map_err(|e| format!("Redis TTL 失败：{e}"))?;
+        Ok::<Value, String>(json!({ "key": key, "ttl_seconds": ttl }))
+    })
+}
+
+/// Deletes a key via DEL.
+pub fn redis_del(session_id: &str, key: &str) -> Result<Value, String> {
+    let conn = redis_session_conn(session_id)?;
+    let mut guard = runtime().block_on(async { conn.lock().await });
+    runtime().block_on(async {
+        let removed: i64 = redis::cmd("DEL")
+            .arg(key)
+            .query_async(&mut *guard)
+            .await
+            .map_err(|e| format!("Redis DEL 失败：{e}"))?;
+        Ok::<Value, String>(json!({ "key": key, "removed": removed }))
+    })
+}
+
+/// Reads a key's TYPE.
+pub fn redis_type(session_id: &str, key: &str) -> Result<Value, String> {
+    let conn = redis_session_conn(session_id)?;
+    let mut guard = runtime().block_on(async { conn.lock().await });
+    runtime().block_on(async {
+        let kind: String = redis::cmd("TYPE")
+            .arg(key)
+            .query_async(&mut *guard)
+            .await
+            .map_err(|e| format!("Redis TYPE 失败：{e}"))?;
+        Ok::<Value, String>(json!({ "key": key, "type": kind }))
+    })
+}
+
+/// Runs a Redis console command line (e.g. "GET user:1", "INFO", "SCAN 0").
+pub fn redis_console(session_id: &str, command_line: &str) -> Result<Value, String> {
+    let conn = redis_session_conn(session_id)?;
+    let mut guard = runtime().block_on(async { conn.lock().await });
+    let outcome = redis_run(&mut guard, command_line)?;
+    Ok(json!({
+        "columns": outcome.columns,
+        "rows": outcome.rows,
+        "affected_rows": outcome.affected_rows,
+    }))
+}
+
+/// Executes a Redis console command line and returns a query outcome.
+fn redis_run(
+    con: &mut redis::aio::ConnectionManager,
+    command_line: &str,
+) -> Result<QueryOutcome, String> {
+    let parts: Vec<&str> = command_line.split_whitespace().collect();
+    if parts.is_empty() {
+        return Err("命令为空。".to_string());
+    }
+    let value = runtime().block_on(async {
+        let mut cmd = redis::Cmd::new();
+        cmd.arg(parts[0]);
+        for part in &parts[1..] {
+            cmd.arg(*part);
+        }
+        cmd.query_async::<redis::Value>(&mut *con)
+            .await
+            .map_err(|e| format!("Redis 命令失败：{e}"))
+    })?;
+    Ok(QueryOutcome {
+        columns: vec!["result".to_string()],
+        rows: vec![vec![redis_value_to_json(value)]],
+        affected_rows: 0,
+    })
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2575,6 +2823,7 @@ mod tests {
                 || *key == "oceanbase"
                 || *key == "opengauss"
                 || *key == "iotdb"
+                || *key == "redis"
                 || !engine_available(key)
         }));
         assert_eq!(engine_list().len(), 15);
@@ -3287,11 +3536,68 @@ mod tests {
     }
 
     #[test]
+    fn redis_refused_endpoints_are_graceful() {
+        let profile = json!({
+            "engine": "redis",
+            "host": "127.0.0.1",
+            "port": 1,
+            "password": "x",
+            "connect_timeout_ms": 500,
+        });
+        let connect_err = connect(&profile).expect_err("refused");
+        assert!(
+            connect_err.contains("失败") || connect_err.contains("拒绝"),
+            "got {connect_err:?}"
+        );
+        assert!(redis_console("no-such-session", "PING").is_err());
+    }
+
+    #[test]
+    fn redis_missing_session_is_graceful() {
+        for (label, result) in [
+            ("keys", redis_keys("no-session", "*")),
+            ("get", redis_get("no-session", "k")),
+            ("set", redis_set("no-session", "k", "v", None)),
+            ("ttl", redis_ttl("no-session", "k")),
+            ("del", redis_del("no-session", "k")),
+            ("type", redis_type("no-session", "k")),
+            ("console", redis_console("no-session", "PING")),
+        ] {
+            assert!(result.is_err(), "{label} should fail for missing session");
+        }
+    }
+
+    #[test]
+    fn redis_value_to_json_converts_shapes() {
+        assert_eq!(redis_value_to_json(redis::Value::Nil), Value::Null);
+        assert_eq!(redis_value_to_json(redis::Value::Int(42)), json!(42));
+        assert_eq!(
+            redis_value_to_json(redis::Value::BulkString(b"hi".to_vec())),
+            Value::String("hi".to_string())
+        );
+        assert_eq!(
+            redis_value_to_json(redis::Value::SimpleString("PONG".to_string())),
+            Value::String("PONG".to_string())
+        );
+        assert_eq!(
+            redis_value_to_json(redis::Value::Okay),
+            Value::String("OK".to_string())
+        );
+        assert_eq!(
+            redis_value_to_json(redis::Value::Array(vec![
+                redis::Value::Int(1),
+                redis::Value::Int(2)
+            ])),
+            json!([1, 2])
+        );
+    }
+
+    #[test]
     fn unwired_engine_connect_is_honest() {
         let err = connect(
-            &json!({ "engine": "redis", "host": "127.0.0.1", "username": "default", "password": "x" }),
+            &json!({ "engine": "mongodb", "host": "127.0.0.1", "username": "root", "password": "x" }),
         )
-        .expect_err("redis not wired");
+        .expect_err("mongodb not wired");
         assert!(err.contains("未接入"), "got {err:?}");
         assert!(!close_session("db-missing"));
     }

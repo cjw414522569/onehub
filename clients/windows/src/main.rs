@@ -275,6 +275,9 @@ fn db_check() {
     let iotdb_available = engines
         .iter()
         .any(|e| e["engine"] == "iotdb" && e["available"] == serde_json::Value::Bool(true));
+    let redis_available = engines
+        .iter()
+        .any(|e| e["engine"] == "redis" && e["available"] == serde_json::Value::Bool(true));
     let other_engines_unavailable = engines.iter().all(|e| {
         e["engine"] == "mysql"
             || e["engine"] == "postgresql"
@@ -289,6 +292,7 @@ fn db_check() {
             || e["engine"] == "oceanbase"
             || e["engine"] == "opengauss"
             || e["engine"] == "iotdb"
+            || e["engine"] == "redis"
             || e["available"] == serde_json::Value::Bool(false)
     });
     let tcp = db::test_connection(&serde_json::json!({
@@ -332,6 +336,14 @@ fn db_check() {
     let pg_query_err = db::query_inline(&pg_profile, "SELECT 1")
         .err()
         .unwrap_or_default();
+    let redis_profile = serde_json::json!({
+        "engine": "redis",
+        "host": "127.0.0.1",
+        "port": 1,
+        "password": "x",
+        "connect_timeout_ms": 500,
+    });
+    let redis_connect_err = db::connect(&redis_profile).err().unwrap_or_default();
     let mssql_profile = serde_json::json!({
         "engine": "sqlserver",
         "host": "127.0.0.1",
@@ -542,6 +554,7 @@ fn db_check() {
         "oceanbase_available": oceanbase_available,
         "opengauss_available": opengauss_available,
         "iotdb_available": iotdb_available,
+        "redis_available": redis_available,
         "other_engines_unavailable": other_engines_unavailable,
         "tcp_refused_graceful": tcp["reachable"] == serde_json::Value::Bool(false),
         "sqlite_missing_reported": sqlite_missing["reachable"] == serde_json::Value::Bool(false),
@@ -554,6 +567,7 @@ fn db_check() {
         "duckdb_roundtrip_ok": duckdb_roundtrip_ok,
         "mssql_connect_refused_graceful": mssql_connect_err.contains("失败"),
         "mssql_query_refused_graceful": mssql_query_err.contains("失败"),
+        "redis_connect_refused_graceful": redis_connect_err.contains("失败"),
         "oracle_connect_refused_graceful": oracle_connect_err.contains("失败"),
         "oracle_query_refused_graceful": oracle_query_err.contains("失败"),
         "clickhouse_connect_refused_graceful": clickhouse_connect_err.contains("失败"),
@@ -2746,6 +2760,97 @@ fn handle_db_commands(
         "db_proxy_route" => {
             let request = payload.get("request").cloned().unwrap_or(payload.clone());
             db::DbProfile::parse(&request).and_then(|parsed| db::db_proxy_route(&parsed))
+        }
+        "redis_keys" => {
+            let request = payload.get("request").cloned().unwrap_or(payload.clone());
+            let session_id = request
+                .get("session_id")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            let pattern = request
+                .get("pattern")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("*");
+            db::redis_keys(session_id, pattern)
+        }
+        "redis_get" => {
+            let request = payload.get("request").cloned().unwrap_or(payload.clone());
+            let session_id = request
+                .get("session_id")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            let key = request
+                .get("key")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            db::redis_get(session_id, key)
+        }
+        "redis_set" => {
+            let request = payload.get("request").cloned().unwrap_or(payload.clone());
+            let session_id = request
+                .get("session_id")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            let key = request
+                .get("key")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            let value = request
+                .get("value")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            let ttl = request
+                .get("ttl_seconds")
+                .and_then(serde_json::Value::as_i64);
+            db::redis_set(session_id, key, value, ttl)
+        }
+        "redis_ttl" => {
+            let request = payload.get("request").cloned().unwrap_or(payload.clone());
+            let session_id = request
+                .get("session_id")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            let key = request
+                .get("key")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            db::redis_ttl(session_id, key)
+        }
+        "redis_del" => {
+            let request = payload.get("request").cloned().unwrap_or(payload.clone());
+            let session_id = request
+                .get("session_id")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            let key = request
+                .get("key")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            db::redis_del(session_id, key)
+        }
+        "redis_type" => {
+            let request = payload.get("request").cloned().unwrap_or(payload.clone());
+            let session_id = request
+                .get("session_id")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            let key = request
+                .get("key")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            db::redis_type(session_id, key)
+        }
+        "redis_console" => {
+            let request = payload.get("request").cloned().unwrap_or(payload.clone());
+            let session_id = request
+                .get("session_id")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            let command = request
+                .get("command")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            db::redis_console(session_id, command)
         }
         "db_export" => {
             let request = payload.get("request").cloned().unwrap_or(payload.clone());

@@ -123,3 +123,40 @@ export interface DbProxyRoute {
   tunnel_rule_id?: string;
   note?: string;
 }
+
+export interface RedisKeyList {
+  pattern: string;
+  keys: string[];
+}
+
+export interface RedisKeyValue {
+  key: string;
+  value: unknown;
+}
+
+export interface RedisSetResult {
+  key: string;
+  ok: boolean;
+  ttl_seconds?: number | null;
+}
+
+export interface RedisTtlResult {
+  key: string;
+  ttl_seconds: number;
+}
+
+export interface RedisDelResult {
+  key: string;
+  removed: number;
+}
+
+export interface RedisTypeResult {
+  key: string;
+  type: string;
+}
+
+export interface RedisConsoleResult {
+  columns: string[];
+  rows: unknown[][];
+  affected_rows: number;
+}

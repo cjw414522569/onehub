@@ -8,6 +8,13 @@ import type {
   DbEngineInfo,
   DbObjectInfo,
   DbProxyRoute,
+  RedisConsoleResult,
+  RedisDelResult,
+  RedisKeyList,
+  RedisKeyValue,
+  RedisSetResult,
+  RedisTtlResult,
+  RedisTypeResult,
   DbQueryRequest,
   DbQueryResult,
   DbTestResult,
@@ -1308,6 +1315,38 @@ export function dbErMetadata(sessionId: string) {
 
 export function dbProxyRoute(request: DbConnectionInput) {
   return invoke<DbProxyRoute>("db_proxy_route", { request });
+}
+
+export function redisKeys(sessionId: string, pattern = "*") {
+  return invoke<RedisKeyList>("redis_keys", { request: { session_id: sessionId, pattern } });
+}
+
+export function redisGet(sessionId: string, key: string) {
+  return invoke<RedisKeyValue>("redis_get", { request: { session_id: sessionId, key } });
+}
+
+export function redisSet(sessionId: string, key: string, value: string, ttlSeconds?: number) {
+  return invoke<RedisSetResult>("redis_set", {
+    request: { session_id: sessionId, key, value, ttl_seconds: ttlSeconds },
+  });
+}
+
+export function redisTtl(sessionId: string, key: string) {
+  return invoke<RedisTtlResult>("redis_ttl", { request: { session_id: sessionId, key } });
+}
+
+export function redisDel(sessionId: string, key: string) {
+  return invoke<RedisDelResult>("redis_del", { request: { session_id: sessionId, key } });
+}
+
+export function redisType(sessionId: string, key: string) {
+  return invoke<RedisTypeResult>("redis_type", { request: { session_id: sessionId, key } });
+}
+
+export function redisConsole(sessionId: string, command: string) {
+  return invoke<RedisConsoleResult>("redis_console", {
+    request: { session_id: sessionId, command },
+  });
 }
 
 export function dbObjectList(sessionId: string, kind?: string) {

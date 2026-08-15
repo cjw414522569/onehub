@@ -47,3 +47,4 @@ windows-sys = { version = "0.61", features = [
   "Win32_UI_Input_KeyboardAndMouse",
   "Win32_UI_WindowsAndMessaging",
 ] }
+redis = { version = "1.6.0", features = ["tokio-comp", "connection-manager"] }

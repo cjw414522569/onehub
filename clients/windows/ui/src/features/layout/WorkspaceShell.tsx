@@ -55,6 +55,7 @@ import {
   X,
 } from "lucide-react";
 import { DatabasePanel } from "../database/DatabasePanel";
+import { RedisPanel } from "../database/RedisPanel";
 
 import { ConnectionPane } from "../connections/ConnectionPane";
 import { ConnectionSystemLogo } from "../connections/ConnectionSystemLogo";
@@ -11780,6 +11781,7 @@ function ConnectionHome({
   const [query, setQuery] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<ConnectionProfile | null>(null);
   const [databaseOpen, setDatabaseOpen] = useState(false);
+  const [redisOpen, setRedisOpen] = useState(false);
   const [latencyByConnectionId, setLatencyByConnectionId] = useState<Record<string, LatencyProbeState>>({});
   const latencyProbeRunRef = useRef(0);
   const rows = useMemo(() => {
@@ -11925,6 +11927,17 @@ function ConnectionHome({
               <Database className="ui-icon" aria-hidden="true" />
             </button>
           </Tooltip>
+          <Tooltip label="打开 Redis 控制台">
+            <button
+              className="repository-icon-button"
+              type="button"
+              aria-label="打开 Redis 控制台"
+              onClick={() => setRedisOpen(true)}
+            >
+              <Database className="ui-icon" aria-hidden="true" />
+              <span style={{ fontSize: 10 }}>Redis</span>
+            </button>
+          </Tooltip>
           <Tooltip label="刷新连接并探测延迟">
             <button
               className="repository-icon-button"
@@ -11951,6 +11964,8 @@ function ConnectionHome({
       </header>
 
         <DatabasePanel open={databaseOpen} onClose={() => setDatabaseOpen(false)} />
+
+        <RedisPanel open={redisOpen} onClose={() => setRedisOpen(false)} />
 
       <div className="connection-home-body">
         <section className="connection-board" aria-label="连接表格">
