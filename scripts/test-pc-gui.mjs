@@ -113,6 +113,15 @@ if (!uiFlowOk) {
   errors.push(`mxterm ui flow failed:\n${uiFlow.stdout}\n${uiFlow.stderr}`);
 }
 
+const matrix = spawnSync('node', [join(ROOT, 'scripts/test-mxterm-feature-matrix.mjs'), ROOT], {
+  cwd: ROOT, encoding: 'utf8', timeout: 60000,
+});
+const matrixOk = matrix.status === 0 && (matrix.stdout ?? '').includes('feature-matrix valid');
+results.push({ label: 'feature matrix', status: matrixOk ? 'pass' : 'fail' });
+if (!matrixOk) {
+  errors.push(`feature matrix failed:\n${matrix.stdout}\n${matrix.stderr}`);
+}
+
 if (errors.length > 0) {
   console.error(`pc-gui contract failed with ${errors.length} error(s):`);
   for (const error of errors) console.error(`- ${error}`);
@@ -150,6 +159,8 @@ if (process.argv.includes('--write')) {
         'Playwright drives the real connection dialog -> 创建连接 -> connection_upsert -> repository shows dev root@10.0.0.1:2222 -> click -> terminal_connect (test-mxterm-ui-flow.mjs)',
       terminal_event_bridge:
         'terminal_write -> bridge -> terminal:output event with TerminalOutputEvent shape (data as number[]) delivered to the JS callback (--bridge-check event round-trip); EventRegistry listen/unlisten unit-tested',
+      feature_matrix:
+        'docs/reports/FEATURES_MATRIX.json: 141 copied UI commands classified (wired=16 model/bridge-backed, interface_only=125 benign/stub, pending=0); nothing faked',
       contract:
         'layer L5, approved bridge abi-c, forbidden dependencies absent, dependency-rules external_imports synced',
       mxterm_reference:
@@ -163,6 +174,7 @@ if (process.argv.includes('--write')) {
       self_check: 'pass (ssh-gui --check)',
       bridge_check: 'pass (ssh-gui --bridge-check: invoke round-trip + terminal:output event round-trip + render root=1/errors=[])',
       ui_flow: 'pass (test-mxterm-ui-flow.mjs)',
+      feature_matrix: 'pass (test-mxterm-feature-matrix.mjs)',
       contract_test: 'pass (node scripts/test-pc-gui.mjs .)',
     },
     notes: [
