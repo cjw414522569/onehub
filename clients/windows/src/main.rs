@@ -30,6 +30,7 @@ use clients_windows::model::{
     PANEL_ACTIVE, PANEL_BG, TEXT_MAIN, TEXT_MUTED,
 };
 use clients_windows::network_diagnostic;
+use clients_windows::notes;
 use clients_windows::probe;
 use clients_windows::rdp_tools;
 use clients_windows::remote_monitor;
@@ -206,6 +207,10 @@ fn main() {
     }
     if std::env::args().any(|argument| argument == "--webdav-check") {
         webdav_check();
+        return;
+    }
+    if std::env::args().any(|argument| argument == "--notes-check") {
+        notes_check();
         return;
     }
     if std::env::args().any(|argument| argument == "--misc-check") {
@@ -1701,6 +1706,28 @@ fn task_check() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// End-to-end notes check (--notes-check): save/list/read/delete a scratch
+/// note through the real notes directory (exe_dir/notes).
+fn notes_check() {
+    use clients_windows::notes;
+    let name = format!("check-{}", std::process::id());
+    let saved = notes::notes_save(&name, "# Check\n\nmarkdown").expect("save");
+    assert_eq!(saved["saved"], true);
+    let listed = notes::notes_list().expect("list");
+    let count = listed["notes"].as_array().map(|a| a.len()).unwrap_or(0);
+    assert!(count >= 1, "expected at least one note");
+    let read = notes::notes_read(&name).expect("read");
+    assert!(read["content"].as_str().unwrap_or("").contains("markdown"));
+    let dir_info = notes::notes_dir_info().expect("dir");
+    assert!(dir_info["dir"]
+        .as_str()
+        .map(|s| !s.is_empty())
+        .unwrap_or(false));
+    let deleted = notes::notes_delete(&name).expect("delete");
+    assert_eq!(deleted["deleted"], true);
+    println!("[notes-check] PASS");
+}
+
 /// End-to-end tunnel check (--tunnel-check): creates a tunnel rule, lists it,
 /// stops it, and deletes it, printing JSON evidence. start_rule requires a
 /// real SSH server (blocked_environment here); the state machine and
@@ -2946,6 +2973,44 @@ fn handle_db_commands(
                 .and_then(serde_json::Value::as_str)
                 .unwrap_or("{}");
             db::mongodb_delete(session_id, collection, filter)
+        }
+        "notes_dir" => notes::notes_dir_info(),
+        "notes_list" => notes::notes_list(),
+        "notes_read" => {
+            let request = payload.get("request").cloned().unwrap_or(payload.clone());
+            let name = request
+                .get("name")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            notes::notes_read(name)
+        }
+        "notes_save" => {
+            let request = payload.get("request").cloned().unwrap_or(payload.clone());
+            let name = request
+                .get("name")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            let content = request
+                .get("content")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            notes::notes_save(name, content)
+        }
+        "notes_delete" => {
+            let request = payload.get("request").cloned().unwrap_or(payload.clone());
+            let name = request
+                .get("name")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            notes::notes_delete(name)
+        }
+        "notes_asset" => {
+            let request = payload.get("request").cloned().unwrap_or(payload.clone());
+            let relative = request
+                .get("relative")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            notes::notes_asset(relative)
         }
         "db_export" => {
             let request = payload.get("request").cloned().unwrap_or(payload.clone());

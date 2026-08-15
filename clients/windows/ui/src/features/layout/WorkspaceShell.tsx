@@ -57,6 +57,7 @@ import {
 import { DatabasePanel } from "../database/DatabasePanel";
 import { RedisPanel } from "../database/RedisPanel";
 import { MongoPanel } from "../database/MongoPanel";
+import { NotesPanel } from "../notes/NotesPanel";
 
 import { ConnectionPane } from "../connections/ConnectionPane";
 import { ConnectionSystemLogo } from "../connections/ConnectionSystemLogo";
@@ -11784,6 +11785,7 @@ function ConnectionHome({
   const [databaseOpen, setDatabaseOpen] = useState(false);
   const [redisOpen, setRedisOpen] = useState(false);
   const [mongoOpen, setMongoOpen] = useState(false);
+  const [notesOpen, setNotesOpen] = useState(false);
   const [latencyByConnectionId, setLatencyByConnectionId] = useState<Record<string, LatencyProbeState>>({});
   const latencyProbeRunRef = useRef(0);
   const rows = useMemo(() => {
@@ -11951,6 +11953,17 @@ function ConnectionHome({
               <span style={{ fontSize: 10 }}>Mongo</span>
             </button>
           </Tooltip>
+          <Tooltip label="打开 Markdown 笔记">
+            <button
+              className="repository-icon-button"
+              type="button"
+              aria-label="打开 Markdown 笔记"
+              onClick={() => setNotesOpen(true)}
+            >
+              <FileText className="ui-icon" aria-hidden="true" />
+              <span style={{ fontSize: 10 }}>笔记</span>
+            </button>
+          </Tooltip>
           <Tooltip label="刷新连接并探测延迟">
             <button
               className="repository-icon-button"
@@ -11981,6 +11994,8 @@ function ConnectionHome({
         <RedisPanel open={redisOpen} onClose={() => setRedisOpen(false)} />
 
         <MongoPanel open={mongoOpen} onClose={() => setMongoOpen(false)} />
+
+        <NotesPanel open={notesOpen} onClose={() => setNotesOpen(false)} />
 
       <div className="connection-home-body">
         <section className="connection-board" aria-label="连接表格">

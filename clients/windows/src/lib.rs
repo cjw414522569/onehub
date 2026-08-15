@@ -15,6 +15,7 @@ pub mod mcp_tools;
 pub mod misc_tools;
 pub mod model;
 pub mod network_diagnostic;
+pub mod notes;
 pub mod probe;
 pub mod rdp_tools;
 pub mod remote_monitor;

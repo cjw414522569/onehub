@@ -25,6 +25,14 @@ import type {
   DbTestResult,
 } from "../../features/database/dbTypes";
 import type {
+  NoteAssetResult,
+  NoteDeleteResult,
+  NoteReadResult,
+  NotesDirResult,
+  NotesListResult,
+  NoteSaveResult,
+} from "../../features/notes/notesTypes";
+import type {
   ConnectionRuntimeCredentialRequest,
   ConnectionStepResult,
   CredentialProfile,
@@ -1380,6 +1388,30 @@ export function mongodbDelete(sessionId: string, collection: string, filter: str
   return invoke<MongoDeleteResult>("mongodb_delete", {
     request: { session_id: sessionId, collection, filter },
   });
+}
+
+export function notesDir() {
+  return invoke<NotesDirResult>("notes_dir");
+}
+
+export function notesList() {
+  return invoke<NotesListResult>("notes_list");
+}
+
+export function notesRead(name: string) {
+  return invoke<NoteReadResult>("notes_read", { request: { name } });
+}
+
+export function notesSave(name: string, content: string) {
+  return invoke<NoteSaveResult>("notes_save", { request: { name, content } });
+}
+
+export function notesDelete(name: string) {
+  return invoke<NoteDeleteResult>("notes_delete", { request: { name } });
+}
+
+export function notesAsset(relative: string) {
+  return invoke<NoteAssetResult>("notes_asset", { request: { relative } });
 }
 
 export function dbObjectList(sessionId: string, kind?: string) {
