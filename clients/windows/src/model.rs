@@ -46,6 +46,21 @@ pub const ERROR_FG: Rgb = Rgb::new(0xEF, 0x53, 0x50);
 /// Input-area background color.
 pub const INPUT_BG: Rgb = Rgb::new(0x1E, 0x1E, 0x1E);
 
+/// Workspace (chrome) background ? mXterm light-neutral cold white/gray.
+pub const CHROME_BG: Rgb = Rgb::new(0xF5, 0xF7, 0xFA);
+/// Panel / tab background (white).
+pub const PANEL_BG: Rgb = Rgb::new(0xFF, 0xFF, 0xFF);
+/// Selected capsule / active tab background (light gray).
+pub const PANEL_ACTIVE: Rgb = Rgb::new(0xEC, 0xEF, 0xF3);
+/// 1px separator lines between regions.
+pub const BORDER: Rgb = Rgb::new(0xD9, 0xDD, 0xE3);
+/// Primary text (neutral dark gray).
+pub const TEXT_MAIN: Rgb = Rgb::new(0x2B, 0x31, 0x3A);
+/// Secondary / muted text.
+pub const TEXT_MUTED: Rgb = Rgb::new(0x73, 0x7B, 0x88);
+/// Primary action color (blue).
+pub const ACCENT: Rgb = Rgb::new(0x23, 0x74, 0xC6);
+
 /// One terminal cell.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Cell {
@@ -259,6 +274,44 @@ impl Grid {
     }
 }
 
+/// A saved SSH connection profile (mXterm-style session repository).
+///
+/// Only non-sensitive fields are kept in the model: credentials (password /
+/// private key) are deliberately not persisted in this host shell; they will
+/// travel over the abi-c bridge in a later row.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConnectionProfile {
+    /// Display name shown in the tab and the session list.
+    pub name: String,
+    /// Host name or IP address.
+    pub host: String,
+    /// TCP port (default 22).
+    pub port: u16,
+    /// Login user (may be empty, then the transport prompts later).
+    pub user: String,
+}
+
+impl ConnectionProfile {
+    /// A new profile.
+    pub fn new(name: &str, host: &str, port: u16, user: &str) -> Self {
+        Self {
+            name: name.to_string(),
+            host: host.to_string(),
+            port,
+            user: user.to_string(),
+        }
+    }
+
+    /// The connect target as `user@host:port`.
+    pub fn target(&self) -> String {
+        if self.user.is_empty() {
+            format!("{}:{}", self.host, self.port)
+        } else {
+            format!("{}@{}:{}", self.user, self.host, self.port)
+        }
+    }
+}
+
 /// Session phase shown in the status bar.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SessionPhase {
@@ -309,6 +362,8 @@ pub struct GuiModel {
     user: String,
     commands: VecDeque<GuiCommand>,
     needs_snapshot: bool,
+    profiles: Vec<ConnectionProfile>,
+    selected_profile: Option<usize>,
 }
 
 impl GuiModel {
@@ -329,6 +384,8 @@ impl GuiModel {
             user: String::new(),
             commands: VecDeque::new(),
             needs_snapshot: false,
+            profiles: Vec::new(),
+            selected_profile: None,
         }
     }
 
@@ -507,6 +564,89 @@ impl GuiModel {
         self.commands.pop_front()
     }
 
+    /// Number of saved session profiles.
+    pub fn profile_count(&self) -> usize {
+        self.profiles.len()
+    }
+
+    /// A saved profile by index.
+    pub fn profile(&self, index: usize) -> Option<&ConnectionProfile> {
+        self.profiles.get(index)
+    }
+
+    /// The currently selected profile index, if any.
+    pub fn selected_profile(&self) -> Option<usize> {
+        self.selected_profile
+    }
+
+    /// Adds a profile and returns its index.
+    pub fn add_profile(&mut self, name: &str, host: &str, port: u16, user: &str) -> usize {
+        self.profiles
+            .push(ConnectionProfile::new(name, host, port, user));
+        self.profiles.len() - 1
+    }
+
+    /// Removes a profile, keeping the selection consistent.
+    pub fn remove_profile(&mut self, index: usize) {
+        if index >= self.profiles.len() {
+            return;
+        }
+        self.profiles.remove(index);
+        self.selected_profile = match self.selected_profile {
+            Some(_) if self.profiles.is_empty() => None,
+            Some(selected) if selected >= self.profiles.len() => Some(self.profiles.len() - 1),
+            Some(selected) if selected > index => Some(selected - 1),
+            Some(selected) => Some(selected),
+            None => None,
+        };
+    }
+
+    /// Selects a profile in the session repository.
+    pub fn select_profile(&mut self, index: usize) {
+        if index < self.profiles.len() {
+            self.selected_profile = Some(index);
+        }
+    }
+
+    /// Connects to a saved profile (phase becomes connecting).
+    pub fn connect_profile(&mut self, index: usize) {
+        let Some(profile) = self.profiles.get(index) else {
+            self.append_error(&format!("no session at index {index}\n"));
+            return;
+        };
+        self.selected_profile = Some(index);
+        self.user = profile.user.clone();
+        self.host = profile.host.clone();
+        self.phase = SessionPhase::Connecting;
+        self.status = format!(
+            "connecting to {} ({}) (host shell; transport via abi-c not yet wired)",
+            profile.name,
+            profile.target()
+        );
+        self.append_output(&format!(
+            "connecting to {} ({}) ...\n",
+            profile.name,
+            profile.target()
+        ));
+    }
+
+    /// Prints the saved session repository (/sessions).
+    pub fn list_sessions(&mut self) {
+        if self.profiles.is_empty() {
+            self.append_output("no saved sessions (use the + tab to add one)\n");
+            return;
+        }
+        let lines: Vec<String> = self
+            .profiles
+            .iter()
+            .enumerate()
+            .map(|(index, profile)| format!("{index}: {} ({})\n", profile.name, profile.target()))
+            .collect();
+        for line in lines {
+            self.append_output(&line);
+        }
+    }
+
     /// Applies one abi-c event batch to the model (the ABI transfer unit).
     pub fn apply_batch(&mut self, batch: &EventBatch) {
         for item in &batch.items {
@@ -537,6 +677,11 @@ impl GuiModel {
         match command {
             "connect" => self.start_connect(&argument),
             "disconnect" => self.disconnect("user requested"),
+            "sessions" => self.list_sessions(),
+            "open" => match argument.parse::<usize>() {
+                Ok(index) => self.connect_profile(index),
+                Err(_) => self.append_error("usage: /open <index> (see /sessions)\n"),
+            },
             "clear" => self.grid.clear(),
             "help" => self.append_output(HELP_TEXT),
             "quit" | "exit" => self.commands.push_back(GuiCommand::Quit),
@@ -737,6 +882,81 @@ mod tests {
             .to_lines()
             .iter()
             .all(|line| line.trim().is_empty()));
+    }
+
+    #[test]
+    fn profiles_add_remove_and_select() {
+        let mut model = GuiModel::with_size(4, 24);
+        let a = model.add_profile("dev", "10.0.0.1", 22, "root");
+        let b = model.add_profile("prod", "10.0.0.2", 2222, "ops");
+        assert_eq!(a, 0);
+        assert_eq!(b, 1);
+        assert_eq!(model.profile_count(), 2);
+        assert_eq!(model.profile(0).unwrap().target(), "root@10.0.0.1:22");
+        assert_eq!(model.profile(1).unwrap().target(), "ops@10.0.0.2:2222");
+        model.select_profile(1);
+        assert_eq!(model.selected_profile(), Some(1));
+        model.remove_profile(0);
+        assert_eq!(model.profile_count(), 1);
+        assert_eq!(model.selected_profile(), Some(0));
+        assert_eq!(model.profile(0).unwrap().name, "prod");
+        model.remove_profile(0);
+        assert_eq!(model.selected_profile(), None);
+        assert_eq!(model.profile_count(), 0);
+    }
+
+    #[test]
+    fn connect_profile_sets_phase_and_status() {
+        let mut model = GuiModel::with_size(4, 40);
+        let index = model.add_profile("dev", "10.0.0.1", 22, "root");
+        model.connect_profile(index);
+        assert_eq!(model.phase(), SessionPhase::Connecting);
+        assert_eq!(model.host(), "10.0.0.1");
+        assert_eq!(model.user(), "root");
+        assert!(model.status().contains("dev"));
+        assert!(model.status().contains("root@10.0.0.1:22"));
+        // Connecting to a missing index must not change the phase.
+        model.connect_profile(99);
+        assert_eq!(model.phase(), SessionPhase::Connecting);
+        assert!(model.status().contains("dev"));
+    }
+
+    #[test]
+    fn sessions_and_open_commands() {
+        let mut model = GuiModel::with_size(6, 48);
+        for ch in "/sessions".chars() {
+            model.type_char(ch);
+        }
+        model.submit();
+        assert!(model
+            .grid()
+            .to_lines()
+            .iter()
+            .any(|line| line.contains("no saved sessions")));
+        model.add_profile("dev", "10.0.0.1", 22, "root");
+        for ch in "/sessions".chars() {
+            model.type_char(ch);
+        }
+        model.submit();
+        assert!(model
+            .grid()
+            .to_lines()
+            .iter()
+            .any(|line| line.contains("dev")));
+        for ch in "/open 0".chars() {
+            model.type_char(ch);
+        }
+        model.submit();
+        assert_eq!(model.phase(), SessionPhase::Connecting);
+        for ch in "/open 9".chars() {
+            model.type_char(ch);
+        }
+        model.submit();
+        assert!(model
+            .grid()
+            .to_lines()
+            .iter()
+            .any(|line| line.contains("no session at index 9")));
     }
 
     #[test]

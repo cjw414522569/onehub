@@ -39,3 +39,6 @@ known_hosts.old
 !crates/ssh-backend/tests/fixtures/*.pem
 # Node / TypeScript shell dependencies
 web/app/node_modules/
+
+# mXterm reference project (separate repo, used as a GUI design reference only)
+mxterm/

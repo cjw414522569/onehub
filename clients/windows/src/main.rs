@@ -3,9 +3,14 @@
 //! This binary is the "host-shell boundary" named by `contract.json`: the
 //! safe, headless-testable UI model lives in `clients_windows::model`, and
 //! this file only wires that model to the Win32 message loop (GDI rendering
-//! and keyboard input). The Win32 FFI is inherently `unsafe`; every call is
-//! confined to small, documented helper functions so the unsafe surface
-//! stays reviewable and the architecture boundary is explicit.
+//! and keyboard/mouse input). The Win32 FFI is inherently `unsafe`; every
+//! call is confined to small, documented helper functions so the unsafe
+//! surface stays reviewable and the architecture boundary is explicit.
+//!
+//! The chrome follows the mXterm light-neutral reference (`mxterm`):
+//! a top connection-tab bar, a left session repository, a dark terminal
+//! area, an input line, and a modal "new SSH" dialog. Credentials are never
+//! persisted in this host shell.
 //!
 //! Usage:
 //!   cargo run -p clients-windows             # open the native GUI window
@@ -13,47 +18,77 @@
 
 use abi_c::{BatchItem, EventBatch, EVENT_BATCH_VERSION};
 use clients_windows::model::{
-    GuiCommand, GuiModel, SessionPhase, ACCENT_FG, DEFAULT_BG, DEFAULT_FG, INPUT_BG,
+    GuiCommand, GuiModel, Rgb, SessionPhase, ACCENT, BORDER, CHROME_BG, DEFAULT_BG, DEFAULT_FG,
+    PANEL_ACTIVE, PANEL_BG, TEXT_MAIN, TEXT_MUTED,
 };
 use windows_sys::core::w;
 use windows_sys::Win32::Foundation::{GetLastError, HWND, LPARAM, LRESULT, RECT, SIZE, WPARAM};
 use windows_sys::Win32::Graphics::Gdi::{
     BeginPaint, CreateFontW, CreateSolidBrush, DeleteObject, EndPaint, FillRect, GetStockObject,
     GetTextExtentPoint32W, GetTextMetricsW, InvalidateRect, SelectObject, SetBkMode, SetTextColor,
-    TextOutW, UpdateWindow, ANSI_CHARSET, CLEARTYPE_QUALITY, CLIP_DEFAULT_PRECIS, DEFAULT_PITCH,
-    FF_MODERN, FW_NORMAL, HFONT, OUT_DEFAULT_PRECIS, PAINTSTRUCT, TEXTMETRICW, TRANSPARENT,
-    WHITE_BRUSH,
+    TextOutW, UpdateWindow, ANSI_CHARSET, CLEARTYPE_QUALITY, CLIP_DEFAULT_PRECIS, DEFAULT_CHARSET,
+    DEFAULT_GUI_FONT, DEFAULT_PITCH, FF_MODERN, FW_NORMAL, HDC, HFONT, OUT_DEFAULT_PRECIS,
+    PAINTSTRUCT, TEXTMETRICW, TRANSPARENT, WHITE_BRUSH,
 };
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::UI::HiDpi::{
     SetProcessDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
 };
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
-    VK_BACK, VK_DELETE, VK_ESCAPE, VK_LEFT, VK_RETURN, VK_RIGHT,
+    EnableWindow, SetFocus, VK_BACK, VK_DELETE, VK_ESCAPE, VK_LEFT, VK_RETURN, VK_RIGHT,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetClientRect, GetMessageW,
-    GetWindowLongPtrW, KillTimer, LoadCursorW, PostQuitMessage, RegisterClassW, SetTimer,
-    SetWindowLongPtrW, ShowWindow, TranslateMessage, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT,
-    GWLP_USERDATA, IDC_ARROW, MSG, SW_SHOWDEFAULT, WM_CHAR, WM_CLOSE, WM_CREATE, WM_DESTROY,
-    WM_KEYDOWN, WM_PAINT, WM_SIZE, WM_TIMER, WNDCLASSW, WS_OVERLAPPEDWINDOW, WS_VISIBLE,
+    CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetClientRect, GetDlgItem,
+    GetMessageW, GetWindowLongPtrW, GetWindowRect, GetWindowTextLengthW, GetWindowTextW, IsWindow,
+    KillTimer, LoadCursorW, PostQuitMessage, RegisterClassW, SendMessageW, SetTimer,
+    SetWindowLongPtrW, ShowWindow, TranslateMessage, BS_PUSHBUTTON, CS_HREDRAW, CS_VREDRAW,
+    CW_USEDEFAULT, ES_AUTOHSCROLL, GWLP_USERDATA, HMENU, IDCANCEL, IDC_ARROW, IDOK, MSG, SW_SHOW,
+    SW_SHOWDEFAULT, WM_CHAR, WM_CLOSE, WM_COMMAND, WM_CREATE, WM_DESTROY, WM_KEYDOWN,
+    WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_PAINT, WM_SETFONT, WM_SIZE, WM_TIMER, WNDCLASSW,
+    WS_CAPTION, WS_CHILD, WS_EX_CLIENTEDGE, WS_OVERLAPPEDWINDOW, WS_POPUP, WS_SYSMENU, WS_TABSTOP,
+    WS_VISIBLE,
 };
 
 /// Timer id used for the periodic re-render / command drain.
 const TIMER_ID: usize = 1;
 /// Default window width in pixels.
-const WINDOW_WIDTH: i32 = 960;
+const WINDOW_WIDTH: i32 = 1040;
 /// Default window height in pixels.
-const WINDOW_HEIGHT: i32 = 640;
+const WINDOW_HEIGHT: i32 = 680;
+/// Top connection-tab bar height.
+const TABS_H: i32 = 34;
+/// Left session-repository width.
+const PANEL_W: i32 = 220;
+/// Bottom status-bar height.
+const STATUS_H: i32 = 24;
+/// Bottom input-line height.
+const INPUT_H: i32 = 28;
+/// Session row height in the repository.
+const ROW_H: i32 = 26;
+/// Session repository header height.
+const PANEL_HEADER_H: i32 = 30;
+
+/// Dialog control ids.
+const IDC_NAME: i32 = 101;
+const IDC_HOST: i32 = 102;
+const IDC_PORT: i32 = 103;
+const IDC_USER: i32 = 104;
+
+/// What a click on the tabs bar means.
+enum TabAction {
+    /// Open the "new SSH" dialog.
+    Add,
+    /// Open (connect to) the profile at the index.
+    Connect(usize),
+}
 
 /// Per-window state: the model plus cached GDI resources and cell metrics.
 struct AppState {
     model: GuiModel,
-    font: HFONT,
+    term_font: HFONT,
+    ui_font: HFONT,
     cell_w: i32,
     cell_h: i32,
-    status_h: i32,
-    input_h: i32,
     metrics_ready: bool,
 }
 
@@ -104,6 +139,37 @@ fn self_check() {
         "/quit must queue Quit"
     );
 
+    // Session repository: add -> select -> connect -> sessions/open.
+    let index = model.add_profile("demo", "host", 22, "demo");
+    assert_eq!(index, 0, "the first profile must get index 0");
+    model.connect_profile(index);
+    assert_eq!(
+        model.phase(),
+        SessionPhase::Connecting,
+        "connect_profile must start connecting"
+    );
+    assert_eq!(
+        model.selected_profile(),
+        Some(0),
+        "connecting must select the profile"
+    );
+    assert!(
+        model.status().contains("demo@host:22"),
+        "status must show the profile target"
+    );
+    for ch in "/sessions".chars() {
+        model.type_char(ch);
+    }
+    model.submit();
+    assert!(
+        model
+            .grid()
+            .to_lines()
+            .iter()
+            .any(|line| line.contains("demo")),
+        "/sessions must list the saved profile"
+    );
+
     model.apply_batch(&EventBatch {
         version: EVENT_BATCH_VERSION,
         sequence: 1,
@@ -122,19 +188,19 @@ fn self_check() {
     );
 
     println!(
-        "PC GUI self-check PASS: model, input parsing, phase transitions, command queue, abi-c event batch, and grid rendering all verified headlessly."
+        "PC GUI self-check PASS: model, input parsing, phase transitions, session repository, command queue, abi-c event batch, and grid rendering all verified headlessly."
     );
 }
 
 /// Creates the native window and runs the Win32 message loop.
 fn run_gui() {
     // The Win32 FFI below is the documented host-shell boundary; `unsafe` is
-    // required to register the class, create the window, and pump messages.
+    // required to register the classes, create the windows, and pump messages.
     unsafe {
         // Best-effort per-monitor DPI awareness for crisp GDI text.
         SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
 
-        let class = WNDCLASSW {
+        let main_class = WNDCLASSW {
             style: CS_HREDRAW | CS_VREDRAW,
             lpfnWndProc: Some(wnd_proc),
             cbClsExtra: 0,
@@ -146,10 +212,23 @@ fn run_gui() {
             lpszMenuName: std::ptr::null(),
             lpszClassName: w!("SshGuiClass"),
         };
-        if RegisterClassW(&class) == 0 {
+        if RegisterClassW(&main_class) == 0 {
             eprintln!("PC GUI: RegisterClassW failed (error {})", GetLastError());
             std::process::exit(1);
         }
+        let dialog_class = WNDCLASSW {
+            style: CS_HREDRAW | CS_VREDRAW,
+            lpfnWndProc: Some(dialog_proc),
+            cbClsExtra: 0,
+            cbWndExtra: 0,
+            hInstance: GetModuleHandleW(std::ptr::null()),
+            hIcon: std::ptr::null_mut(),
+            hCursor: LoadCursorW(std::ptr::null_mut(), IDC_ARROW),
+            hbrBackground: GetStockObject(WHITE_BRUSH),
+            lpszMenuName: std::ptr::null(),
+            lpszClassName: w!("SshConnectDialogClass"),
+        };
+        RegisterClassW(&dialog_class);
 
         let hwnd = CreateWindowExW(
             0,
@@ -181,8 +260,8 @@ fn run_gui() {
     }
 }
 
-/// The window procedure: the body of an `unsafe extern "system"` function is
-/// an implicit unsafe block, which keeps the FFI calls concise here.
+/// The main window procedure: the body of an `unsafe extern "system"`
+/// function is an implicit unsafe block, which keeps the FFI calls concise.
 unsafe extern "system" fn wnd_proc(
     hwnd: HWND,
     message: u32,
@@ -196,8 +275,8 @@ unsafe extern "system" fn wnd_proc(
                 let width = (lparam & 0xffff) as i32;
                 let height = ((lparam >> 16) & 0xffff) as i32;
                 let rows =
-                    ((height - state.status_h - state.input_h).max(0) / state.cell_h) as usize;
-                let cols = (width.max(0) / state.cell_w) as usize;
+                    ((height - TABS_H - STATUS_H - INPUT_H - 8).max(0) / state.cell_h) as usize;
+                let cols = ((width - PANEL_W - 16).max(0) / state.cell_w) as usize;
                 state.model.resize(rows.max(1), cols.max(1));
             }
             InvalidateRect(hwnd, std::ptr::null(), 1);
@@ -219,6 +298,18 @@ unsafe extern "system" fn wnd_proc(
         WM_KEYDOWN => {
             if let Some(state) = state_of(hwnd) {
                 handle_key(state, hwnd, wparam);
+            }
+            0
+        }
+        WM_LBUTTONDOWN => {
+            if let Some(state) = state_of(hwnd) {
+                handle_mouse(state, hwnd, lparam, false);
+            }
+            0
+        }
+        WM_LBUTTONDBLCLK => {
+            if let Some(state) = state_of(hwnd) {
+                handle_mouse(state, hwnd, lparam, true);
             }
             0
         }
@@ -246,9 +337,53 @@ unsafe extern "system" fn wnd_proc(
     }
 }
 
+/// The "new SSH" dialog window procedure.
+unsafe extern "system" fn dialog_proc(
+    hwnd: HWND,
+    message: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+) -> LRESULT {
+    match message {
+        WM_COMMAND => {
+            let id = (wparam & 0xffff) as i32;
+            if id == IDOK {
+                if let Some(state) = state_of(hwnd) {
+                    let name = get_edit_text(hwnd, IDC_NAME);
+                    let host = get_edit_text(hwnd, IDC_HOST);
+                    let port = get_edit_text(hwnd, IDC_PORT);
+                    let user = get_edit_text(hwnd, IDC_USER);
+                    let host = host.trim();
+                    if host.is_empty() {
+                        SetFocus(GetDlgItem(hwnd, IDC_HOST));
+                    } else {
+                        let port: u16 = port.trim().parse().unwrap_or(22);
+                        let name = if name.trim().is_empty() {
+                            host.to_string()
+                        } else {
+                            name.trim().to_string()
+                        };
+                        let index = state.model.add_profile(&name, host, port, user.trim());
+                        state.model.connect_profile(index);
+                        DestroyWindow(hwnd);
+                    }
+                }
+            } else if id == IDCANCEL {
+                DestroyWindow(hwnd);
+            }
+            0
+        }
+        WM_CLOSE => {
+            DestroyWindow(hwnd);
+            0
+        }
+        _ => DefWindowProcW(hwnd, message, wparam, lparam),
+    }
+}
+
 /// Stores the per-window state and starts the re-render timer.
 unsafe fn wm_create(hwnd: HWND) -> LRESULT {
-    let font = CreateFontW(
+    let term_font = CreateFontW(
         -16,
         0,
         0,
@@ -264,13 +399,31 @@ unsafe fn wm_create(hwnd: HWND) -> LRESULT {
         (DEFAULT_PITCH | FF_MODERN) as u32,
         w!("Consolas"),
     );
+    let mut ui_font = CreateFontW(
+        -14,
+        0,
+        0,
+        0,
+        FW_NORMAL as i32,
+        0,
+        0,
+        0,
+        DEFAULT_CHARSET as u32,
+        OUT_DEFAULT_PRECIS as u32,
+        CLIP_DEFAULT_PRECIS as u32,
+        CLEARTYPE_QUALITY as u32,
+        DEFAULT_PITCH as u32,
+        w!("Microsoft YaHei UI"),
+    );
+    if ui_font.is_null() {
+        ui_font = GetStockObject(DEFAULT_GUI_FONT);
+    }
     let state = Box::new(AppState {
         model: GuiModel::new(),
-        font,
+        term_font,
+        ui_font,
         cell_w: 8,
         cell_h: 16,
-        status_h: 22,
-        input_h: 24,
         metrics_ready: false,
     });
     SetWindowLongPtrW(hwnd, GWLP_USERDATA, Box::into_raw(state) as isize);
@@ -286,8 +439,11 @@ unsafe fn cleanup(hwnd: HWND) {
         return;
     }
     let state = Box::from_raw(raw as *mut AppState);
-    if !state.font.is_null() {
-        DeleteObject(state.font);
+    if !state.term_font.is_null() {
+        DeleteObject(state.term_font);
+    }
+    if !state.ui_font.is_null() {
+        DeleteObject(state.ui_font);
     }
     KillTimer(hwnd, TIMER_ID);
     SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
@@ -322,7 +478,241 @@ unsafe fn handle_key(state: &mut AppState, hwnd: HWND, wparam: WPARAM) {
     InvalidateRect(hwnd, std::ptr::null(), 1);
 }
 
-/// Repaints the window from the model (status bar, terminal grid, input line).
+/// Handles mouse clicks: tabs open sessions or the new-SSH dialog; the left
+/// repository selects on click and connects on double-click.
+unsafe fn handle_mouse(state: &mut AppState, hwnd: HWND, lparam: LPARAM, double_click: bool) {
+    let x = (lparam & 0xffff) as i32;
+    let y = ((lparam >> 16) & 0xffff) as i32;
+    let mut client = RECT {
+        left: 0,
+        top: 0,
+        right: 0,
+        bottom: 0,
+    };
+    GetClientRect(hwnd, &mut client);
+    let width = client.right - client.left;
+    let height = client.bottom - client.top;
+
+    if y < TABS_H {
+        for (rect, action) in tab_rects(state) {
+            if x >= rect.left && x < rect.right && y >= rect.top && y < rect.bottom {
+                match action {
+                    TabAction::Add => {
+                        let raw = GetWindowLongPtrW(hwnd, GWLP_USERDATA);
+                        run_connect_dialog(hwnd, raw as *mut AppState);
+                    }
+                    TabAction::Connect(index) => {
+                        state.model.connect_profile(index);
+                        InvalidateRect(hwnd, std::ptr::null(), 1);
+                    }
+                }
+                return;
+            }
+        }
+    } else if x < PANEL_W && y >= TABS_H && y < height - STATUS_H - INPUT_H {
+        let list_top = TABS_H + PANEL_HEADER_H;
+        let index = ((y - list_top) / ROW_H) as usize;
+        if index < state.model.profile_count() {
+            if double_click {
+                state.model.connect_profile(index);
+            } else {
+                state.model.select_profile(index);
+            }
+            InvalidateRect(hwnd, std::ptr::null(), 1);
+        }
+    }
+    let _ = width;
+}
+
+/// Tab rectangles: one per saved profile, then the "+" tab.
+unsafe fn tab_rects(state: &AppState) -> Vec<(RECT, TabAction)> {
+    let mut rects = Vec::new();
+    let mut x = 96i32;
+    for index in 0..state.model.profile_count() {
+        if let Some(profile) = state.model.profile(index) {
+            let w = profile.name.chars().count() as i32 * 16 + 26;
+            rects.push((
+                RECT {
+                    left: x,
+                    top: 5,
+                    right: x + w,
+                    bottom: TABS_H - 5,
+                },
+                TabAction::Connect(index),
+            ));
+            x += w + 6;
+        }
+    }
+    rects.push((
+        RECT {
+            left: x,
+            top: 5,
+            right: x + 30,
+            bottom: TABS_H - 5,
+        },
+        TabAction::Add,
+    ));
+    rects
+}
+
+/// Opens the modal "new SSH" dialog, runs its nested message loop, then
+/// returns with the profile added and connected when the user pressed 连接.
+unsafe fn run_connect_dialog(owner: HWND, state: *mut AppState) {
+    EnableWindow(owner, 0);
+    let mut owner_rect = RECT {
+        left: 0,
+        top: 0,
+        right: 0,
+        bottom: 0,
+    };
+    GetWindowRect(owner, &mut owner_rect);
+    const DIALOG_W: i32 = 400;
+    const DIALOG_H: i32 = 320;
+    let x = owner_rect.left + (owner_rect.right - owner_rect.left - DIALOG_W) / 2;
+    let y = owner_rect.top + (owner_rect.bottom - owner_rect.top - DIALOG_H) / 3;
+    let dialog = CreateWindowExW(
+        0,
+        w!("SshConnectDialogClass"),
+        w!("新建 SSH 连接"),
+        WS_POPUP | WS_CAPTION | WS_SYSMENU,
+        x,
+        y,
+        DIALOG_W,
+        DIALOG_H,
+        owner,
+        std::ptr::null_mut(),
+        GetModuleHandleW(std::ptr::null()),
+        std::ptr::null_mut(),
+    );
+    if dialog.is_null() {
+        EnableWindow(owner, 1);
+        return;
+    }
+    SetWindowLongPtrW(dialog, GWLP_USERDATA, state as isize);
+    create_dialog_controls(dialog, (*state).ui_font);
+    ShowWindow(dialog, SW_SHOW);
+    SetFocus(GetDlgItem(dialog, IDC_HOST));
+    let mut message = MSG::default();
+    while IsWindow(dialog) != 0 && GetMessageW(&mut message, std::ptr::null_mut(), 0, 0) > 0 {
+        TranslateMessage(&message);
+        DispatchMessageW(&message);
+    }
+    EnableWindow(owner, 1);
+    SetFocus(owner);
+    InvalidateRect(owner, std::ptr::null(), 1);
+}
+
+/// Creates the dialog controls (labels, edit boxes, buttons).
+unsafe fn create_dialog_controls(dialog: HWND, ui_font: HFONT) {
+    let mut y = 18i32;
+    for (label, default, id) in [
+        ("名称", "New Session", IDC_NAME),
+        ("主机", "", IDC_HOST),
+        ("端口", "22", IDC_PORT),
+        ("用户名", "", IDC_USER),
+    ] {
+        let label_wide = to_wide(label);
+        let label_hwnd = CreateWindowExW(
+            0,
+            w!("STATIC"),
+            label_wide.as_ptr(),
+            WS_CHILD | WS_VISIBLE,
+            18,
+            y,
+            70,
+            22,
+            dialog,
+            std::ptr::null_mut(),
+            GetModuleHandleW(std::ptr::null()),
+            std::ptr::null_mut(),
+        );
+        SendMessageW(label_hwnd, WM_SETFONT, ui_font as WPARAM, 0);
+        let default_wide = to_wide(default);
+        let edit = CreateWindowExW(
+            WS_EX_CLIENTEDGE,
+            w!("EDIT"),
+            default_wide.as_ptr(),
+            WS_CHILD | WS_VISIBLE | WS_TABSTOP | (ES_AUTOHSCROLL as u32),
+            96,
+            y - 2,
+            282,
+            24,
+            dialog,
+            id as HMENU,
+            GetModuleHandleW(std::ptr::null()),
+            std::ptr::null_mut(),
+        );
+        SendMessageW(edit, WM_SETFONT, ui_font as WPARAM, 0);
+        y += 34;
+    }
+    let note_wide = to_wide("凭据（密码/私钥）不在本版持久化，将经 abi-c 安全通道传递。");
+    let note_hwnd = CreateWindowExW(
+        0,
+        w!("STATIC"),
+        note_wide.as_ptr(),
+        WS_CHILD | WS_VISIBLE,
+        18,
+        y,
+        364,
+        26,
+        dialog,
+        std::ptr::null_mut(),
+        GetModuleHandleW(std::ptr::null()),
+        std::ptr::null_mut(),
+    );
+    SendMessageW(note_hwnd, WM_SETFONT, ui_font as WPARAM, 0);
+
+    let cancel_wide = to_wide("取消");
+    let cancel = CreateWindowExW(
+        0,
+        w!("BUTTON"),
+        cancel_wide.as_ptr(),
+        WS_CHILD | WS_VISIBLE | WS_TABSTOP | (BS_PUSHBUTTON as u32),
+        190,
+        272,
+        90,
+        30,
+        dialog,
+        IDCANCEL as HMENU,
+        GetModuleHandleW(std::ptr::null()),
+        std::ptr::null_mut(),
+    );
+    SendMessageW(cancel, WM_SETFONT, ui_font as WPARAM, 0);
+    let ok_wide = to_wide("连接");
+    let ok = CreateWindowExW(
+        0,
+        w!("BUTTON"),
+        ok_wide.as_ptr(),
+        WS_CHILD | WS_VISIBLE | WS_TABSTOP | (BS_PUSHBUTTON as u32),
+        290,
+        272,
+        90,
+        30,
+        dialog,
+        IDOK as HMENU,
+        GetModuleHandleW(std::ptr::null()),
+        std::ptr::null_mut(),
+    );
+    SendMessageW(ok, WM_SETFONT, ui_font as WPARAM, 0);
+}
+
+/// Reads the current text of an edit control.
+unsafe fn get_edit_text(dialog: HWND, id: i32) -> String {
+    let control = GetDlgItem(dialog, id);
+    if control.is_null() {
+        return String::new();
+    }
+    let len = GetWindowTextLengthW(control);
+    if len <= 0 {
+        return String::new();
+    }
+    let mut buffer = vec![0u16; len as usize + 1];
+    GetWindowTextW(control, buffer.as_mut_ptr(), len + 1);
+    let end = buffer.iter().position(|&c| c == 0).unwrap_or(buffer.len());
+    String::from_utf16_lossy(&buffer[..end])
+}
+
+/// Repaints the window from the model (tabs, repository, terminal, input).
 unsafe fn paint(hwnd: HWND) {
     let mut paint_struct = PAINTSTRUCT::default();
     let hdc = BeginPaint(hwnd, &mut paint_struct);
@@ -338,7 +728,7 @@ unsafe fn paint(hwnd: HWND) {
     };
 
     if !state.metrics_ready {
-        let previous = SelectObject(hdc, state.font);
+        let previous = SelectObject(hdc, state.term_font);
         let mut metrics = TEXTMETRICW::default();
         if GetTextMetricsW(hdc, &mut metrics) != 0 {
             state.cell_h = metrics.tmHeight.max(1);
@@ -350,9 +740,7 @@ unsafe fn paint(hwnd: HWND) {
         SelectObject(hdc, previous);
         state.metrics_ready = true;
     }
-    let (cell_w, cell_h, status_h, input_h) =
-        (state.cell_w, state.cell_h, state.status_h, state.input_h);
-    let model = &state.model;
+    let (cell_w, cell_h) = (state.cell_w, state.cell_h);
 
     let mut client = RECT {
         left: 0,
@@ -364,92 +752,194 @@ unsafe fn paint(hwnd: HWND) {
     let width = client.right - client.left;
     let height = client.bottom - client.top;
 
-    // Terminal background.
-    let background_brush = CreateSolidBrush(rgb(DEFAULT_BG));
-    FillRect(hdc, &client, background_brush);
-    DeleteObject(background_brush);
-
-    let previous_font = SelectObject(hdc, state.font);
+    // Workspace background.
+    fill_rect_color(hdc, &client, CHROME_BG);
     SetBkMode(hdc, TRANSPARENT as i32);
 
-    // Status bar (accent background with dark text).
-    let status_rect = RECT {
-        left: 0,
-        top: 0,
-        right: width,
-        bottom: status_h,
-    };
-    let status_brush = CreateSolidBrush(rgb(ACCENT_FG));
-    FillRect(hdc, &status_rect, status_brush);
-    DeleteObject(status_brush);
-    let status = model.status_line();
-    let status_wide = to_wide(&status);
-    SetTextColor(hdc, rgb(DEFAULT_BG));
-    TextOutW(
+    // Top tabs bar.
+    fill_rect_color(hdc, &rect(0, 0, width, TABS_H), PANEL_BG);
+    draw_text(
         hdc,
-        8,
-        (status_h - cell_h) / 2,
-        status_wide.as_ptr(),
-        status_wide.len() as i32 - 1,
+        10,
+        (TABS_H - cell_h) / 2,
+        "SSH Client",
+        TEXT_MAIN,
+        state.ui_font,
     );
+    for (tab, action) in tab_rects(state) {
+        let fill = match action {
+            TabAction::Add => PANEL_BG,
+            TabAction::Connect(index) => {
+                if Some(index) == state.model.selected_profile() {
+                    PANEL_ACTIVE
+                } else {
+                    PANEL_BG
+                }
+            }
+        };
+        fill_rect_color(hdc, &tab, fill);
+        draw_border(hdc, &tab, BORDER);
+        let label = match action {
+            TabAction::Add => "+".to_string(),
+            TabAction::Connect(index) => state
+                .model
+                .profile(index)
+                .map(|profile| profile.name.clone())
+                .unwrap_or_default(),
+        };
+        draw_text(
+            hdc,
+            tab.left + 10,
+            (TABS_H - cell_h) / 2,
+            &label,
+            TEXT_MAIN,
+            state.ui_font,
+        );
+    }
+    draw_hline(hdc, 0, width, TABS_H - 1, BORDER);
 
-    // Terminal rows (per-run foreground colors).
+    // Left session repository.
+    let panel_bottom = height - STATUS_H - INPUT_H;
+    fill_rect_color(hdc, &rect(0, TABS_H, PANEL_W, panel_bottom), PANEL_BG);
+    draw_text(hdc, 12, TABS_H + 6, "连接", TEXT_MUTED, state.ui_font);
+    let list_top = TABS_H + PANEL_HEADER_H;
+    for index in 0..state.model.profile_count() {
+        let row_top = list_top + index as i32 * ROW_H;
+        let row = rect(2, row_top, PANEL_W - 2, row_top + ROW_H - 2);
+        if Some(index) == state.model.selected_profile() {
+            fill_rect_color(hdc, &row, PANEL_ACTIVE);
+        }
+        if let Some(profile) = state.model.profile(index) {
+            let label = format!("{} · {}", profile.name, profile.target());
+            draw_text(
+                hdc,
+                row.left + 8,
+                row.top + (ROW_H - 2 - cell_h) / 2,
+                &label,
+                TEXT_MAIN,
+                state.ui_font,
+            );
+        }
+    }
+    if state.model.profile_count() == 0 {
+        draw_text(
+            hdc,
+            12,
+            list_top + 8,
+            "暂无连接，点击顶部 + 新建",
+            TEXT_MUTED,
+            state.ui_font,
+        );
+    }
+    draw_vline(hdc, PANEL_W - 1, TABS_H, panel_bottom, BORDER);
+
+    // Dark terminal area.
+    let term_rect = rect(PANEL_W, TABS_H, width, panel_bottom);
+    fill_rect_color(hdc, &term_rect, DEFAULT_BG);
+    let previous_term = SelectObject(hdc, state.term_font);
     SetTextColor(hdc, rgb(DEFAULT_FG));
-    let rows = model.grid().rows();
+    let rows = state.model.grid().rows();
+    let term_left = PANEL_W + 8;
+    let term_width = width - PANEL_W - 16;
     for row in 0..rows {
-        let y = status_h + row as i32 * cell_h;
-        if y + cell_h > height - input_h {
+        let y = TABS_H + 4 + row as i32 * cell_h;
+        if y + cell_h > panel_bottom - 4 {
             break;
         }
-        let mut x = 8;
-        for (fg, text) in model.grid().row_runs(row) {
+        let mut x = term_left;
+        for (fg, text) in state.model.grid().row_runs(row) {
             SetTextColor(hdc, rgb(fg));
             let wide = to_wide(&text);
             TextOutW(hdc, x, y, wide.as_ptr(), wide.len() as i32 - 1);
             x += text.chars().count() as i32 * cell_w;
+            if x > term_left + term_width {
+                break;
+            }
         }
     }
+    SelectObject(hdc, previous_term);
 
-    // Input line.
-    let input_rect = RECT {
-        left: 0,
-        top: height - input_h,
-        right: width,
-        bottom: height,
-    };
-    let input_brush = CreateSolidBrush(rgb(INPUT_BG));
-    FillRect(hdc, &input_rect, input_brush);
-    DeleteObject(input_brush);
-    let input = model.input_line();
-    let input_wide = to_wide(&input);
-    let input_y = height - input_h + (input_h - cell_h) / 2;
-    SetTextColor(hdc, rgb(ACCENT_FG));
-    TextOutW(
+    // Input line (light, bordered).
+    let input_top = height - INPUT_H - STATUS_H;
+    fill_rect_color(hdc, &rect(0, input_top, width, height - STATUS_H), PANEL_BG);
+    draw_hline(hdc, 0, width, input_top, BORDER);
+    let input = state.model.input_line();
+    let input_y = input_top + (INPUT_H - cell_h) / 2;
+    draw_text(hdc, 10, input_y, &input, ACCENT, state.ui_font);
+    let caret_x = 10 + (state.model.input_cursor() + 2) as i32 * cell_w;
+    fill_rect_color(
         hdc,
-        8,
-        input_y,
-        input_wide.as_ptr(),
-        input_wide.len() as i32 - 1,
+        &rect(caret_x, input_y, caret_x + 2, input_y + cell_h),
+        ACCENT,
     );
 
-    // Caret ("> " prompt is two cells).
-    let caret_x = 8 + (model.input_cursor() + 2) as i32 * cell_w;
-    let caret_rect = RECT {
-        left: caret_x,
-        top: input_y,
-        right: caret_x + 2,
-        bottom: input_y + cell_h,
+    // Status bar (light).
+    let status_top = height - STATUS_H;
+    fill_rect_color(hdc, &rect(0, status_top, width, height), CHROME_BG);
+    draw_hline(hdc, 0, width, status_top, BORDER);
+    let status = state.model.status_line();
+    let status_color = match state.model.phase() {
+        SessionPhase::Connecting => ACCENT,
+        _ => TEXT_MUTED,
     };
-    let caret_brush = CreateSolidBrush(rgb(ACCENT_FG));
-    FillRect(hdc, &caret_rect, caret_brush);
-    DeleteObject(caret_brush);
+    draw_text(
+        hdc,
+        10,
+        status_top + (STATUS_H - cell_h) / 2,
+        &status,
+        status_color,
+        state.ui_font,
+    );
 
-    SelectObject(hdc, previous_font);
     EndPaint(hwnd, &paint_struct);
 }
 
+/// A rectangle helper.
+fn rect(left: i32, top: i32, right: i32, bottom: i32) -> RECT {
+    RECT {
+        left,
+        top,
+        right,
+        bottom,
+    }
+}
+
+/// Fills a rectangle with an RGB color.
+unsafe fn fill_rect_color(hdc: HDC, rect: &RECT, color: Rgb) {
+    let brush = CreateSolidBrush(rgb(color));
+    FillRect(hdc, rect, brush);
+    DeleteObject(brush);
+}
+
+/// Draws a 1px horizontal separator.
+unsafe fn draw_hline(hdc: HDC, x0: i32, x1: i32, y: i32, color: Rgb) {
+    fill_rect_color(hdc, &rect(x0, y, x1, y + 1), color);
+}
+
+/// Draws a 1px vertical separator.
+unsafe fn draw_vline(hdc: HDC, x: i32, y0: i32, y1: i32, color: Rgb) {
+    fill_rect_color(hdc, &rect(x, y0, x + 1, y1), color);
+}
+
+/// Draws a 1px rectangle border.
+unsafe fn draw_border(hdc: HDC, rect: &RECT, color: Rgb) {
+    draw_hline(hdc, rect.left, rect.right, rect.top, color);
+    draw_hline(hdc, rect.left, rect.right, rect.bottom - 1, color);
+    draw_vline(hdc, rect.left, rect.top, rect.bottom, color);
+    draw_vline(hdc, rect.right - 1, rect.top, rect.bottom, color);
+}
+
+/// Draws text with a given font and color at (x, y).
+unsafe fn draw_text(hdc: HDC, x: i32, y: i32, text: &str, color: Rgb, font: HFONT) {
+    let previous = SelectObject(hdc, font);
+    SetTextColor(hdc, rgb(color));
+    let wide = to_wide(text);
+    TextOutW(hdc, x, y, wide.as_ptr(), wide.len() as i32 - 1);
+    SelectObject(hdc, previous);
+}
+
 /// Converts RGB to a Windows COLORREF (0x00BBGGRR).
-const fn rgb(color: clients_windows::model::Rgb) -> u32 {
+const fn rgb(color: Rgb) -> u32 {
     (color.r as u32) | ((color.g as u32) << 8) | ((color.b as u32) << 16)
 }
 

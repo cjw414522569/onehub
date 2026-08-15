@@ -43,12 +43,19 @@ const model = readFileSync(join(ROOT, 'clients/windows/src/model.rs'), 'utf8');
 for (const token of [
   'pub struct GuiModel',
   'pub enum SessionPhase',
+  'pub struct ConnectionProfile',
   'pub fn apply_batch',
   'pub fn submit',
   'pub fn start_connect',
+  'pub fn connect_profile',
+  'pub fn add_profile',
+  'pub fn list_sessions',
   'pub fn type_char',
   'pub fn backspace',
   'pub fn row_runs',
+  'pub const CHROME_BG',
+  'pub const PANEL_ACTIVE',
+  'pub const ACCENT',
 ]) {
   if (!model.includes(token)) errors.push(`model.rs missing required token: ${token}`);
 }
@@ -56,6 +63,8 @@ const lib = readFileSync(join(ROOT, 'clients/windows/src/lib.rs'), 'utf8');
 if (!lib.includes('forbid(unsafe_code)')) errors.push('lib.rs must forbid unsafe_code');
 const main = readFileSync(join(ROOT, 'clients/windows/src/main.rs'), 'utf8');
 if (!main.includes('--check')) errors.push('main.rs must expose the --check headless self-test');
+if (!main.includes('SshConnectDialogClass')) errors.push('main.rs must register the new-SSH connect dialog');
+if (!main.includes('tab_rects')) errors.push('main.rs must render the mXterm-style connection tabs');
 
 const results = [];
 function run(label, args) {
@@ -109,15 +118,19 @@ if (process.argv.includes('--write')) {
     coverage: {
       native_window:
         'Win32 GDI window (windows-sys) created and pumped by the ssh-gui binary; WinUI 3 / Windows App SDK remains the target toolkit',
+      layout:
+        'top connection tabs + add tab, left session repository with select/connect, dark terminal, light input line and status bar',
       pure_model:
-        'terminal grid (wrap/scroll/resize/color runs), input line with cursor editing, /connect /disconnect /clear /help /quit, SendLine queue for the abi-c transport',
+        'terminal grid (wrap/scroll/resize/color runs), input line with cursor editing, /connect /disconnect /clear /help /quit, session repository (add/select/remove/connect, /sessions /open), SendLine queue for the abi-c transport',
       abi_bridge:
         'EventBatch events append output; SnapshotRequired/Snapshot recovery via abi-c',
       contract:
         'layer L5, approved bridge abi-c, forbidden dependencies absent, dependency-rules external_imports synced',
+      mxterm_reference:
+        'light-neutral chrome (tabs bar, left session repository, status/input lines) and a modal new-SSH dialog referencing the mxterm prototype design; credentials are not persisted',
     },
     verification: {
-      unit_tests: 'pass (cargo test -p clients-windows --locked, 13 passed)',
+      unit_tests: 'pass (cargo test -p clients-windows --locked, 16 passed)',
       cargo_check: 'pass (cargo check -p clients-windows --locked)',
       cargo_fmt: 'pass (cargo fmt -p clients-windows --check)',
       clippy: 'pass (cargo clippy -p clients-windows --all-targets --all-features -- -D warnings)',
@@ -144,7 +157,7 @@ pure, headless-testable UI model in \`clients/windows/src/model.rs\`.
 ## Verification
 
 \`\`\`text
-cargo test -p clients-windows --locked              PASS (13 tests)
+cargo test -p clients-windows --locked              PASS (16 tests)
 cargo check -p clients-windows --locked             PASS
 cargo fmt -p clients-windows --check                PASS
 cargo clippy -p clients-windows --all-targets --all-features -- -D warnings  PASS
@@ -164,5 +177,5 @@ product UI.
 }
 
 console.log(
-  'pc-gui contract valid: the Windows PC GUI builds, its 13 unit tests pass, the headless self-check passes, and the L5 contract (abi-c bridge, no forbidden dependencies, dependency-rules synced) holds.'
+  'pc-gui contract valid: the Windows PC GUI builds, its 16 unit tests pass, the headless self-check passes, and the L5 contract (abi-c bridge, no forbidden dependencies, dependency-rules synced) holds.'
 );
