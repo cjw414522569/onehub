@@ -8,6 +8,7 @@
 //! keystrokes, so every GUI behavior is verifiable without opening a window.
 
 pub mod model;
+pub mod network_diagnostic;
 pub mod probe;
 pub mod scheduled_tasks;
 pub mod sftp;

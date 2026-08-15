@@ -21,6 +21,7 @@ use clients_windows::model::{
     GuiCommand, GuiModel, Rgb, SessionPhase, ACCENT, BORDER, CHROME_BG, DEFAULT_BG, DEFAULT_FG,
     PANEL_ACTIVE, PANEL_BG, TEXT_MAIN, TEXT_MUTED,
 };
+use clients_windows::network_diagnostic;
 use clients_windows::probe;
 use clients_windows::scheduled_tasks;
 use clients_windows::sftp;
@@ -157,7 +158,41 @@ fn main() {
         task_check();
         return;
     }
+    if std::env::args().any(|argument| argument == "--diag-check") {
+        diag_check();
+        return;
+    }
     run_gui();
+}
+
+/// End-to-end network diagnostic check (--diag-check): runs TCP/DNS/HTTP
+/// diagnostics against a local echo server and an unreachable target,
+/// printing JSON evidence (mxterm parity T009).
+fn diag_check() {
+    use clients_windows::network_diagnostic as nd;
+    use std::io::Write;
+    use std::net::TcpListener;
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+    let port = listener.local_addr().expect("addr").port();
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut s) = stream else { continue };
+            let _ = s.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n");
+        }
+    });
+    let tcp = nd::run_diagnostic("tcp", "127.0.0.1", Some(port));
+    let http = nd::run_diagnostic("http", "127.0.0.1", Some(port));
+    let dns = nd::run_diagnostic("dns", "localhost", None);
+    let unreachable = nd::run_diagnostic("tcp", "127.0.0.1", Some(1));
+    let result = serde_json::json!({
+        "tcp_ok": tcp["ok"],
+        "http_ok": http["ok"],
+        "http_status": http["stdout"],
+        "dns_ok": dns["ok"],
+        "unreachable_ok": unreachable["ok"],
+        "has_duration": tcp["duration_ms"].as_u64().is_some(),
+    });
+    println!("{}", serde_json::to_string(&result).expect("json"));
 }
 
 /// End-to-end scheduled-task check (--task-check): saves, lists, disables,
@@ -916,6 +951,39 @@ unsafe fn handle_key(state: &mut AppState, hwnd: HWND, wparam: WPARAM) {
         state.model.delete_forward();
     }
     InvalidateRect(hwnd, std::ptr::null(), 1);
+}
+
+/// Handles network_diagnostic_run (mxterm parity T009).
+fn handle_network_diagnostic_command(cmd: &str, parsed: &serde_json::Value) -> Option<String> {
+    if cmd != "network_diagnostic_run" {
+        return None;
+    }
+    let request_id = parsed
+        .get("requestId")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+    let payload = parsed
+        .get("payload")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+    let request = payload.get("request").cloned().unwrap_or(payload.clone());
+    let kind = request
+        .get("kind")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("");
+    let target = request
+        .get("target")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("");
+    let port = request
+        .get("port")
+        .and_then(serde_json::Value::as_u64)
+        .map(|p| p as u16);
+    let reply_payload = network_diagnostic::run_diagnostic(kind, target, port);
+    Some(
+        serde_json::json!({ "kind": "invoke-reply", "requestId": request_id, "payload": reply_payload })
+            .to_string(),
+    )
 }
 
 /// Handles scheduled-task commands (mxterm parity T008):
@@ -1828,6 +1896,10 @@ fn on_web_message(hwnd: HWND, message: &str) -> Option<String> {
     }
 
     if let Some(reply) = handle_scheduled_task_commands(state, cmd, &parsed) {
+        return Some(reply);
+    }
+
+    if let Some(reply) = handle_network_diagnostic_command(cmd, &parsed) {
         return Some(reply);
     }
 
