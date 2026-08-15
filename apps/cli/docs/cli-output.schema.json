@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/ssh-cli-output.schema.json",
+  "title": "ssh-cli machine-readable output",
+  "description": "Versioned JSON output of the ssh-cli tool (T145).",
+  "type": "object",
+  "required": ["schema_version"],
+  "properties": {
+    "schema_version": { "const": 1 }
+  },
+  "anyOf": [
+    {
+      "title": "version",
+      "required": ["tool", "version"],
+      "properties": {
+        "tool": { "type": "string" },
+        "version": { "type": "string" }
+      }
+    },
+    {
+      "title": "config-check-ok",
+      "required": ["ok", "hosts"],
+      "properties": {
+        "ok": { "const": true },
+        "hosts": { "type": "integer", "minimum": 0 }
+      }
+    },
+    {
+      "title": "config-check-error",
+      "required": ["ok", "error"],
+      "properties": {
+        "ok": { "const": false },
+        "error": { "type": "string" }
+      }
+    },
+    {
+      "title": "error",
+      "required": ["ok", "exit_code", "error"],
+      "properties": {
+        "ok": { "const": false },
+        "exit_code": { "type": "integer" },
+        "error": { "type": "string" }
+      }
+    }
+  ]
+}

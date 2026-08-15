@@ -1,0 +1,71 @@
+.TH SSH-CLI 1 "August 2026" "ssh-cli 0.1.0" "User Commands"
+.SH NAME
+ssh-cli \- multi-endpoint SSH command-line client (Rust core)
+.SH SYNOPSIS
+.B ssh-cli
+[\fB\-\-json\fR] [\fB\-\-version\fR | \fB\-\-help\fR]
+.br
+.B ssh-cli
+[\fB\-\-json\fR] \fBconfig \-\-check\fR \fIpath\fR
+.br
+.B ssh-cli
+\fBcap\fR \fBforward\fR \fB\-\-listen\fR \fIip:port\fR \fB\-\-target\fR \fIhost:port\fR
+.br
+.B ssh-cli
+\fBcap\fR \fBsftp\fR
+.br
+.B ssh-cli
+\fBcap\fR \fBproxy \-\-chain\fR \fIspec\fR \fB\-\-target\fR \fIhost\fR [\fB\-\-port\fR \fIport\fR]
+.SH DESCRIPTION
+ssh-cli connects to hosts through the shared Rust core (SSH, SFTP, port
+forwarding, proxy chains). Commands share the same engines as the GUI so
+behavior never diverges.
+.SH OPTIONS
+.TP
+.BR \-\-json
+Emit machine-readable, versioned JSON (schema_version 1) instead of
+human text.
+.TP
+.BR \-\-version
+Print the version and exit 0.
+.TP
+.BR \-\-help
+Print usage and exit 0.
+.SH COMMANDS
+.TP
+.B config \-\-check \fIpath\fR
+Validate a host-alias configuration file.
+.TP
+.B cap forward \-\-listen \fIip:port\fR \-\-target \fIhost:port\fR
+Print the local-forwarding spec (shared core config).
+.TP
+.B cap sftp
+Print the streaming-transfer spec (shared core config).
+.TP
+.B cap proxy \-\-chain \fIspec\fR \-\-target \fIhost\fR [\-\-port \fIport\fR]
+Validate a proxy chain and print the first-hop SOCKS5 wire bytes.
+.SH EXIT STATUS
+.TP
+.B 0
+Success.
+.TP
+.B 1
+Unexpected internal error.
+.TP
+.B 2
+Usage error (bad arguments).
+.TP
+.B 3
+Configuration error.
+.TP
+.B 4
+Connection error.
+.TP
+.B 5
+Remote command failed.
+.SH JSON OUTPUT
+Every JSON payload carries "schema_version": 1. See
+cli-output.schema.json for the schema.
+.SH SEE ALSO
+.BR ssh (1),
+.BR docs/PERFORMANCE_BUDGET.md

@@ -2,7 +2,10 @@
 
 use std::fs;
 
-use cli::{parse_target, CliConfig, ExitCode, ForwardSpec, ProxyChainSpec, ProxyHop, SftpSpec};
+use cli::{
+    config_check_json, error_json, parse_target, version_json, CliConfig, ExitCode, ForwardSpec,
+    ProxyChainSpec, ProxyHop, SftpSpec,
+};
 
 /// The CLI version.
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -19,6 +22,10 @@ fn print_usage() {
 }
 
 fn run(args: &[String]) -> i32 {
+    let (json, args) = match args.first().map(String::as_str) {
+        Some("--json") => (true, &args[1..]),
+        _ => (false, args),
+    };
     match args.first().map(String::as_str) {
         None => {
             print_usage();
@@ -29,7 +36,11 @@ fn run(args: &[String]) -> i32 {
             ExitCode::Ok.code()
         }
         Some("--version") | Some("-V") => {
-            println!("ssh-cli {VERSION}");
+            if json {
+                println!("{}", version_json("ssh-cli", VERSION));
+            } else {
+                println!("ssh-cli {VERSION}");
+            }
             ExitCode::Ok.code()
         }
         Some("cap") => cap_command(&args[1..]),
@@ -39,7 +50,7 @@ fn run(args: &[String]) -> i32 {
                 return ExitCode::Usage.code();
             }
             match args.get(2) {
-                Some(path) => config_check(path),
+                Some(path) => config_check(path, json),
                 None => {
                     print_usage();
                     ExitCode::Usage.code()
@@ -202,21 +213,38 @@ fn cap_command(args: &[String]) -> i32 {
     }
 }
 
-fn config_check(path: &str) -> i32 {
+fn config_check(path: &str, json: bool) -> i32 {
     let text = match fs::read_to_string(path) {
         Ok(text) => text,
         Err(error) => {
-            eprintln!("config error: cannot read {path}: {error}");
+            let message = format!("cannot read {path}: {error}");
+            if json {
+                println!("{}", error_json(ExitCode::Config.code(), &message));
+            } else {
+                eprintln!("config error: {message}");
+            }
             return ExitCode::Config.code();
         }
     };
     match CliConfig::parse(&text) {
         Ok(config) => {
-            println!("config valid: {} host(s)", config.hosts.len());
+            if json {
+                println!(
+                    "{}",
+                    config_check_json(true, Some(config.hosts.len()), None)
+                );
+            } else {
+                println!("config valid: {} host(s)", config.hosts.len());
+            }
             ExitCode::Ok.code()
         }
         Err(error) => {
-            eprintln!("config error: {error:?} in {path}");
+            let message = format!("{error:?} in {path}");
+            if json {
+                println!("{}", config_check_json(false, None, Some(&message)));
+            } else {
+                eprintln!("config error: {message}");
+            }
             ExitCode::Config.code()
         }
     }

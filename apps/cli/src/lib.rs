@@ -8,6 +8,7 @@
 
 pub mod capabilities;
 pub mod cli;
+pub mod output;
 pub mod startup;
 
 pub use capabilities::{
@@ -17,6 +18,7 @@ pub use cli::{
     Cli, CliConfig, CommandRunner, ConfigError, ExecResult, ExitCode, HostConfig, MockRunner,
     OutputMode,
 };
+pub use output::{config_check_json, error_json, escape_json, version_json, JSON_SCHEMA_VERSION};
 pub use startup::{
     ActionablePrompt, DatabaseHealth, PromptSeverity, StartupConfig, StartupFlow, StartupOutcome,
 };

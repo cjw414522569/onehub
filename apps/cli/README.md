@@ -61,3 +61,14 @@ Dependencies added: `storage-sqlite`, `secure-store` (declared in
 - CLI/GUI core-agreement tests: config equality, byte-identical wire, and
   matching transfer statistics ? no behavior divergence.
 - Real binary `cap` commands: `forward`, `sftp`, `proxy --chain`.
+
+## T145: shell completion, man page, and machine-readable JSON
+
+- `completions/ssh-cli.{bash,zsh,fish,ps1}` - completion for bash, zsh,
+  fish, and PowerShell covering the command surface (--version, --help,
+  --json, config, cap).
+- `docs/ssh-cli.1` - man page with SYNOPSIS, OPTIONS, COMMANDS, EXIT
+  STATUS (0-5), and JSON OUTPUT sections.
+- `src/output.rs` - versioned JSON payloads (`schema_version: 1`) for
+  `--json --version` and `--json config --check`; `docs/cli-output.schema.json`
+  pins the schema.
