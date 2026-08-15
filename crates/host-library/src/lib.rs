@@ -7,6 +7,7 @@
 
 pub mod auth_prompt;
 pub mod editor;
+pub mod file_manager;
 pub mod fingerprint;
 pub mod gestures;
 pub mod host;
@@ -25,6 +26,10 @@ pub use auth_prompt::{
 pub use editor::{
     default_spec, state_map, AccessibilityReport, FieldKind, FieldSpec, FieldState, HostEditorForm,
     ReviewRow, SectionReview, SectionSpec, SectionState, PASSWORD_MASK,
+};
+pub use file_manager::{
+    ConflictAction, FileKind, FileOperationManager, FilePane, OpError, OpState, RemoteFile,
+    TransferKind, TransferOp, TransferProgress,
 };
 pub use fingerprint::{
     ChangeNotice, FingerprintReview, FingerprintSource, HostKeyFingerprint, KeyAlgorithm,

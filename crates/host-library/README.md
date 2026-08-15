@@ -172,3 +172,16 @@
 - `diagnose` - free / occupied status for the port-occupancy diagnosis UI.
 - Tests cover create, pause/resume/reconnect, occupied-port failure, address
   copy, and risk warnings.
+
+## T114: SFTP single-pane / responsive file manager
+
+`crates/host-library/src/file_manager.rs`:
+
+- `FilePane` - single-pane listing with navigation (cd into directories),
+  desktop single-select, and mobile multi-select.
+- `FileOperationManager` - queues upload / download / move / copy / delete
+  with progress (`TransferProgress.percent`), conflict resolution (ask /
+  overwrite / skip / rename), and cancel / retry that **reuses the same op
+  id** (no duplicate submission).
+- Desktop drag-drop maps to a move op; mobile selection maps to multi-file
+  ops; progress, conflict handling, and lifecycle are consistent.
