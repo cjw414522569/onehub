@@ -68,3 +68,10 @@ crate contains no unsafe blocks.
   10k-event flood with a stalled consumer (producer never blocks, bounded
   queue, snapshot recovery), threshold flushing, scheduler dispatch/poll and
   backpressure.
+
+## T152: cross-language integration harness
+
+`tests/ffi_harness.rs` drives the stable ABI surface (version, header
+validity, handle lifecycle, and the event stream with cancel/error/
+lifecycle paths) 100 consecutive times and asserts every run is
+byte-identical ? the CI-stable FFI reproducibility gate.

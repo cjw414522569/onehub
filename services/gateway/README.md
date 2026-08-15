@@ -47,3 +47,13 @@
   (keys stay client-side); only short-lived in-memory session keys within
   the lifetime budget are accepted.
 - Tests cover the authorization-bypass, replay, and token-expiry sets.
+
+## T152: deterministic fake server + cross-language harness
+
+`services/gateway/examples/fake-server.rs` - a deterministic fake gateway
+that speaks the versioned session protocol (T135) with the auth registry
+(T137) and address policy (T136). It runs the full scenario suite
+(handshake, auth, capabilities, data, cancel, backpressure, resume, error
+paths, SSRF denial, close, isolation) 100 consecutive times and prints a
+stable summary; `scripts/test-cross-language.mjs` runs it repeatedly and
+asserts byte-identical output (no flakiness).
