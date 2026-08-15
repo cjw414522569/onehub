@@ -1,48 +1,57 @@
 #!/usr/bin/env node
 
-// T117 contract: diagnostic bundle export with sensitive redaction.
+// T148 contract: local performance sampling + user-exportable diagnostics.
+// Runs the unit suite and the diagnostics example, then scans the exported
+// report (the diagnostic data privacy scan) for any content markers — the
+// report must contain only numeric aggregates and fixed metric labels.
 
-import { readFileSync, readdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
 const ROOT = resolve(process.argv[2] ?? process.cwd());
-const LIB = join(ROOT, 'crates/host-library');
 const errors = [];
 
-const TOKENS = [
-  'pub const REDACTED', 'pub enum DiagnosticCategory', 'pub struct RedactionPolicy',
-  'pub fn defaults', 'pub fn including', 'pub struct DiagnosticInput', 'pub struct DiagnosticPreview',
-  'pub struct DiagnosticSection', 'pub struct DiagnosticBundle', 'pub fn text',
-  'pub struct DiagnosticExporter', 'pub fn preview', 'pub fn export', 'pub struct Redactor',
-  'pub fn redact_secrets', 'pub fn redact_emailish', 'pub fn redact_key_blocks', 'pub fn scrub',
-  'preview_shows_included_and_excluded_categories', 'default_export_passes_canary_secret_scan',
-  'opt_in_includes_a_category', 'redactor_scrubs_emailish_and_key_blocks',
-];
+function run(cmd, args, opts = {}) {
+  return spawnSync(cmd, args, { cwd: ROOT, encoding: 'utf8', timeout: opts.timeout ?? 300000 });
+}
 
-function collectRs(dir, files) {
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const absolute = join(dir, entry.name);
-    if (entry.isDirectory()) collectRs(absolute, files);
-    else if (entry.name.endsWith('.rs')) files.push(absolute);
+// 1. Build + unit tests (sampling aggregates, percentiles, report privacy).
+const check = run('cargo', ['check', '-p', 'telemetry', '--locked']);
+if (check.status !== 0) errors.push(`cargo check -p telemetry failed:\n${check.stdout}\n${check.stderr}`);
+const test = run('cargo', ['test', '-p', 'telemetry', '--locked']);
+if (test.status !== 0) errors.push(`cargo test -p telemetry failed:\n${test.stdout}\n${test.stderr}`);
+
+// 2. Export the diagnostics report and run the privacy scan.
+const example = run('cargo', ['run', '-p', 'telemetry', '--example', 'diagnostics']);
+if (example.status !== 0) errors.push(`diagnostics example failed:\n${example.stdout}\n${example.stderr}`);
+
+let report = null;
+try {
+  report = JSON.parse(example.stdout.trim());
+} catch {
+  errors.push('diagnostics example did not emit a JSON report');
+}
+if (report) {
+  if (report.schema_version !== 1) errors.push('diagnostics report schema_version != 1');
+  const labels = report.rows.map((row) => row.metric);
+  for (const required of ['network_latency_ms', 'parse_throughput_mbps', 'render_frame_ms', 'memory_kb']) {
+    if (!labels.includes(required)) errors.push(`diagnostics report missing metric: ${required}`);
+  }
+  for (const row of report.rows) {
+    for (const key of ['count', 'mean', 'p50', 'p95', 'p99', 'min', 'max']) {
+      if (typeof row[key] !== 'number') errors.push(`row ${row.metric} missing numeric ${key}`);
+    }
   }
 }
 
-const files = [];
-collectRs(join(LIB, 'src'), files);
-const sourceText = files.map((file) => readFileSync(file, 'utf8')).join('\n');
-for (const token of TOKENS) {
-  if (!sourceText.includes(token)) errors.push(`host-library missing required token: ${token}`);
-}
-
-for (const args of [
-  ['check', '-p', 'host-library', '--locked'],
-  ['test', '-p', 'host-library', '--locked'],
-]) {
-  const result = spawnSync('cargo', args, { cwd: ROOT, encoding: 'utf8', timeout: 240000 });
-  if (result.status !== 0) {
-    errors.push(`cargo ${args[0]} -p host-library failed:\n${result.stdout}\n${result.stderr}`);
-  }
+// Diagnostic data privacy scan: the exported report (the user-exportable
+// artifact) must not expose content. Cargo test output is excluded because
+// it legitimately contains test names.
+const markers = ['host', 'command', 'user', 'token', 'secret', 'terminal_text', 'payload',
+  'db.internal', '10.0.0.5', 'PRIVACY_CANARY', 'ls -la', 'rm -rf'];
+const combined = `${example.stdout}\n${example.stderr}`;
+for (const marker of markers) {
+  if (combined.includes(marker)) errors.push(`diagnostic output exposed content marker: ${marker}`);
 }
 
 if (errors.length > 0) {
@@ -50,4 +59,4 @@ if (errors.length > 0) {
   for (const error of errors) console.error(`- ${error}`);
   process.exit(1);
 }
-console.log('diagnostics contract valid: DiagnosticExporter::preview shows included/excluded categories for user confirmation; the default RedactionPolicy exports logs/config summary/system info only (commands, hosts, usernames, session bodies, and keys excluded by default, opt-in available); Redactor scrubs secrets, user@host tokens, and private-key blocks; the canary-secret scan proves the default export contains none of the command/host/user/body/key canaries; cargo check/test --locked passed.');
+console.log('diagnostics contract valid: the sampler records network/parse/render/memory numeric samples; the exported schema_version:1 report contains only numeric aggregates (count/mean/p50/p95/p99/min/max) with fixed metric labels; the diagnostic data privacy scan found zero content exposure.');

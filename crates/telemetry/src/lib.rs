@@ -7,9 +7,14 @@
 //! (`examples/canary.rs`) is scanned by the contract to prove a secret can
 //! never reach emitted log output.
 
+pub mod diagnostics;
 pub mod log;
 pub mod privacy;
 
+pub use diagnostics::{
+    DiagnosticMetric, DiagnosticReport, DiagnosticsSampler, ReportRow, SampleSet,
+    DIAGNOSTIC_SCHEMA_VERSION,
+};
 pub use log::{
     escape_value, LogContext, LogEntry, LogLevel, Logger, SensitiveFieldPolicy, TraceId,
 };

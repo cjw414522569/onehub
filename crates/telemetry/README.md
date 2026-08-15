@@ -39,3 +39,17 @@
 - `examples/privacy-canary.rs` - network-capture canary: off-mode capture
   is empty and 9/9 forbidden data attempts are rejected; the contract scans
   the outbound capture for zero leaks.
+
+## T148: local performance sampling and user-exportable diagnostics
+
+`crates/telemetry/src/diagnostics.rs`:
+
+- `DiagnosticsSampler` - records numeric samples for the network / parse /
+  render / memory paths (the API accepts only numbers, so no content can
+  enter).
+- `DiagnosticReport::export` - a versioned (schema_version 1) report of
+  aggregates (count/mean/p50/p95/p99/min/max) with fixed metric labels;
+  user-exportable.
+- `examples/diagnostics.rs` - samples all four paths and prints the report;
+  `scripts/test-diagnostics.mjs` runs the diagnostic data privacy scan (no
+  host/command/terminal/payload content in the exported report).
