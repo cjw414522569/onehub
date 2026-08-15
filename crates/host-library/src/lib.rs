@@ -5,8 +5,13 @@
 //!
 //! Host library model: list, grouping, tags, search, and sorting (T102).
 
+pub mod editor;
 pub mod host;
 
+pub use editor::{
+    default_spec, state_map, AccessibilityReport, FieldKind, FieldSpec, FieldState, HostEditorForm,
+    ReviewRow, SectionReview, SectionSpec, SectionState, PASSWORD_MASK,
+};
 pub use host::{
     GroupSummary, HostLibrary, HostRecord, SelectionModel, SortField, SortOrder, TagSummary,
 };
