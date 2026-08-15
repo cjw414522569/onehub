@@ -18,6 +18,7 @@
 
 use abi_c::{BatchItem, EventBatch, EVENT_BATCH_VERSION};
 use clients_windows::ai_assistant;
+use clients_windows::db;
 use clients_windows::docker_tools;
 use clients_windows::local_sessions;
 use clients_windows::mcp_tools;
@@ -209,7 +210,88 @@ fn main() {
         misc_check();
         return;
     }
+    if std::env::args().any(|argument| argument == "--db-check") {
+        db_check();
+        return;
+    }
     run_gui();
+}
+
+/// End-to-end database framework check (--db-check, navop parity T018):
+/// validates the engine catalog, profile parsing, TCP/path reachability tests,
+/// the honest not-yet-wired connect error, and a store round-trip for
+/// db_connection_save/list/delete. Prints JSON evidence.
+fn db_check() {
+    use clients_windows::db;
+    use clients_windows::store::Store;
+    let engines = db::engine_list();
+    let all_unavailable = engines
+        .iter()
+        .all(|e| e["available"] == serde_json::Value::Bool(false));
+    let tcp = db::test_connection(&serde_json::json!({
+        "engine": "mysql",
+        "host": "127.0.0.1",
+        "port": 1,
+        "connect_timeout_ms": 800,
+    }));
+    let sqlite_missing = db::test_connection(&serde_json::json!({
+        "engine": "sqlite",
+        "database": "C:/nope/not-here/x.db",
+    }));
+    let dir = std::env::temp_dir().join("onehub-db-check.sqlite");
+    let _ = std::fs::write(&dir, b"x");
+    let sqlite_present = db::test_connection(&serde_json::json!({
+        "engine": "sqlite",
+        "database": dir.to_string_lossy(),
+    }));
+    let _ = std::fs::remove_file(&dir);
+    let connect_err = db::connect(&serde_json::json!({
+        "engine": "mysql",
+        "host": "127.0.0.1",
+        "username": "root",
+        "password": "x",
+    }))
+    .err()
+    .unwrap_or_default();
+    let store_path =
+        std::env::temp_dir().join(format!("onehub-db-check-{}.sqlite", std::process::id()));
+    let mut store = Store::open(&store_path).expect("store");
+    let saved = store
+        .upsert_connection(&serde_json::json!({
+            "protocol": "mysql",
+            "engine": "mysql",
+            "name": "db-check",
+            "host": "127.0.0.1",
+            "port": 3306,
+            "username": "root",
+        }))
+        .expect("save");
+    let id = saved["id"].as_str().unwrap_or("").to_string();
+    let listed = store.list_connections().expect("list");
+    let db_listed = listed
+        .iter()
+        .filter(|c| {
+            c["protocol"]
+                .as_str()
+                .map(db::is_db_protocol)
+                .unwrap_or(false)
+        })
+        .count();
+    let deleted = store.delete_connection(&id).expect("delete");
+    drop(store);
+    let _ = std::fs::remove_file(&store_path);
+    let _ = std::fs::remove_file(format!("{}-wal", store_path.display()));
+    let _ = std::fs::remove_file(format!("{}-shm", store_path.display()));
+    let result = serde_json::json!({
+        "engine_count": engines.len(),
+        "all_unavailable_in_t018": all_unavailable,
+        "tcp_refused_graceful": tcp["reachable"] == serde_json::Value::Bool(false),
+        "sqlite_missing_reported": sqlite_missing["reachable"] == serde_json::Value::Bool(false),
+        "sqlite_present_reported": sqlite_present["reachable"] == serde_json::Value::Bool(true),
+        "connect_not_wired": connect_err.contains("未接入"),
+        "db_connection_save_list_delete_ok": db_listed >= 1 && deleted,
+    });
+    println!("{}", serde_json::to_string(&result).expect("json"));
 }
 
 /// End-to-end misc check (--misc-check): verifies known-host trust/check
@@ -2261,6 +2343,106 @@ fn handle_rdp_commands(
 /// Handles MCP commands (mxterm parity T014): settings persistence, token
 /// rotation, local network info, executable path, remote service lifecycle,
 /// update blockers, and the remote service log.
+
+/// Handles the database workspace commands (navop parity T018+): engine
+/// catalog, DB connection CRUD via the shared connection store, reachability
+/// test, and connect/disconnect session lifecycle. Returns the reply JSON when
+/// the command is a database command, or None so the caller falls through.
+fn handle_db_commands(
+    state: &mut AppState,
+    cmd: &str,
+    parsed: &serde_json::Value,
+) -> Option<String> {
+    let request_id = parsed
+        .get("requestId")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+    let payload = parsed
+        .get("payload")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+    let result: Result<serde_json::Value, String> = match cmd {
+        "db_engine_list" => Ok(serde_json::Value::Array(db::engine_list())),
+        "db_connection_list" => {
+            let store = state.store.as_ref()?;
+            store
+                .list_connections()
+                .map(|all| {
+                    serde_json::Value::Array(
+                        all.into_iter()
+                            .filter(|c| {
+                                c.get("protocol")
+                                    .and_then(serde_json::Value::as_str)
+                                    .map(db::is_db_protocol)
+                                    .unwrap_or(false)
+                            })
+                            .collect(),
+                    )
+                })
+                .map_err(|e| e.to_string())
+        }
+        "db_connection_save" => {
+            let store = state.store.as_mut()?;
+            let request = payload.get("request").cloned().unwrap_or(payload.clone());
+            db::DbProfile::parse(&request).and_then(|parsed_profile| {
+                let mut save_req = request.clone();
+                save_req["protocol"] = serde_json::Value::String(parsed_profile.engine.clone());
+                if save_req
+                    .get("name")
+                    .and_then(serde_json::Value::as_str)
+                    .map(str::trim)
+                    .unwrap_or("")
+                    .is_empty()
+                {
+                    save_req["name"] = serde_json::Value::String(parsed_profile.display_name());
+                }
+                store
+                    .upsert_connection(&save_req)
+                    .map_err(|e| e.to_string())
+            })
+        }
+        "db_connection_delete" => {
+            let store = state.store.as_mut()?;
+            let request = payload.get("request").cloned().unwrap_or(payload.clone());
+            let id = request
+                .get("connection_id")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            store
+                .delete_connection(id)
+                .map(|_| serde_json::Value::Null)
+                .map_err(|e| e.to_string())
+        }
+        "db_connection_test" => {
+            let request = payload.get("request").cloned().unwrap_or(payload.clone());
+            Ok(db::test_connection(&request))
+        }
+        "db_connection_connect" => {
+            let request = payload.get("request").cloned().unwrap_or(payload.clone());
+            db::connect(&request).map(|session_id| serde_json::json!({ "session_id": session_id }))
+        }
+        "db_connection_disconnect" => {
+            let request = payload.get("request").cloned().unwrap_or(payload.clone());
+            let session_id = request
+                .get("session_id")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            Ok(serde_json::Value::Bool(db::close_session(session_id)))
+        }
+        _ => return None,
+    };
+    let reply_payload = match result {
+        Ok(value) => value,
+        Err(message) => serde_json::json!({
+            "error": { "code": "db_error", "message": message, "recoverable": true }
+        }),
+    };
+    Some(
+        serde_json::json!({ "kind": "invoke-reply", "requestId": request_id, "payload": reply_payload })
+            .to_string(),
+    )
+}
+
 fn handle_mcp_commands(
     state: &mut AppState,
     cmd: &str,
@@ -3958,6 +4140,9 @@ fn on_web_message(hwnd: HWND, message: &str) -> Option<String> {
         }
     }
 
+    if let Some(reply) = handle_db_commands(state, cmd, &parsed) {
+        return Some(reply);
+    }
     if let Some(reply) = handle_vault_commands(state, cmd, &parsed) {
         return Some(reply);
     }

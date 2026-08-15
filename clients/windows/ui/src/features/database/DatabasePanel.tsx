@@ -1,0 +1,342 @@
+﻿import { useCallback, useEffect, useState } from "react";
+import {
+  dbConnectionConnect,
+  dbConnectionDelete,
+  dbConnectionList,
+  dbConnectionSave,
+  dbConnectionTest,
+  dbEngineList,
+} from "../../shared/tauri/commands";
+import type {
+  DbConnectionInput,
+  DbConnectionProfile,
+  DbEngineInfo,
+  DbTestResult,
+} from "./dbTypes";
+
+interface DatabasePanelProps {
+  open: boolean;
+  onClose: () => void;
+}
+
+const DEFAULT_ENGINE = "mysql";
+
+function defaultPort(engine: string): number {
+  switch (engine) {
+    case "mysql":
+    case "oceanbase":
+      return 3306;
+    case "postgresql":
+    case "kingbase":
+    case "opengauss":
+    case "gbase":
+      return 5432;
+    case "sqlserver":
+    case "dm":
+      return 1433;
+    case "oracle":
+      return 1521;
+    case "clickhouse":
+      return 8123;
+    case "iotdb":
+      return 6667;
+    case "redis":
+      return 6379;
+    case "mongodb":
+      return 27017;
+    default:
+      return 0;
+  }
+}
+
+function emptyForm(): DbConnectionInput {
+  return {
+    engine: DEFAULT_ENGINE,
+    name: "",
+    host: "127.0.0.1",
+    port: 3306,
+    username: "root",
+    password: "",
+    database: "",
+    ssl: false,
+  };
+}
+
+function isFileEngine(engine: string): boolean {
+  return engine === "sqlite" || engine === "duckdb";
+}
+
+export function DatabasePanel({ open, onClose }: DatabasePanelProps) {
+  const [connections, setConnections] = useState<DbConnectionProfile[]>([]);
+  const [engines, setEngines] = useState<DbEngineInfo[]>([]);
+  const [form, setForm] = useState<DbConnectionInput>(emptyForm());
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const refresh = useCallback(async () => {
+    try {
+      const [conns, engs] = await Promise.all([
+        dbConnectionList().catch(() => [] as DbConnectionProfile[]),
+        dbEngineList().catch(() => [] as DbEngineInfo[]),
+      ]);
+      setConnections(conns);
+      setEngines(engs);
+    } catch {
+      // Bridge unavailable (e.g. browser preview); keep empty lists.
+    }
+  }, []);
+
+  useEffect(() => {
+    if (open) {
+      void refresh();
+      setMessage(null);
+    }
+  }, [open, refresh]);
+
+  if (!open) {
+    return null;
+  }
+
+  const onEngineChange = (engine: string) => {
+    setForm((prev) => ({
+      ...prev,
+      engine: engine as DbConnectionInput["engine"],
+      port: defaultPort(engine),
+    }));
+  };
+
+  const save = async () => {
+    setBusy(true);
+    setMessage(null);
+    try {
+      await dbConnectionSave(form);
+      setForm(emptyForm());
+      setEditingId(null);
+      await refresh();
+      setMessage("已保存数据库连接。");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const testNow = async () => {
+    setBusy(true);
+    setMessage(null);
+    try {
+      const result: DbTestResult = await dbConnectionTest(form);
+      setMessage(`${result.message}（引擎已接入：${result.engine_available ? "是" : "否"}）`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const connect = async () => {
+    setBusy(true);
+    setMessage(null);
+    try {
+      const result = await dbConnectionConnect(form);
+      setMessage(`连接会话已建立：${result.session_id}`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = async (id: string) => {
+    setBusy(true);
+    try {
+      await dbConnectionDelete(id);
+      await refresh();
+      if (editingId === id) {
+        setEditingId(null);
+        setForm(emptyForm());
+      }
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const edit = (conn: DbConnectionProfile) => {
+    const engine = conn.engine || conn.protocol || DEFAULT_ENGINE;
+    setEditingId(conn.id);
+    setForm({
+      engine: engine as DbConnectionInput["engine"],
+      name: conn.name || "",
+      host: conn.host || "127.0.0.1",
+      port: conn.port || defaultPort(engine),
+      username: conn.username || "",
+      password: conn.password || "",
+      database: conn.database || "",
+      ssl: Boolean(conn.ssl),
+    });
+  };
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="数据库工作台"
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 2000,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        background: "rgba(0,0,0,0.35)",
+      }}
+    >
+      <div
+        style={{
+          width: 760,
+          maxWidth: "94vw",
+          maxHeight: "88vh",
+          overflow: "auto",
+          background: "#f5f6f8",
+          color: "#1f2328",
+          borderRadius: 8,
+          padding: 16,
+          boxShadow: "0 8px 32px rgba(0,0,0,0.25)",
+          fontFamily: "system-ui, sans-serif",
+          fontSize: 13,
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+          <h2 style={{ margin: 0, fontSize: 16 }}>数据库工作台</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="关闭"
+            style={{ border: "none", background: "transparent", fontSize: 20, cursor: "pointer", lineHeight: 1 }}
+          >
+            ×
+          </button>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+          <section>
+            <h3 style={{ margin: "0 0 8px", fontSize: 13 }}>连接列表</h3>
+            {connections.length === 0 ? (
+              <p style={{ margin: 0, color: "#6b7280" }}>暂无数据库连接，请先在右侧新建。</p>
+            ) : (
+              <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
+                {connections.map((conn) => (
+                  <li
+                    key={conn.id}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      padding: "6px 8px",
+                      borderBottom: "1px solid #e5e7eb",
+                    }}
+                  >
+                    <span>{conn.name || conn.host || conn.engine}</span>
+                    <span style={{ display: "flex", gap: 6 }}>
+                      <button type="button" onClick={() => edit(conn)}>
+                        编辑
+                      </button>
+                      <button type="button" onClick={() => void remove(conn.id)}>
+                        删除
+                      </button>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <section>
+            <h3 style={{ margin: "0 0 8px", fontSize: 13 }}>{editingId ? "编辑连接" : "新建连接"}</h3>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              <label style={{ display: "grid", gap: 2 }}>
+                引擎
+                <select value={form.engine} onChange={(event) => onEngineChange(event.target.value)}>
+                  {engines.map((engine) => (
+                    <option key={engine.engine} value={engine.engine}>
+                      {engine.label}
+                      {engine.available ? "" : "（待接入）"}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label style={{ display: "grid", gap: 2 }}>
+                名称
+                <input
+                  value={form.name || ""}
+                  onChange={(event) => setForm({ ...form, name: event.target.value })}
+                  placeholder="可选"
+                />
+              </label>
+              <label style={{ display: "grid", gap: 2 }}>
+                主机
+                <input
+                  value={form.host || ""}
+                  onChange={(event) => setForm({ ...form, host: event.target.value })}
+                  disabled={isFileEngine(form.engine)}
+                />
+              </label>
+              <label style={{ display: "grid", gap: 2 }}>
+                端口
+                <input
+                  type="number"
+                  value={form.port ?? 0}
+                  onChange={(event) => setForm({ ...form, port: Number(event.target.value) })}
+                  disabled={isFileEngine(form.engine)}
+                />
+              </label>
+              <label style={{ display: "grid", gap: 2 }}>
+                用户名
+                <input
+                  value={form.username || ""}
+                  onChange={(event) => setForm({ ...form, username: event.target.value })}
+                />
+              </label>
+              <label style={{ display: "grid", gap: 2 }}>
+                密码
+                <input
+                  type="password"
+                  value={form.password || ""}
+                  onChange={(event) => setForm({ ...form, password: event.target.value })}
+                />
+              </label>
+              <label style={{ display: "grid", gap: 2, gridColumn: "1 / -1" }}>
+                数据库 / 文件路径
+                <input
+                  value={form.database || ""}
+                  onChange={(event) => setForm({ ...form, database: event.target.value })}
+                  placeholder={isFileEngine(form.engine) ? "本地文件路径" : "数据库名（可选）"}
+                />
+              </label>
+            </div>
+            <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+              <button type="button" onClick={() => void testNow()} disabled={busy}>
+                测试连接
+              </button>
+              <button type="button" onClick={() => void connect()} disabled={busy}>
+                连接
+              </button>
+              <button type="button" onClick={() => void save()} disabled={busy}>
+                {editingId ? "保存修改" : "保存"}
+              </button>
+            </div>
+          </section>
+        </div>
+
+        {message ? (
+          <p role="status" style={{ marginTop: 12, padding: 8, background: "#eef2ff", borderRadius: 4 }}>
+            {message}
+          </p>
+        ) : null}
+      </div>
+    </div>
+  );
+}

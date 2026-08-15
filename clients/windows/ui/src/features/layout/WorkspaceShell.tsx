@@ -28,6 +28,7 @@ import {
   CheckCircle2,
   CircleAlert,
   CornerDownLeft,
+  Database,
   Download,
   Eraser,
   KeyRound,
@@ -53,6 +54,7 @@ import {
   Upload,
   X,
 } from "lucide-react";
+import { DatabasePanel } from "../database/DatabasePanel";
 
 import { ConnectionPane } from "../connections/ConnectionPane";
 import { ConnectionSystemLogo } from "../connections/ConnectionSystemLogo";
@@ -11777,6 +11779,7 @@ function ConnectionHome({
   const [filter, setFilter] = useState<ConnectionFilter>("recent");
   const [query, setQuery] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<ConnectionProfile | null>(null);
+  const [databaseOpen, setDatabaseOpen] = useState(false);
   const [latencyByConnectionId, setLatencyByConnectionId] = useState<Record<string, LatencyProbeState>>({});
   const latencyProbeRunRef = useRef(0);
   const rows = useMemo(() => {
@@ -11912,6 +11915,16 @@ function ConnectionHome({
         </div>
 
         <div className="toolbar-right">
+          <Tooltip label="打开数据库工作台">
+            <button
+              className="repository-icon-button"
+              type="button"
+              aria-label="打开数据库工作台"
+              onClick={() => setDatabaseOpen(true)}
+            >
+              <Database className="ui-icon" aria-hidden="true" />
+            </button>
+          </Tooltip>
           <Tooltip label="刷新连接并探测延迟">
             <button
               className="repository-icon-button"
@@ -11936,6 +11949,8 @@ function ConnectionHome({
           </button>
         </div>
       </header>
+
+        <DatabasePanel open={databaseOpen} onClose={() => setDatabaseOpen(false)} />
 
       <div className="connection-home-body">
         <section className="connection-board" aria-label="连接表格">

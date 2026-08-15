@@ -63,6 +63,7 @@ const GROUPS = [
   { key: 'ai_mcp', label: 'AI/MCP', commands: commandList.filter((c) => c.startsWith('ai_') || c.startsWith('mcp')) },
   { key: 'tunnels_network_scheduled', label: '隧道/网络/定时任务', commands: commandList.filter((c) => c.startsWith('tunnel') || c.startsWith('network_') || c.startsWith('scheduled_task')) },
   { key: 'character_sessions', label: '本地/Telnet/串口', commands: commandList.filter((c) => c.startsWith('local_terminal') || c.startsWith('telnet') || c.startsWith('serial')) },
+  { key: 'database', label: '数据库', commands: commandList.filter((c) => c.startsWith('db_')) },
   { key: 'connection_ops', label: '连接检测/收藏/系统', commands: commandList.filter((c) => c.startsWith('connection_') && !c.startsWith('connection_transfer') && !['connection_list', 'connection_upsert', 'connection_delete', 'connection_mark_connected', 'connection_set_favorite'].includes(c)) },
 ];
 // misc = commands not covered by any explicit group.

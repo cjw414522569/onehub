@@ -1,5 +1,12 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  DbConnectionInput,
+  DbConnectionProfile,
+  DbConnectResult,
+  DbEngineInfo,
+  DbTestResult,
+} from "../../features/database/dbTypes";
+import type {
   ConnectionRuntimeCredentialRequest,
   ConnectionStepResult,
   CredentialProfile,
@@ -1243,4 +1250,34 @@ export function mcpRemoteLogClear() {
 
 export function mcpRemoteTokenRotate() {
   return invoke<McpSettings>("mcp_remote_token_rotate");
+}
+
+
+// ---- Database workspace (navop parity T018+) ----
+export function dbEngineList() {
+  return invoke<DbEngineInfo[]>("db_engine_list");
+}
+
+export function dbConnectionList() {
+  return invoke<DbConnectionProfile[]>("db_connection_list");
+}
+
+export function dbConnectionSave(input: DbConnectionInput) {
+  return invoke<DbConnectionProfile>("db_connection_save", { request: input });
+}
+
+export function dbConnectionDelete(connectionId: string) {
+  return invoke<void>("db_connection_delete", { request: { connection_id: connectionId } });
+}
+
+export function dbConnectionTest(input: DbConnectionInput) {
+  return invoke<DbTestResult>("db_connection_test", { request: input });
+}
+
+export function dbConnectionConnect(input: DbConnectionInput) {
+  return invoke<DbConnectResult>("db_connection_connect", { request: input });
+}
+
+export function dbConnectionDisconnect(sessionId: string) {
+  return invoke<boolean>("db_connection_disconnect", { request: { session_id: sessionId } });
 }
