@@ -246,11 +246,15 @@ fn db_check() {
     let duckdb_available = engines
         .iter()
         .any(|e| e["engine"] == "duckdb" && e["available"] == serde_json::Value::Bool(true));
+    let sqlserver_available = engines
+        .iter()
+        .any(|e| e["engine"] == "sqlserver" && e["available"] == serde_json::Value::Bool(true));
     let other_engines_unavailable = engines.iter().all(|e| {
         e["engine"] == "mysql"
             || e["engine"] == "postgresql"
             || e["engine"] == "sqlite"
             || e["engine"] == "duckdb"
+            || e["engine"] == "sqlserver"
             || e["available"] == serde_json::Value::Bool(false)
     });
     let tcp = db::test_connection(&serde_json::json!({
@@ -292,6 +296,17 @@ fn db_check() {
     });
     let pg_connect_err = db::connect(&pg_profile).err().unwrap_or_default();
     let pg_query_err = db::query_inline(&pg_profile, "SELECT 1")
+        .err()
+        .unwrap_or_default();
+    let mssql_profile = serde_json::json!({
+        "engine": "sqlserver",
+        "host": "127.0.0.1",
+        "port": 1,
+        "username": "sa",
+        "password": "x",
+    });
+    let mssql_connect_err = db::connect(&mssql_profile).err().unwrap_or_default();
+    let mssql_query_err = db::query_inline(&mssql_profile, "SELECT 1")
         .err()
         .unwrap_or_default();
     // SQLite round-trip through the real engine (create/insert/select).
@@ -389,6 +404,7 @@ fn db_check() {
         "postgresql_available": postgresql_available,
         "sqlite_available": sqlite_available,
         "duckdb_available": duckdb_available,
+        "sqlserver_available": sqlserver_available,
         "other_engines_unavailable": other_engines_unavailable,
         "tcp_refused_graceful": tcp["reachable"] == serde_json::Value::Bool(false),
         "sqlite_missing_reported": sqlite_missing["reachable"] == serde_json::Value::Bool(false),
@@ -399,6 +415,8 @@ fn db_check() {
         "pg_query_refused_graceful": pg_query_err.contains("失败"),
         "sqlite_roundtrip_ok": sqlite_roundtrip_ok,
         "duckdb_roundtrip_ok": duckdb_roundtrip_ok,
+        "mssql_connect_refused_graceful": mssql_connect_err.contains("失败"),
+        "mssql_query_refused_graceful": mssql_query_err.contains("失败"),
         "db_connection_save_list_delete_ok": db_listed >= 1 && deleted,
     });
     println!("{}", serde_json::to_string(&result).expect("json"));

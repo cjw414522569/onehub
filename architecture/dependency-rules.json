@@ -424,6 +424,8 @@
         "serde-json",
         "sha2",
         "tiny-http",
+        "tokio-util",
+        "tiberius",
         "tokio",
         "webview2",
         "windows",

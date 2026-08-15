@@ -16,6 +16,7 @@ use crate::probe;
 use mysql_async::prelude::Queryable;
 use tokio_postgres::types::Type;
 use tokio_postgres::NoTls;
+use tokio_util::compat::TokioAsyncWriteCompatExt;
 
 /// Known database engines `(key, label)`. Extensions (DM/Kingbase/GBase/...)
 /// are listed so the UI picker and profile validation are complete; real
@@ -40,7 +41,7 @@ pub const DB_ENGINES: &[(&str, &str)] = &[
 
 /// Engines whose real connection is implemented (wired by later rows).
 fn wired_engines() -> &'static [&'static str] {
-    &["mysql", "postgresql", "sqlite", "duckdb"]
+    &["mysql", "postgresql", "sqlite", "duckdb", "sqlserver"]
 }
 
 /// Returns true when the engine key is part of the known catalog.
@@ -253,12 +254,16 @@ pub fn test_connection(profile: &Value) -> Value {
     })
 }
 
+/// Concrete tiberius client stream: tokio TcpStream wrapped in tokio-util compat.
+type MsSqlClient = tiberius::Client<tokio_util::compat::Compat<tokio::net::TcpStream>>;
+
 /// A live engine connection held by a session.
 enum EngineConnection {
     MySql(mysql_async::Pool),
     Postgres(std::sync::Arc<tokio_postgres::Client>),
     Sqlite(std::sync::Arc<std::sync::Mutex<rusqlite::Connection>>),
     DuckDb(std::sync::Arc<std::sync::Mutex<duckdb::Connection>>),
+    SqlServer(std::sync::Arc<tokio::sync::Mutex<MsSqlClient>>),
 }
 
 /// A live database session. `connection` holds the engine handle for wired
@@ -402,6 +407,116 @@ fn sqlite_run(conn: &rusqlite::Connection, sql: &str) -> Result<QueryOutcome, St
     let mut result_rows = Vec::new();
     for row in rows {
         result_rows.push(row.map_err(|e| format!("读取结果失败：{e}"))?);
+    }
+    Ok(QueryOutcome {
+        columns,
+        rows: result_rows,
+        affected_rows: 0,
+    })
+}
+
+/// Connects a SQL Server client (tiberius + rustls). Windows integrated auth
+/// is used when the username is blank, otherwise SQL Server auth.
+fn mssql_connect(parsed: &DbProfile) -> Result<MsSqlClient, String> {
+    runtime().block_on(async {
+        let tcp = tokio::net::TcpStream::connect((parsed.host.as_str(), parsed.port))
+            .await
+            .map_err(|e| format!("SQL Server 连接失败：{e}"))?;
+        tcp.set_nodelay(true)
+            .map_err(|e| format!("SQL Server 配置失败：{e}"))?;
+        let mut config = tiberius::Config::new();
+        config.host(&parsed.host);
+        config.port(parsed.port);
+        if parsed.username.trim().is_empty() {
+            config.authentication(tiberius::AuthMethod::Integrated);
+        } else {
+            config.authentication(tiberius::AuthMethod::sql_server(
+                parsed.username.as_str(),
+                parsed.password.as_deref().unwrap_or(""),
+            ));
+        }
+        if !parsed.database.is_empty() {
+            config.database(&parsed.database);
+        }
+        if parsed.ssl {
+            config.encryption(tiberius::EncryptionLevel::Required);
+        } else {
+            config.encryption(tiberius::EncryptionLevel::NotSupported);
+        }
+        config.trust_cert();
+        let client = tiberius::Client::connect(config, tcp.compat_write())
+            .await
+            .map_err(|e| format!("SQL Server 认证失败：{e}"))?;
+        Ok::<MsSqlClient, String>(client)
+    })
+}
+
+/// Converts a SQL Server cell into a JSON value via a type cascade.
+fn mssql_cell_to_json(row: &tiberius::Row, index: usize) -> Value {
+    if let Ok(Some(v)) = row.try_get::<bool, usize>(index) {
+        return serde_json::json!(v);
+    }
+    if let Ok(Some(v)) = row.try_get::<i32, usize>(index) {
+        return serde_json::json!(v);
+    }
+    if let Ok(Some(v)) = row.try_get::<i64, usize>(index) {
+        return serde_json::json!(v);
+    }
+    if let Ok(Some(v)) = row.try_get::<f64, usize>(index) {
+        return serde_json::Number::from_f64(v)
+            .map(Value::Number)
+            .unwrap_or(Value::Null);
+    }
+    if let Ok(Some(v)) = row.try_get::<&str, usize>(index) {
+        return Value::String(v.to_string());
+    }
+    if let Ok(Some(v)) = row.try_get::<chrono::NaiveDate, usize>(index) {
+        return Value::String(v.to_string());
+    }
+    if let Ok(Some(v)) = row.try_get::<chrono::NaiveTime, usize>(index) {
+        return Value::String(v.to_string());
+    }
+    if let Ok(Some(v)) = row.try_get::<chrono::NaiveDateTime, usize>(index) {
+        return Value::String(v.to_string());
+    }
+    if let Ok(Some(v)) = row.try_get::<chrono::DateTime<chrono::Utc>, usize>(index) {
+        return Value::String(v.to_string());
+    }
+    Value::Null
+}
+
+/// Runs a statement against a SQL Server client. DML affected rows are not
+/// exposed through tiberius QueryStream (only ExecuteResult), so DML reports 0
+/// affected rows; SELECT columns/rows are fully real.
+async fn mssql_run(client: &mut MsSqlClient, sql: &str) -> Result<QueryOutcome, String> {
+    let mut stream = client
+        .query(sql, &[])
+        .await
+        .map_err(|e| format!("SQL 执行失败：{e}"))?;
+    let columns: Vec<String> = stream
+        .columns()
+        .await
+        .map_err(|e| format!("读取列信息失败：{e}"))?
+        .map(|cols| cols.iter().map(|col| col.name().to_string()).collect())
+        .unwrap_or_default();
+    if columns.is_empty() {
+        return Ok(QueryOutcome {
+            columns: Vec::new(),
+            rows: Vec::new(),
+            affected_rows: 0,
+        });
+    }
+    let rows = stream
+        .into_first_result()
+        .await
+        .map_err(|e| format!("查询失败：{e}"))?;
+    let mut result_rows = Vec::new();
+    for row in rows {
+        let mut values = Vec::new();
+        for index in 0..columns.len() {
+            values.push(mssql_cell_to_json(&row, index));
+        }
+        result_rows.push(values);
     }
     Ok(QueryOutcome {
         columns,
@@ -759,6 +874,10 @@ pub fn query_inline(profile: &Value, sql: &str) -> Result<QueryOutcome, String> 
             let conn = duckdb_open(&parsed)?;
             duckdb_run(&conn, sql)
         }
+        "sqlserver" => {
+            let mut client = mssql_connect(&parsed)?;
+            runtime().block_on(mssql_run(&mut client, sql))
+        }
         other => {
             let label = engine_label(other).unwrap_or(other);
             Err(format!("数据库引擎未接入：{other}（{label}）"))
@@ -788,6 +907,9 @@ pub fn query_session(session_id: &str, sql: &str) -> Result<QueryOutcome, String
             Some(EngineConnection::DuckDb(conn)) => {
                 EngineConnection::DuckDb(std::sync::Arc::clone(conn))
             }
+            Some(EngineConnection::SqlServer(conn)) => {
+                EngineConnection::SqlServer(std::sync::Arc::clone(conn))
+            }
             None => return Err("会话没有活动连接。".to_string()),
         }
     };
@@ -801,6 +923,10 @@ pub fn query_session(session_id: &str, sql: &str) -> Result<QueryOutcome, String
         EngineConnection::DuckDb(conn) => {
             let guard = conn.lock().expect("duckdb session lock");
             duckdb_run(&guard, sql)
+        }
+        EngineConnection::SqlServer(conn) => {
+            let mut guard = runtime().block_on(async { conn.lock().await });
+            runtime().block_on(mssql_run(&mut guard, sql))
         }
     }
 }
@@ -831,6 +957,10 @@ pub fn connect(profile: &Value) -> Result<String, String> {
         "duckdb" => {
             let conn = duckdb_open(&parsed)?;
             EngineConnection::DuckDb(std::sync::Arc::new(std::sync::Mutex::new(conn)))
+        }
+        "sqlserver" => {
+            let client = mssql_connect(&parsed)?;
+            EngineConnection::SqlServer(std::sync::Arc::new(tokio::sync::Mutex::new(client)))
         }
         other => return Err(format!("数据库引擎未接入：{other}")),
     };
@@ -863,6 +993,12 @@ pub fn connect(profile: &Value) -> Result<String, String> {
             guard
                 .query_row("SELECT 1", [], |_| Ok(()))
                 .map_err(|e| format!("DuckDB 连接失败：{e}"))?;
+        }
+        EngineConnection::SqlServer(client) => {
+            let mut guard = runtime().block_on(async { client.lock().await });
+            runtime()
+                .block_on(guard.query("SELECT 1", &[]))
+                .map_err(|e| format!("SQL Server 连接失败：{e}"))?;
         }
     }
     let id = new_id("db");
@@ -920,16 +1056,18 @@ mod tests {
         assert!(is_known_engine("iotdb"));
         assert!(!is_known_engine("nosql-unknown"));
         assert_eq!(engine_label("mysql"), Some("MySQL"));
-        // T019-T022 wire MySQL/PostgreSQL/SQLite/DuckDB; others stay unwired.
+        // T019-T023 wire MySQL/PostgreSQL/SQLite/DuckDB/SQL Server; others stay unwired.
         assert!(engine_available("mysql"));
         assert!(engine_available("postgresql"));
         assert!(engine_available("sqlite"));
         assert!(engine_available("duckdb"));
+        assert!(engine_available("sqlserver"));
         assert!(DB_ENGINES.iter().all(|(key, _)| {
             *key == "mysql"
                 || *key == "postgresql"
                 || *key == "sqlite"
                 || *key == "duckdb"
+                || *key == "sqlserver"
                 || !engine_available(key)
         }));
         assert_eq!(engine_list().len(), 15);
@@ -1093,9 +1231,19 @@ mod tests {
     }
 
     #[test]
+    fn sqlserver_refused_endpoints_are_graceful() {
+        let profile = json!({ "engine": "sqlserver", "host": "127.0.0.1", "port": 1, "username": "sa", "password": "x", "connect_timeout_ms": 800 });
+        let connect_err = connect(&profile).expect_err("refused");
+        assert!(connect_err.contains("失败"), "got {connect_err:?}");
+
+        let query_err = query_inline(&profile, "SELECT 1").expect_err("refused");
+        assert!(query_err.contains("失败"), "got {query_err:?}");
+    }
+
+    #[test]
     fn unwired_engine_connect_is_honest() {
-        let err = connect(&json!({ "engine": "sqlserver", "host": "127.0.0.1", "username": "sa", "password": "x" }))
-            .expect_err("sqlserver not wired");
+        let err = connect(&json!({ "engine": "oracle", "host": "127.0.0.1", "username": "system", "password": "x" }))
+            .expect_err("oracle not wired");
         assert!(err.contains("未接入"), "got {err:?}");
         assert!(!close_session("db-missing"));
         assert!(active_db_session_ids().is_empty());
