@@ -54,6 +54,7 @@ fn wired_engines() -> &'static [&'static str] {
         "gbase",
         "oceanbase",
         "opengauss",
+        "iotdb",
     ]
 }
 
@@ -249,7 +250,7 @@ fn default_port(engine: &str) -> u64 {
         "sqlserver" | "dm" => 1433,
         "oracle" => 1521,
         "clickhouse" => 8123,
-        "iotdb" => 6667,
+        "iotdb" => 18080,
         "redis" => 6379,
         "mongodb" => 27017,
         _ => 0,
@@ -328,6 +329,8 @@ enum EngineConnection {
     /// ODBC connection string for extension engines that go through a
     /// system ODBC driver (达梦 DM, later GBase).
     Odbc(String),
+    /// IoTDB HTTP REST endpoint (base URL); stateless like ClickHouse.
+    IotDb(String),
 }
 
 /// A live database session. `connection` holds the engine handle for wired
@@ -639,6 +642,71 @@ fn odbc_query(parsed: &DbProfile, sql: &str) -> Result<QueryOutcome, String> {
             })
         }
     }
+}
+
+/// Runs a statement against Apache IoTDB through its HTTP REST API (login for
+/// a token, then POST /query). Without a server the request fails gracefully.
+fn iotdb_query(parsed: &DbProfile, sql: &str) -> Result<QueryOutcome, String> {
+    if sql.trim().is_empty() {
+        return Err("SQL 为空。".to_string());
+    }
+    let base = format!("http://{}:{}", parsed.host, parsed.port);
+    let login_response = ureq::post(&format!("{base}/login"))
+        .timeout(Duration::from_millis(parsed.connect_timeout_ms.max(1000)))
+        .set("Content-Type", "application/json")
+        .send_string(
+            &serde_json::json!({
+                "username": parsed.username,
+                "password": parsed.password.as_deref().unwrap_or(""),
+            })
+            .to_string(),
+        )
+        .map_err(|e| format!("IoTDB 登录失败：{e}"))?;
+    let login_text = login_response
+        .into_string()
+        .map_err(|e| format!("IoTDB 登录响应读取失败：{e}"))?;
+    let login_body: Value =
+        serde_json::from_str(&login_text).map_err(|e| format!("IoTDB 登录响应解析失败：{e}"))?;
+    let token = login_body
+        .get("token")
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    let response = ureq::post(&format!("{base}/query"))
+        .set("Authorization", token)
+        .timeout(Duration::from_millis(parsed.connect_timeout_ms.max(1000)))
+        .set("Content-Type", "application/json")
+        .send_string(&serde_json::json!({ "sql": sql }).to_string())
+        .map_err(|e| format!("IoTDB 查询失败：{e}"))?;
+    let response_text = response
+        .into_string()
+        .map_err(|e| format!("IoTDB 查询响应读取失败：{e}"))?;
+    let body: Value =
+        serde_json::from_str(&response_text).map_err(|e| format!("IoTDB 查询响应解析失败：{e}"))?;
+    let columns: Vec<String> = body
+        .get("columns")
+        .and_then(Value::as_array)
+        .map(|array| {
+            array
+                .iter()
+                .filter_map(|v| v.as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default();
+    let values: Vec<Vec<Value>> = body
+        .get("values")
+        .and_then(Value::as_array)
+        .map(|array| {
+            array
+                .iter()
+                .filter_map(|row| row.as_array().cloned())
+                .collect()
+        })
+        .unwrap_or_default();
+    Ok(QueryOutcome {
+        columns,
+        rows: values,
+        affected_rows: 0,
+    })
 }
 
 /// Builds the ClickHouse HTTP base URL and runs a statement over HTTP.
@@ -1185,6 +1253,7 @@ pub fn query_inline(profile: &Value, sql: &str) -> Result<QueryOutcome, String> 
         }
         "clickhouse" => clickhouse_query(&parsed, sql),
         "dm" | "gbase" => odbc_query(&parsed, sql),
+        "iotdb" => iotdb_query(&parsed, sql),
         other => {
             let label = engine_label(other).unwrap_or(other);
             Err(format!("数据库引擎未接入：{other}（{label}）"))
@@ -1222,6 +1291,7 @@ pub fn query_session(session_id: &str, sql: &str) -> Result<QueryOutcome, String
             }
             Some(EngineConnection::ClickHouse(base)) => EngineConnection::ClickHouse(base.clone()),
             Some(EngineConnection::Odbc(conn_str)) => EngineConnection::Odbc(conn_str.clone()),
+            Some(EngineConnection::IotDb(base)) => EngineConnection::IotDb(base.clone()),
             None => return Err("会话没有活动连接。".to_string()),
         }
     };
@@ -1268,6 +1338,18 @@ pub fn query_session(session_id: &str, sql: &str) -> Result<QueryOutcome, String
             let parsed = DbProfile::parse(&profile)?;
             odbc_query(&parsed, sql)
         }
+        EngineConnection::IotDb(_) => {
+            let profile = {
+                let guard = sessions_map().lock().expect("db sessions lock");
+                guard
+                    .as_ref()
+                    .and_then(|m| m.get(session_id))
+                    .map(|s| s.profile.clone())
+                    .ok_or_else(|| "数据库会话不存在。".to_string())?
+            };
+            let parsed = DbProfile::parse(&profile)?;
+            iotdb_query(&parsed, sql)
+        }
     }
 }
 
@@ -1313,6 +1395,7 @@ pub fn connect(profile: &Value) -> Result<String, String> {
             EngineConnection::ClickHouse(format!("{scheme}://{}:{}", parsed.host, parsed.port))
         }
         "dm" | "gbase" => EngineConnection::Odbc(odbc_conn_string(&parsed.engine, &parsed)),
+        "iotdb" => EngineConnection::IotDb(format!("http://{}:{}", parsed.host, parsed.port)),
         other => return Err(format!("数据库引擎未接入：{other}")),
     };
     // Real handshake verification for both engines.
@@ -1362,6 +1445,9 @@ pub fn connect(profile: &Value) -> Result<String, String> {
         }
         EngineConnection::Odbc(_) => {
             odbc_query(&parsed, "SELECT 1").map_err(|e| format!("ODBC 连接失败：{e}"))?;
+        }
+        EngineConnection::IotDb(_) => {
+            iotdb_query(&parsed, "SHOW VERSION").map_err(|e| format!("IoTDB 连接失败：{e}"))?;
         }
     }
     let id = new_id("db");
@@ -1432,6 +1518,7 @@ mod tests {
         assert!(engine_available("gbase"));
         assert!(engine_available("oceanbase"));
         assert!(engine_available("opengauss"));
+        assert!(engine_available("iotdb"));
         assert!(DB_ENGINES.iter().all(|(key, _)| {
             *key == "mysql"
                 || *key == "postgresql"
@@ -1445,6 +1532,7 @@ mod tests {
                 || *key == "gbase"
                 || *key == "oceanbase"
                 || *key == "opengauss"
+                || *key == "iotdb"
                 || !engine_available(key)
         }));
         assert_eq!(engine_list().len(), 15);
@@ -1717,11 +1805,21 @@ mod tests {
     }
 
     #[test]
+    fn iotdb_refused_endpoints_are_graceful() {
+        let profile = json!({ "engine": "iotdb", "host": "127.0.0.1", "port": 1, "username": "root", "password": "x", "connect_timeout_ms": 800 });
+        let connect_err = connect(&profile).expect_err("refused");
+        assert!(connect_err.contains("失败"), "got {connect_err:?}");
+
+        let query_err = query_inline(&profile, "SHOW VERSION").expect_err("refused");
+        assert!(query_err.contains("失败"), "got {query_err:?}");
+    }
+
+    #[test]
     fn unwired_engine_connect_is_honest() {
         let err = connect(
-            &json!({ "engine": "iotdb", "host": "127.0.0.1", "username": "root", "password": "x" }),
+            &json!({ "engine": "redis", "host": "127.0.0.1", "username": "default", "password": "x" }),
         )
-        .expect_err("iotdb not wired");
+        .expect_err("redis not wired");
         assert!(err.contains("未接入"), "got {err:?}");
         assert!(!close_session("db-missing"));
         assert!(active_db_session_ids().is_empty());

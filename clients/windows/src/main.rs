@@ -16,6 +16,8 @@
 //!   cargo run -p clients-windows             # open the native GUI window
 //!   cargo run -p clients-windows -- --check  # headless self-test (CI-safe)
 
+#![recursion_limit = "256"]
+
 use abi_c::{BatchItem, EventBatch, EVENT_BATCH_VERSION};
 use clients_windows::ai_assistant;
 use clients_windows::db;
@@ -270,6 +272,9 @@ fn db_check() {
     let opengauss_available = engines
         .iter()
         .any(|e| e["engine"] == "opengauss" && e["available"] == serde_json::Value::Bool(true));
+    let iotdb_available = engines
+        .iter()
+        .any(|e| e["engine"] == "iotdb" && e["available"] == serde_json::Value::Bool(true));
     let other_engines_unavailable = engines.iter().all(|e| {
         e["engine"] == "mysql"
             || e["engine"] == "postgresql"
@@ -283,6 +288,7 @@ fn db_check() {
             || e["engine"] == "gbase"
             || e["engine"] == "oceanbase"
             || e["engine"] == "opengauss"
+            || e["engine"] == "iotdb"
             || e["available"] == serde_json::Value::Bool(false)
     });
     let tcp = db::test_connection(&serde_json::json!({
@@ -420,6 +426,18 @@ fn db_check() {
     let opengauss_query_err = db::query_inline(&opengauss_profile, "SELECT 1")
         .err()
         .unwrap_or_default();
+    let iotdb_profile = serde_json::json!({
+        "engine": "iotdb",
+        "host": "127.0.0.1",
+        "port": 1,
+        "username": "root",
+        "password": "x",
+        "connect_timeout_ms": 800,
+    });
+    let iotdb_connect_err = db::connect(&iotdb_profile).err().unwrap_or_default();
+    let iotdb_query_err = db::query_inline(&iotdb_profile, "SHOW VERSION")
+        .err()
+        .unwrap_or_default();
     // SQLite round-trip through the real engine (create/insert/select).
     let sqlite_path =
         std::env::temp_dir().join(format!("onehub-db-check-sqlite-{}.db", std::process::id()));
@@ -523,6 +541,7 @@ fn db_check() {
         "gbase_available": gbase_available,
         "oceanbase_available": oceanbase_available,
         "opengauss_available": opengauss_available,
+        "iotdb_available": iotdb_available,
         "other_engines_unavailable": other_engines_unavailable,
         "tcp_refused_graceful": tcp["reachable"] == serde_json::Value::Bool(false),
         "sqlite_missing_reported": sqlite_missing["reachable"] == serde_json::Value::Bool(false),
@@ -549,6 +568,8 @@ fn db_check() {
         "oceanbase_query_refused_graceful": oceanbase_query_err.contains("失败"),
         "opengauss_connect_refused_graceful": opengauss_connect_err.contains("失败"),
         "opengauss_query_refused_graceful": opengauss_query_err.contains("失败"),
+        "iotdb_connect_refused_graceful": iotdb_connect_err.contains("失败"),
+        "iotdb_query_refused_graceful": iotdb_query_err.contains("失败"),
         "db_connection_save_list_delete_ok": db_listed >= 1 && deleted,
     });
     println!("{}", serde_json::to_string(&result).expect("json"));
