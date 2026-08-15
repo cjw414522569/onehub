@@ -90,11 +90,17 @@ pub(crate) unsafe fn navigate(webview: &ICoreWebView2, url: &str) -> windows::co
 /// host via chrome.webview.postMessage (mirrors ui/src/bridge/shim.ts).
 pub(crate) const SHIM_JS: &str = r#"(function () {
   if (window.__TAURI_INTERNALS__) return;
+  window.__probeErrors = [];
+  window.addEventListener('error', function (e) { window.__probeErrors.push(String(e.error || e.message)); });
+  window.addEventListener('unhandledrejection', function (e) { window.__probeErrors.push('REJ:' + String(e.reason)); });
   var _req = 0;
   var _pending = {};
   function _post(m) { if (window.chrome && window.chrome.webview) { window.chrome.webview.postMessage(m); } }
   window.__TAURI_INTERNALS__ = {
+    metadata: { currentWindow: { label: 'main' }, currentWebview: { label: 'main' } },
     transformCallback: function (cb) { return (window.__TAURI_INTERNALS__._cb = (window.__TAURI_INTERNALS__._cb || 0) + 1); },
+    unregisterCallback: function (id) {},
+    convertFileSrc: function (filePath) { return filePath; },
     postMessage: _post,
     invoke: function (cmd, payload, opts) {
       _req += 1; var id = _req;
@@ -103,6 +109,9 @@ pub(crate) const SHIM_JS: &str = r#"(function () {
         _post({ kind: 'invoke', requestId: id, cmd: cmd, payload: payload || {} });
       });
     }
+  };
+  window.__TAURI_EVENT_PLUGIN_INTERNALS__ = {
+    unregisterListener: function (event, eventId) { return window.__TAURI_INTERNALS__.invoke('plugin:event|unlisten', { event: event, eventId: eventId }); }
   };
   if (window.chrome && window.chrome.webview && window.chrome.webview.addEventListener) {
     window.chrome.webview.addEventListener('message', function (e) {

@@ -16,8 +16,14 @@ interface SshBridgeWindow extends Window {
     };
   };
   __TAURI_INTERNALS__?: {
+    metadata?: {
+      currentWindow: { label: string };
+      currentWebview: { label: string };
+    };
     invoke(cmd: string, payload?: unknown, options?: unknown): Promise<unknown>;
     transformCallback(callback?: (response: unknown) => void, once?: boolean): number;
+    unregisterCallback(id: number): void;
+    convertFileSrc(filePath: string, protocol?: string): string;
     postMessage(message: unknown): void;
   };
 }
@@ -40,10 +46,18 @@ function install(): void {
   if (globalWindow.__TAURI_INTERNALS__) return;
 
   globalWindow.__TAURI_INTERNALS__ = {
+    metadata: {
+      currentWindow: { label: "main" },
+      currentWebview: { label: "main" },
+    },
     transformCallback(callback, _once) {
       const id = ++callbackCounter;
       if (callback) callbacks.set(id, callback);
       return id;
+    },
+    unregisterCallback(_id: number) {},
+    convertFileSrc(filePath: string) {
+      return filePath;
     },
     postMessage(message) {
       postToHost(message);
@@ -67,6 +81,17 @@ function install(): void {
 }
 
 install();
+
+// Event plugin internals required by @tauri-apps/api/event unlisten.
+(globalWindow as SshBridgeWindow & {
+  __TAURI_EVENT_PLUGIN_INTERNALS__?: {
+    unregisterListener(event: string, eventId: number): Promise<unknown>;
+  };
+}).__TAURI_EVENT_PLUGIN_INTERNALS__ = {
+  unregisterListener(event, eventId) {
+    return globalWindow.__TAURI_INTERNALS__!.invoke("plugin:event|unlisten", { event, eventId });
+  },
+};
 
 // Route host replies back to pending invoke promises.
 globalWindow.chrome?.webview?.addEventListener?.("message", (event: WebViewMessageEvent) => {

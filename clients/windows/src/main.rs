@@ -530,7 +530,7 @@ fn on_web_message(hwnd: HWND, message: &str) -> Option<String> {
 /// and an invoke round-trip through chrome.webview postMessage works.
 unsafe fn bridge_check(webview: &webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2) {
     std::thread::sleep(std::time::Duration::from_millis(1200));
-    let probe = "window.__bridgeProbe='pending'; function tryInvoke(){ if(window.__TAURI_INTERNALS__){ window.__TAURI_INTERNALS__.invoke('get_status',{}).then(function(r){window.__bridgeProbe=(r&&r.ok)?'PASS':'FAIL';},function(){window.__bridgeProbe='ERR';}); } else { setTimeout(tryInvoke, 200); } } tryInvoke();";
+    let probe = "window.__bridgeProbe='pending'; function tryInvoke(){ if(window.__TAURI_INTERNALS__){ window.__TAURI_INTERNALS__.invoke('connection_list',{}).then(function(r){window.__bridgeProbe=Array.isArray(r)?'PASS':'FAIL';},function(){window.__bridgeProbe='ERR';}); } else { setTimeout(tryInvoke, 200); } } tryInvoke();";
     if webview2::execute_script(webview, probe).is_err() {
         eprintln!("[bridge-check] probe injection failed");
         std::process::exit(1);
@@ -545,6 +545,12 @@ unsafe fn bridge_check(webview: &webview2_com::Microsoft::Web::WebView2::Win32::
             }
             println!("[bridge-check] result={value}");
             if value == "PASS" {
+                if let Ok(state) = webview2::execute_script(
+                    webview,
+                    "JSON.stringify({root:(document.getElementById('root')||{children:[]}).children.length,errors:window.__probeErrors||[]})",
+                ) {
+                    println!("[bridge-check] render={state}");
+                }
                 println!(
                     "[bridge-check] PASS: shim injected and webmessage invoke round-trip works"
                 );
