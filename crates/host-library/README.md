@@ -31,3 +31,15 @@
   configuration can be reviewed before saving.
 - `accessibility()` - every field is labeled, focus order is stable, and
   every error message is non-empty (screen-reader friendly).
+
+## T104: first-connection host fingerprint review
+
+`crates/host-library/src/fingerprint.rs`:
+
+- `HostKeyFingerprint` - deterministic SHA-256 fingerprint of raw key bytes
+  (sha2), colon-grouped display, key algorithm, and source.
+- `FingerprintReview` - classifies a presented fingerprint against a known
+  one: new host (medium risk), matching known (algorithm risk), changed key
+  (high risk with a change notice). Approve / reject drive the review state.
+- `ReviewView` - the UI shows algorithm, SHA-256 fingerprint, source, risk,
+  and an explicit change notice for a key change.

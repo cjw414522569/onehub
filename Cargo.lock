@@ -489,6 +489,7 @@ name = "host-library"
 version = "0.1.0"
 dependencies = [
  "core-domain",
+ "sha2",
 ]
 
 [[package]]
