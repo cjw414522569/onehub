@@ -6,12 +6,14 @@ import {
   dbConnectionSave,
   dbConnectionTest,
   dbEngineList,
+  dbObjectList,
   dbQuery,
 } from "../../shared/tauri/commands";
 import type {
   DbConnectionInput,
   DbConnectionProfile,
   DbEngineInfo,
+  DbObjectInfo,
   DbQueryResult,
   DbTestResult,
 } from "./dbTypes";
@@ -78,6 +80,8 @@ export function DatabasePanel({ open, onClose }: DatabasePanelProps) {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [sql, setSql] = useState("");
   const [queryResult, setQueryResult] = useState<DbQueryResult | null>(null);
+  const [objects, setObjects] = useState<DbObjectInfo[]>([]);
+  const [objectsLoaded, setObjectsLoaded] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -170,6 +174,25 @@ export function DatabasePanel({ open, onClose }: DatabasePanelProps) {
       });
       setQueryResult(result);
       setMessage(result.affected_rows > 0 ? `执行完成，影响行数：${result.affected_rows}` : `查询完成，返回 ${result.rows.length} 行`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const loadObjects = async () => {
+    if (!sessionId) {
+      setMessage("请先连接数据库。");
+      return;
+    }
+    setBusy(true);
+    setMessage(null);
+    try {
+      const result = await dbObjectList(sessionId);
+      setObjects(result);
+      setObjectsLoaded(true);
+      setMessage(`已加载 ${result.length} 个对象。`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error));
     } finally {
@@ -359,6 +382,37 @@ export function DatabasePanel({ open, onClose }: DatabasePanelProps) {
             </div>
           </section>
         </div>
+
+        <section style={{ marginTop: 14 }}>
+          <h3 style={{ margin: "0 0 8px", fontSize: 13 }}>对象浏览器{sessionId ? "（已连接）" : ""}</h3>
+          <button type="button" onClick={() => void loadObjects()} disabled={busy || !sessionId}>
+            加载对象
+          </button>
+          {objectsLoaded ? (
+            <div style={{ marginTop: 8, maxHeight: 160, overflow: "auto", border: "1px solid #d1d5db", borderRadius: 4, padding: 6 }}>
+              {objects.length === 0 ? (
+                <p style={{ margin: 0, color: "#6b7280" }}>未发现对象。</p>
+              ) : (
+                ["table", "view", "index", "procedure"].map((kind) => {
+                  const group = objects.filter((obj) => obj.kind === kind || (kind === "table" && obj.kind === "BASE TABLE"));
+                  if (group.length === 0) {
+                    return null;
+                  }
+                  return (
+                    <div key={kind} style={{ marginBottom: 4 }}>
+                      <strong style={{ fontSize: 12 }}>{kind.toUpperCase()}（{group.length}）</strong>
+                      <ul style={{ listStyle: "none", margin: "2px 0 0", paddingLeft: 12, fontSize: 12 }}>
+                        {group.map((obj) => (
+                          <li key={obj.name}>{obj.name}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          ) : null}
+        </section>
 
         <section style={{ marginTop: 14 }}>
           <h3 style={{ margin: "0 0 8px", fontSize: 13 }}>SQL 查询{sessionId ? "（已连接）" : "（未连接，使用表单内联连接）"}</h3>

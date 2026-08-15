@@ -1494,6 +1494,59 @@ pub fn is_db_protocol(protocol: &str) -> bool {
     DB_ENGINES.iter().any(|(key, _)| *key == protocol)
 }
 
+/// Returns the catalog SQL used by the cross-engine object browser. ODBC
+/// engines (dm/gbase) reuse the Oracle/Informix-style catalogs; empty means
+/// the engine has no catalog query (handled by the caller).
+pub fn object_catalog_sql(engine: &str) -> &'static str {
+    match engine {
+        "mysql" | "oceanbase" => "SELECT table_name AS name, CASE WHEN table_type='VIEW' THEN 'view' ELSE 'table' END AS kind FROM information_schema.tables WHERE table_schema = DATABASE() UNION ALL SELECT DISTINCT index_name, 'index' FROM information_schema.statistics WHERE table_schema = DATABASE()",
+        "postgresql" | "kingbase" | "opengauss" => "SELECT tablename AS name, 'table' AS kind FROM pg_tables WHERE schemaname NOT IN ('pg_catalog','information_schema') UNION ALL SELECT viewname, 'view' FROM pg_views WHERE schemaname NOT IN ('pg_catalog','information_schema') UNION ALL SELECT indexname, 'index' FROM pg_indexes WHERE schemaname NOT IN ('pg_catalog','information_schema')",
+        "sqlite" => "SELECT name, type AS kind FROM sqlite_master WHERE type IN ('table','view','index') AND name NOT LIKE 'sqlite_%'",
+        "duckdb" => "SELECT table_name AS name, CASE WHEN table_type='VIEW' THEN 'view' ELSE 'table' END AS kind FROM information_schema.tables WHERE table_schema NOT IN ('information_schema','pg_catalog','temp')",
+        "sqlserver" => "SELECT TABLE_NAME AS name, CASE WHEN TABLE_TYPE='VIEW' THEN 'view' ELSE 'table' END AS kind FROM INFORMATION_SCHEMA.TABLES UNION ALL SELECT name, 'index' FROM sys.indexes WHERE type > 0 AND name IS NOT NULL UNION ALL SELECT name, 'procedure' FROM sys.procedures",
+        "oracle" | "dm" => "SELECT table_name AS name, 'table' AS kind FROM all_tables UNION ALL SELECT view_name, 'view' FROM all_views UNION ALL SELECT object_name, 'index' FROM all_objects WHERE object_type='INDEX' UNION ALL SELECT object_name, 'procedure' FROM all_procedures",
+        "gbase" => "SELECT tabname AS name, 'table' AS kind FROM systables WHERE tabid > 99",
+        "clickhouse" => "SELECT name, CASE WHEN engine='View' THEN 'view' ELSE 'table' END AS kind FROM system.tables WHERE database = currentDatabase()",
+        "iotdb" => "SHOW TIMESERIES",
+        _ => "",
+    }
+}
+
+/// Lists database objects (tables/views/indexes/procedures) for a session.
+pub fn list_objects(session_id: &str, kind_filter: Option<&str>) -> Result<Vec<Value>, String> {
+    let engine = {
+        let guard = sessions_map().lock().expect("db sessions lock");
+        guard
+            .as_ref()
+            .and_then(|m| m.get(session_id))
+            .map(|s| s.engine.clone())
+            .ok_or_else(|| "数据库会话不存在。".to_string())?
+    };
+    let sql = object_catalog_sql(&engine);
+    if sql.is_empty() {
+        return Ok(Vec::new());
+    }
+    let outcome = query_session(session_id, sql)?;
+    let mut objects = Vec::new();
+    for row in outcome.rows {
+        let name = row
+            .first()
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        let kind = row
+            .get(1)
+            .and_then(Value::as_str)
+            .unwrap_or("table")
+            .to_string();
+        if kind_filter.map(|filter| kind != filter).unwrap_or(false) {
+            continue;
+        }
+        objects.push(json!({ "name": name, "kind": kind }));
+    }
+    Ok(objects)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1812,6 +1865,74 @@ mod tests {
 
         let query_err = query_inline(&profile, "SHOW VERSION").expect_err("refused");
         assert!(query_err.contains("失败"), "got {query_err:?}");
+    }
+
+    #[test]
+    fn object_catalog_sql_is_engine_specific() {
+        assert!(object_catalog_sql("mysql").contains("information_schema.tables"));
+        assert!(object_catalog_sql("postgresql").contains("pg_tables"));
+        assert!(object_catalog_sql("sqlite").contains("sqlite_master"));
+        assert!(object_catalog_sql("duckdb").contains("information_schema.tables"));
+        assert!(object_catalog_sql("oracle").contains("all_tables"));
+        assert!(object_catalog_sql("clickhouse").contains("system.tables"));
+        assert!(object_catalog_sql("iotdb").contains("SHOW TIMESERIES"));
+        assert!(object_catalog_sql("redis").is_empty());
+    }
+
+    #[test]
+    fn sqlite_object_list_is_real() {
+        let dir =
+            std::env::temp_dir().join(format!("onehub-sqlite-obj-{}.sqlite", std::process::id()));
+        let _ = std::fs::remove_file(&dir);
+        let profile = json!({ "engine": "sqlite", "database": dir.to_string_lossy() });
+        let session = connect(&profile).expect("connect");
+        let _ = query_session(
+            &session,
+            "CREATE TABLE demo (id INTEGER PRIMARY KEY, name TEXT)",
+        );
+        let _ = query_session(&session, "CREATE VIEW demo_view AS SELECT id FROM demo");
+        let _ = query_session(&session, "CREATE INDEX demo_idx ON demo(name)");
+        let objects = list_objects(&session, None).expect("list");
+        let names: Vec<String> = objects
+            .iter()
+            .filter_map(|o| o["name"].as_str().map(str::to_string))
+            .collect();
+        assert!(names.contains(&"demo".to_string()), "got {names:?}");
+        assert!(names.contains(&"demo_view".to_string()), "got {names:?}");
+        assert!(names.contains(&"demo_idx".to_string()), "got {names:?}");
+        let tables = list_objects(&session, Some("table")).expect("filtered");
+        assert_eq!(tables.len(), 1);
+        assert_eq!(tables[0]["name"], "demo");
+        let _ = close_session(&session);
+        let _ = std::fs::remove_file(&dir);
+    }
+
+    #[test]
+    fn duckdb_object_list_is_real() {
+        let dir = std::env::temp_dir().join(format!("onehub-duckdb-obj-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&dir);
+        let profile = json!({ "engine": "duckdb", "database": dir.to_string_lossy() });
+        let session = connect(&profile).expect("connect");
+        let _ = query_session(&session, "CREATE TABLE demo (id INTEGER, name VARCHAR)");
+        let objects = list_objects(&session, None).expect("list");
+        let names: Vec<String> = objects
+            .iter()
+            .filter_map(|o| o["name"].as_str().map(str::to_string))
+            .collect();
+        assert!(names.contains(&"demo".to_string()), "got {names:?}");
+        let _ = close_session(&session);
+        let _ = std::fs::remove_file(&dir);
+    }
+
+    #[test]
+    fn object_list_refused_session_is_graceful() {
+        let profile = json!({ "engine": "postgresql", "host": "127.0.0.1", "port": 1, "username": "u", "password": "x", "connect_timeout_ms": 800 });
+        let session = connect(&profile);
+        if let Ok(session_id) = session {
+            let err = list_objects(&session_id, None).expect_err("refused");
+            assert!(err.contains("失败"), "got {err:?}");
+            let _ = close_session(&session_id);
+        }
     }
 
     #[test]

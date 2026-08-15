@@ -64,6 +64,11 @@ export interface DbQueryRequest {
   database?: string;
 }
 
+export interface DbObjectInfo {
+  name: string;
+  kind: string;
+}
+
 export interface DbQueryResult {
   columns: string[];
   rows: unknown[][];
