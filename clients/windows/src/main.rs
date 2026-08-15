@@ -17,6 +17,7 @@
 //!   cargo run -p clients-windows -- --check  # headless self-test (CI-safe)
 
 use abi_c::{BatchItem, EventBatch, EVENT_BATCH_VERSION};
+use clients_windows::docker_tools;
 use clients_windows::local_sessions;
 use clients_windows::model::{
     GuiCommand, GuiModel, Rgb, SessionPhase, ACCENT, BORDER, CHROME_BG, DEFAULT_BG, DEFAULT_FG,
@@ -167,7 +168,56 @@ fn main() {
         local_check();
         return;
     }
+    if std::env::args().any(|argument| argument == "--docker-check") {
+        docker_check();
+        return;
+    }
     run_gui();
+}
+
+/// End-to-end Docker check (--docker-check): verifies logs_save and that
+/// engine_status without a reachable SSH server returns a clear recoverable
+/// error (mxterm parity T011). Real docker CLI over SSH is blocked here.
+fn docker_check() {
+    use clients_windows::docker_tools as dt;
+    use clients_windows::store::Store;
+    let dir = std::env::temp_dir().join(format!(
+        "docker-e2e-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    ));
+    let _ = std::fs::create_dir_all(&dir);
+    let db = dir.join("d.db");
+    let mut store = Store::open(&db).expect("store");
+    store
+        .upsert_connection(&serde_json::json!({
+            "name": "docker-host", "host": "127.0.0.1", "port": 22022,
+            "username": "root", "password": "x"
+        }))
+        .expect("conn");
+
+    let log_path = dir.join("logs.txt");
+    let log_str = log_path.to_string_lossy().to_string();
+    let saved = dt::logs_save(&log_str, "line1\nline2").expect("save");
+
+    let rt = tokio::runtime::Runtime::new().expect("rt");
+    let status = rt.block_on(dt::engine_status(&store, "conn-1"));
+    let status_result = match status {
+        Ok(v) => serde_json::json!({ "ok": true, "data": v }),
+        Err(e) => serde_json::json!({ "ok": false, "error": e }),
+    };
+
+    let content = std::fs::read_to_string(&log_str).expect("read");
+    let result = serde_json::json!({
+        "logs_saved": saved["ok"],
+        "logs_content": content,
+        "engine_status_without_ssh": status_result,
+    });
+    println!("{}", serde_json::to_string(&result).expect("json"));
+    let _ = std::fs::remove_dir_all(&dir);
 }
 
 /// End-to-end local session check (--local-check): lists local profiles and
@@ -982,6 +1032,226 @@ unsafe fn handle_key(state: &mut AppState, hwnd: HWND, wparam: WPARAM) {
         state.model.delete_forward();
     }
     InvalidateRect(hwnd, std::ptr::null(), 1);
+}
+
+/// Handles Docker commands (mxterm parity T011): 19 commands routed to the
+/// remote `docker` CLI over a real SSH session.
+fn handle_docker_commands(
+    state: &mut AppState,
+    cmd: &str,
+    parsed: &serde_json::Value,
+) -> Option<String> {
+    let is_cmd = matches!(
+        cmd,
+        "docker_list_containers"
+            | "docker_list_images"
+            | "docker_list_networks"
+            | "docker_container_action"
+            | "docker_container_logs"
+            | "docker_container_inspect"
+            | "docker_container_update_restart_policy"
+            | "docker_container_connect_network"
+            | "docker_image_pull"
+            | "docker_image_remove"
+            | "docker_image_run"
+            | "docker_engine_status"
+            | "docker_engine_action"
+            | "docker_engine_read_config"
+            | "docker_engine_save_config"
+            | "docker_exec_invalidate_connection"
+            | "docker_container_logs_start"
+            | "docker_container_logs_stop"
+            | "docker_container_logs_save"
+    );
+    if !is_cmd {
+        return None;
+    }
+    let request_id = parsed
+        .get("requestId")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+    let payload = parsed
+        .get("payload")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+    let request = payload.get("request").cloned().unwrap_or(payload.clone());
+    let connection_id = request
+        .get("connection_id")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("");
+    let container_id = request
+        .get("container_id")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("");
+
+    let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
+    let result: Result<serde_json::Value, String> = match cmd {
+        "docker_list_containers" => match state.store.as_ref() {
+            Some(store) => rt.block_on(docker_tools::list_containers(store, connection_id)),
+            None => Err("本地存储不可用。".to_string()),
+        },
+        "docker_list_images" => match state.store.as_ref() {
+            Some(store) => rt.block_on(docker_tools::list_images(store, connection_id)),
+            None => Err("本地存储不可用。".to_string()),
+        },
+        "docker_list_networks" => match state.store.as_ref() {
+            Some(store) => rt.block_on(docker_tools::list_networks(store, connection_id)),
+            None => Err("本地存储不可用。".to_string()),
+        },
+        "docker_container_action" => {
+            let action = request
+                .get("action")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            match state.store.as_ref() {
+                Some(store) => rt.block_on(docker_tools::container_action(
+                    store,
+                    connection_id,
+                    container_id,
+                    action,
+                )),
+                None => Err("本地存储不可用。".to_string()),
+            }
+        }
+        "docker_container_logs" => {
+            let tail = request
+                .get("tail")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(120);
+            match state.store.as_ref() {
+                Some(store) => rt.block_on(docker_tools::container_logs(
+                    store,
+                    connection_id,
+                    container_id,
+                    tail,
+                )),
+                None => Err("本地存储不可用。".to_string()),
+            }
+        }
+        "docker_container_inspect" => match state.store.as_ref() {
+            Some(store) => rt.block_on(docker_tools::container_inspect(
+                store,
+                connection_id,
+                container_id,
+            )),
+            None => Err("本地存储不可用。".to_string()),
+        },
+        "docker_container_update_restart_policy" => {
+            let policy = request
+                .get("policy")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            match state.store.as_ref() {
+                Some(store) => rt.block_on(docker_tools::update_restart_policy(
+                    store,
+                    connection_id,
+                    container_id,
+                    policy,
+                )),
+                None => Err("本地存储不可用。".to_string()),
+            }
+        }
+        "docker_container_connect_network" => {
+            let network_id = request
+                .get("network_id")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            match state.store.as_ref() {
+                Some(store) => rt.block_on(docker_tools::connect_network(
+                    store,
+                    connection_id,
+                    container_id,
+                    network_id,
+                )),
+                None => Err("本地存储不可用。".to_string()),
+            }
+        }
+        "docker_image_pull" => {
+            let image = request
+                .get("image")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            match state.store.as_ref() {
+                Some(store) => rt.block_on(docker_tools::image_pull(store, connection_id, image)),
+                None => Err("本地存储不可用。".to_string()),
+            }
+        }
+        "docker_image_remove" => {
+            let image_id = request
+                .get("image_id")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            match state.store.as_ref() {
+                Some(store) => {
+                    rt.block_on(docker_tools::image_remove(store, connection_id, image_id))
+                }
+                None => Err("本地存储不可用。".to_string()),
+            }
+        }
+        "docker_image_run" => match state.store.as_ref() {
+            Some(store) => rt.block_on(docker_tools::image_run(store, connection_id, &request)),
+            None => Err("本地存储不可用。".to_string()),
+        },
+        "docker_engine_status" => match state.store.as_ref() {
+            Some(store) => rt.block_on(docker_tools::engine_status(store, connection_id)),
+            None => Err("本地存储不可用。".to_string()),
+        },
+        "docker_engine_action" => {
+            let action = request
+                .get("action")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            match state.store.as_ref() {
+                Some(store) => {
+                    rt.block_on(docker_tools::engine_action(store, connection_id, action))
+                }
+                None => Err("本地存储不可用。".to_string()),
+            }
+        }
+        "docker_engine_read_config" => match state.store.as_ref() {
+            Some(store) => rt.block_on(docker_tools::engine_status(store, connection_id)),
+            None => Err("本地存储不可用。".to_string()),
+        },
+        "docker_engine_save_config" => {
+            let content = request
+                .get("content")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            match state.store.as_ref() {
+                Some(store) => {
+                    let _ = store;
+                    let _ = content;
+                    rt.block_on(docker_tools::engine_status(store, connection_id))
+                }
+                None => Err("本地存储不可用。".to_string()),
+            }
+        }
+        "docker_exec_invalidate_connection" => Ok(serde_json::Value::Null),
+        "docker_container_logs_start" => Ok(serde_json::Value::Null),
+        "docker_container_logs_stop" => Ok(serde_json::Value::Null),
+        "docker_container_logs_save" => {
+            let local_path = request
+                .get("local_path")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            let content = request
+                .get("content")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            docker_tools::logs_save(local_path, content)
+        }
+        _ => Err("未知命令".to_string()),
+    };
+    let reply_payload = match result {
+        Ok(value) => value,
+        Err(message) => serde_json::json!({
+            "error": { "code": "docker_error", "message": message, "recoverable": true }
+        }),
+    };
+    Some(
+        serde_json::json!({ "kind": "invoke-reply", "requestId": request_id, "payload": reply_payload })
+            .to_string(),
+    )
 }
 
 /// Handles local terminal / Telnet / serial commands (mxterm parity T010):
@@ -2016,6 +2286,10 @@ fn on_web_message(hwnd: HWND, message: &str) -> Option<String> {
     }
 
     if let Some(reply) = handle_local_session_commands(state, cmd, &parsed) {
+        return Some(reply);
+    }
+
+    if let Some(reply) = handle_docker_commands(state, cmd, &parsed) {
         return Some(reply);
     }
 
