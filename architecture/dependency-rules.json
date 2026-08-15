@@ -414,6 +414,7 @@
         "base64",
         "futures-util",
         "getrandom",
+        "mysql-async",
         "rusqlite",
         "russh",
         "russh-sftp",

@@ -52,3 +52,20 @@ export interface DbTestResult {
 export interface DbConnectResult {
   session_id: string;
 }
+
+export interface DbQueryRequest {
+  session_id?: string;
+  sql: string;
+  engine?: DbEngineKey;
+  host?: string;
+  port?: number;
+  username?: string;
+  password?: string;
+  database?: string;
+}
+
+export interface DbQueryResult {
+  columns: string[];
+  rows: unknown[][];
+  affected_rows: number;
+}

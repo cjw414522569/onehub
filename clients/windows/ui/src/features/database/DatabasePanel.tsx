@@ -6,11 +6,13 @@ import {
   dbConnectionSave,
   dbConnectionTest,
   dbEngineList,
+  dbQuery,
 } from "../../shared/tauri/commands";
 import type {
   DbConnectionInput,
   DbConnectionProfile,
   DbEngineInfo,
+  DbQueryResult,
   DbTestResult,
 } from "./dbTypes";
 
@@ -73,6 +75,9 @@ export function DatabasePanel({ open, onClose }: DatabasePanelProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [sql, setSql] = useState("");
+  const [queryResult, setQueryResult] = useState<DbQueryResult | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -140,7 +145,31 @@ export function DatabasePanel({ open, onClose }: DatabasePanelProps) {
     setMessage(null);
     try {
       const result = await dbConnectionConnect(form);
+      setSessionId(result.session_id);
       setMessage(`连接会话已建立：${result.session_id}`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const runQuery = async () => {
+    setBusy(true);
+    setMessage(null);
+    try {
+      const result: DbQueryResult = await dbQuery({
+        session_id: sessionId || undefined,
+        sql,
+        engine: form.engine,
+        host: form.host,
+        port: form.port,
+        username: form.username,
+        password: form.password,
+        database: form.database,
+      });
+      setQueryResult(result);
+      setMessage(result.affected_rows > 0 ? `执行完成，影响行数：${result.affected_rows}` : `查询完成，返回 ${result.rows.length} 行`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error));
     } finally {
@@ -330,6 +359,47 @@ export function DatabasePanel({ open, onClose }: DatabasePanelProps) {
             </div>
           </section>
         </div>
+
+        <section style={{ marginTop: 14 }}>
+          <h3 style={{ margin: "0 0 8px", fontSize: 13 }}>SQL 查询{sessionId ? "（已连接）" : "（未连接，使用表单内联连接）"}</h3>
+          <textarea
+            aria-label="SQL 查询"
+            value={sql}
+            onChange={(event) => setSql(event.target.value)}
+            placeholder="输入 SQL，例如：SELECT 1"
+            rows={3}
+            style={{ width: "100%", boxSizing: "border-box", fontFamily: "monospace", fontSize: 12 }}
+          />
+          <button type="button" onClick={() => void runQuery()} disabled={busy || !sql.trim()} style={{ marginTop: 6 }}>
+            执行
+          </button>
+          {queryResult ? (
+            <div style={{ marginTop: 8, overflow: "auto", maxHeight: 240 }}>
+              <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 12 }}>
+                <thead>
+                  <tr>
+                    {queryResult.columns.map((column) => (
+                      <th key={column} style={{ border: "1px solid #d1d5db", padding: "4px 8px", textAlign: "left" }}>
+                        {column}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {queryResult.rows.map((row, rowIndex) => (
+                    <tr key={rowIndex}>
+                      {row.map((cell, cellIndex) => (
+                        <td key={cellIndex} style={{ border: "1px solid #d1d5db", padding: "4px 8px" }}>
+                          {cell === null ? "NULL" : String(cell)}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
+        </section>
 
         {message ? (
           <p role="status" style={{ marginTop: 12, padding: 8, background: "#eef2ff", borderRadius: 4 }}>

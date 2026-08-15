@@ -1,21 +1,23 @@
 //! Database workspace framework (navop parity, T018+).
 //!
 //! Provides the database-engine registry, connection-profile parsing, the
-//! `db_connection_*` command surface (routed by main.rs), and a session
-//! registry that later rows (T019+) fill with real engine connections. Until
-//! an engine is wired, `connect` returns a clear recoverable error instead of
-//! faking a session (no capability is faked).
+//! `db_connection_*`/`db_query`/`db_exec` command surface (routed by main.rs),
+//! and live engine sessions. MySQL is wired in T019 (real connection -> query
+//! -> result set); other engines are wired in later rows. Nothing is faked:
+//! unwired engines return a clear recoverable error.
 
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::Mutex;
+use std::sync::OnceLock;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crate::probe;
+use mysql_async::prelude::Queryable;
 
 /// Known database engines `(key, label)`. Extensions (DM/Kingbase/GBase/...)
 /// are listed so the UI picker and profile validation are complete; real
-/// connectivity is wired row by row (T019+).
+/// connectivity is wired row by row.
 pub const DB_ENGINES: &[(&str, &str)] = &[
     ("mysql", "MySQL"),
     ("postgresql", "PostgreSQL"),
@@ -34,10 +36,9 @@ pub const DB_ENGINES: &[(&str, &str)] = &[
     ("mongodb", "MongoDB"),
 ];
 
-/// Engines whose real connection is implemented. Wired by later rows (T019+);
-/// empty in T018 so the framework never reports a faked connection.
+/// Engines whose real connection is implemented (wired by later rows).
 fn wired_engines() -> &'static [&'static str] {
-    &[]
+    &["mysql"]
 }
 
 /// Returns true when the engine key is part of the known catalog.
@@ -53,7 +54,7 @@ pub fn engine_label(engine: &str) -> Option<&'static str> {
         .map(|(_, label)| *label)
 }
 
-/// True when the engine has a real connection implementation (T019+).
+/// True when the engine has a real connection implementation.
 pub fn engine_available(engine: &str) -> bool {
     wired_engines().contains(&engine)
 }
@@ -195,7 +196,7 @@ fn default_port(engine: &str) -> u64 {
 
 /// Tests a DB connection profile: TCP reachability for server engines, local
 /// path availability for file engines (sqlite/duckdb), plus engine wiring
-/// status. Never performs a protocol handshake in T018.
+/// status. Never performs a protocol handshake beyond reachability.
 pub fn test_connection(profile: &Value) -> Value {
     let engine = profile
         .get("engine")
@@ -250,19 +251,25 @@ pub fn test_connection(profile: &Value) -> Value {
     })
 }
 
-/// A live (or reserved) database session. Real engine sessions are created by
-/// later rows once an engine is wired.
+/// A live database session. `pool` holds the engine connection for wired
+/// engines (MySQL in T019); unwired engines never create a session.
 pub struct DbSession {
     pub id: String,
     pub engine: String,
     pub profile: Value,
     pub created_at: String,
+    pub pool: Option<mysql_async::Pool>,
 }
 
 static DB_SESSIONS: Mutex<Option<HashMap<String, DbSession>>> = Mutex::new(None);
 
 fn sessions_map() -> &'static Mutex<Option<HashMap<String, DbSession>>> {
     &DB_SESSIONS
+}
+
+fn runtime() -> &'static tokio::runtime::Runtime {
+    static RUNTIME: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
+    RUNTIME.get_or_init(|| tokio::runtime::Runtime::new().expect("tokio runtime"))
 }
 
 fn new_id(prefix: &str) -> String {
@@ -273,17 +280,167 @@ fn new_id(prefix: &str) -> String {
     format!("{prefix}-{nanos:x}")
 }
 
-/// Opens a database session for a wired engine. In T018 no engine is wired
-/// yet, so this returns a clear recoverable error instead of faking a session.
+/// Builds a MySQL connection pool from a parsed profile.
+fn build_mysql_pool(parsed: &DbProfile) -> Result<mysql_async::Pool, String> {
+    let mut builder = mysql_async::OptsBuilder::default()
+        .ip_or_hostname(parsed.host.clone())
+        .tcp_port(parsed.port)
+        .user(Some(parsed.username.clone()));
+    if let Some(password) = &parsed.password {
+        builder = builder.pass(Some(password.clone()));
+    }
+    if !parsed.database.is_empty() {
+        builder = builder.db_name(Some(parsed.database.clone()));
+    }
+    if parsed.ssl {
+        builder = builder.ssl_opts(Some(mysql_async::SslOpts::default()));
+    }
+    Ok(mysql_async::Pool::new(mysql_async::Opts::from(builder)))
+}
+
+/// Converts a mysql_async value into a JSON value (null/bytes/int/uint/float/
+/// date/time), so results survive serde round-trips.
+fn mysql_value_to_json(value: mysql_async::Value) -> Value {
+    match value {
+        mysql_async::Value::NULL => Value::Null,
+        mysql_async::Value::Bytes(bytes) => match String::from_utf8(bytes) {
+            Ok(text) => Value::String(text),
+            Err(err) => Value::Array(
+                err.into_bytes()
+                    .into_iter()
+                    .map(|byte| serde_json::json!(byte))
+                    .collect(),
+            ),
+        },
+        mysql_async::Value::Int(i) => serde_json::json!(i),
+        mysql_async::Value::UInt(u) => serde_json::json!(u),
+        mysql_async::Value::Float(f) => serde_json::Number::from_f64(f as f64)
+            .map(Value::Number)
+            .unwrap_or(Value::Null),
+        mysql_async::Value::Date(year, month, day, hour, minute, second, micros) => Value::String(
+            format!("{year:04}-{month:02}-{day:02} {hour:02}:{minute:02}:{second:02}.{micros:06}"),
+        ),
+        mysql_async::Value::Time(is_neg, days, hours, minutes, seconds, micros) => {
+            let sign = if is_neg { "-" } else { "" };
+            Value::String(format!(
+                "{sign}{days} {hours:02}:{minutes:02}:{seconds:02}.{micros:06}"
+            ))
+        }
+        _ => Value::Null,
+    }
+}
+
+/// Outcome of a MySQL statement: columns, row values, and affected rows.
+#[derive(Debug)]
+pub struct QueryOutcome {
+    pub columns: Vec<String>,
+    pub rows: Vec<Vec<Value>>,
+    pub affected_rows: u64,
+}
+
+/// Runs a statement against a MySQL pool: SELECT yields columns+rows, DML
+/// yields affected_rows. Uses query_iter so both shapes come from one path.
+async fn mysql_run(pool: &mysql_async::Pool, sql: &str) -> Result<QueryOutcome, String> {
+    let mut conn = pool
+        .get_conn()
+        .await
+        .map_err(|e| format!("获取连接失败：{e}"))?;
+    let mut result = conn
+        .query_iter(sql)
+        .await
+        .map_err(|e| format!("SQL 执行失败：{e}"))?;
+    let columns: Vec<String> = result
+        .columns()
+        .map(|cols| {
+            cols.iter()
+                .map(|column| column.name_str().to_string())
+                .collect()
+        })
+        .unwrap_or_default();
+    let mut rows = Vec::new();
+    while let Some(row) = result
+        .next()
+        .await
+        .map_err(|e| format!("读取结果失败：{e}"))?
+    {
+        let mut values = Vec::new();
+        for index in 0..columns.len() {
+            let value = row
+                .get::<mysql_async::Value, usize>(index)
+                .unwrap_or(mysql_async::Value::NULL);
+            values.push(mysql_value_to_json(value));
+        }
+        rows.push(values);
+    }
+    let affected_rows = result.affected_rows();
+    Ok(QueryOutcome {
+        columns,
+        rows,
+        affected_rows,
+    })
+}
+
+/// Runs a statement with an inline profile (per-call connection).
+pub fn query_inline(profile: &Value, sql: &str) -> Result<QueryOutcome, String> {
+    if sql.trim().is_empty() {
+        return Err("SQL 为空。".to_string());
+    }
+    let parsed = DbProfile::parse(profile)?;
+    if parsed.engine != "mysql" {
+        let label = engine_label(&parsed.engine).unwrap_or(&parsed.engine);
+        return Err(format!("数据库引擎未接入：{}（{label}）", parsed.engine));
+    }
+    let pool = build_mysql_pool(&parsed)?;
+    runtime().block_on(mysql_run(&pool, sql))
+}
+
+/// Runs a statement against an existing session's live connection.
+pub fn query_session(session_id: &str, sql: &str) -> Result<QueryOutcome, String> {
+    if sql.trim().is_empty() {
+        return Err("SQL 为空。".to_string());
+    }
+    let pool = {
+        let guard = sessions_map().lock().expect("db sessions lock");
+        let session = guard
+            .as_ref()
+            .and_then(|m| m.get(session_id))
+            .ok_or_else(|| "数据库会话不存在。".to_string())?;
+        session
+            .pool
+            .as_ref()
+            .cloned()
+            .ok_or_else(|| "会话没有活动连接。".to_string())?
+    };
+    runtime().block_on(mysql_run(&pool, sql))
+}
+
+/// Opens a database session for a wired engine. MySQL (T019) verifies the
+/// connection with a real handshake; unwired engines return a clear error.
 pub fn connect(profile: &Value) -> Result<String, String> {
     let parsed = DbProfile::parse(profile)?;
     if !engine_available(&parsed.engine) {
         let label = engine_label(&parsed.engine).unwrap_or(&parsed.engine);
         return Err(format!(
-            "数据库引擎未接入：{}（{}），真实连接将在后续版本提供",
-            parsed.engine, label
+            "数据库引擎未接入：{}（{label}），真实连接将在后续版本提供",
+            parsed.engine
         ));
     }
+    let pool = match parsed.engine.as_str() {
+        "mysql" => build_mysql_pool(&parsed)?,
+        other => {
+            return Err(format!("数据库引擎未接入：{other}"));
+        }
+    };
+    // Real handshake: obtain a connection and ping the server.
+    runtime().block_on(async {
+        let mut conn = pool
+            .get_conn()
+            .await
+            .map_err(|e| format!("MySQL 连接失败：{e}"))?;
+        conn.ping()
+            .await
+            .map_err(|e| format!("MySQL 认证失败：{e}"))
+    })?;
     let id = new_id("db");
     let created_at = new_id("ts");
     sessions_map()
@@ -297,6 +454,7 @@ pub fn connect(profile: &Value) -> Result<String, String> {
                 engine: parsed.engine,
                 profile: profile.clone(),
                 created_at,
+                pool: Some(pool),
             },
         );
     Ok(id)
@@ -338,8 +496,11 @@ mod tests {
         assert!(is_known_engine("iotdb"));
         assert!(!is_known_engine("nosql-unknown"));
         assert_eq!(engine_label("mysql"), Some("MySQL"));
-        // Nothing is wired in T018; the framework must not fake availability.
-        assert!(DB_ENGINES.iter().all(|(key, _)| !engine_available(key)));
+        // T019 wires MySQL; every other engine must still report unwired.
+        assert!(engine_available("mysql"));
+        assert!(DB_ENGINES
+            .iter()
+            .all(|(key, _)| *key == "mysql" || !engine_available(key)));
         assert_eq!(engine_list().len(), 15);
     }
 
@@ -393,13 +554,45 @@ mod tests {
     }
 
     #[test]
-    fn connect_is_honest_until_engine_wired() {
-        let err = connect(
-            &json!({ "engine": "mysql", "host": "127.0.0.1", "username": "root", "password": "x" }),
-        )
-        .expect_err("mysql not wired in T018");
+    fn mysql_value_conversion_covers_shapes() {
+        assert_eq!(mysql_value_to_json(mysql_async::Value::NULL), Value::Null);
+        assert_eq!(
+            mysql_value_to_json(mysql_async::Value::Bytes(b"hello".to_vec())),
+            Value::String("hello".to_string())
+        );
+        assert_eq!(
+            mysql_value_to_json(mysql_async::Value::Int(-42)),
+            json!(-42)
+        );
+        assert_eq!(mysql_value_to_json(mysql_async::Value::UInt(42)), json!(42));
+        assert!(mysql_value_to_json(mysql_async::Value::Float(1.5)).is_number());
+        assert!(
+            mysql_value_to_json(mysql_async::Value::Date(2026, 8, 16, 1, 2, 3, 4))
+                .as_str()
+                .unwrap_or("")
+                .starts_with("2026-08-16")
+        );
+    }
+
+    #[test]
+    fn mysql_refused_endpoints_are_graceful() {
+        let profile = json!({ "engine": "mysql", "host": "127.0.0.1", "port": 1, "username": "root", "password": "x", "connect_timeout_ms": 800 });
+        let connect_err = connect(&profile).expect_err("refused");
+        assert!(connect_err.contains("失败"), "got {connect_err:?}");
+
+        let query_err = query_inline(&profile, "SELECT 1").expect_err("refused");
+        assert!(query_err.contains("失败"), "got {query_err:?}");
+
+        let empty_err = query_inline(&profile, "  ").expect_err("empty sql");
+        assert!(empty_err.contains("SQL 为空"));
+    }
+
+    #[test]
+    fn unwired_engine_connect_is_honest() {
+        let err = connect(&json!({ "engine": "postgresql", "host": "127.0.0.1", "username": "root", "password": "x" }))
+            .expect_err("pg not wired in T019");
         assert!(err.contains("未接入"), "got {err:?}");
-        assert!(close_session("db-missing") == false);
+        assert!(!close_session("db-missing"));
         assert!(active_db_session_ids().is_empty());
     }
 }

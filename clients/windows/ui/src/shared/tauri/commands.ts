@@ -4,6 +4,8 @@ import type {
   DbConnectionProfile,
   DbConnectResult,
   DbEngineInfo,
+  DbQueryRequest,
+  DbQueryResult,
   DbTestResult,
 } from "../../features/database/dbTypes";
 import type {
@@ -1280,4 +1282,12 @@ export function dbConnectionConnect(input: DbConnectionInput) {
 
 export function dbConnectionDisconnect(sessionId: string) {
   return invoke<boolean>("db_connection_disconnect", { request: { session_id: sessionId } });
+}
+
+export function dbQuery(request: DbQueryRequest) {
+  return invoke<DbQueryResult>("db_query", { request });
+}
+
+export function dbExec(request: DbQueryRequest) {
+  return invoke<DbQueryResult>("db_exec", { request });
 }

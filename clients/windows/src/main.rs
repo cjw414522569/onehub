@@ -221,13 +221,20 @@ fn main() {
 /// validates the engine catalog, profile parsing, TCP/path reachability tests,
 /// the honest not-yet-wired connect error, and a store round-trip for
 /// db_connection_save/list/delete. Prints JSON evidence.
+/// End-to-end database check (--db-check, navop parity T018/T019):
+/// validates the engine catalog, MySQL wiring, TCP/path reachability tests,
+/// graceful refusal for MySQL connect/query, honest unwired-engine errors, and
+/// a store round-trip for db_connection_save/list/delete. Prints JSON evidence.
 fn db_check() {
     use clients_windows::db;
     use clients_windows::store::Store;
     let engines = db::engine_list();
-    let all_unavailable = engines
+    let mysql_available = engines
         .iter()
-        .all(|e| e["available"] == serde_json::Value::Bool(false));
+        .any(|e| e["engine"] == "mysql" && e["available"] == serde_json::Value::Bool(true));
+    let other_engines_unavailable = engines
+        .iter()
+        .all(|e| e["engine"] == "mysql" || e["available"] == serde_json::Value::Bool(false));
     let tcp = db::test_connection(&serde_json::json!({
         "engine": "mysql",
         "host": "127.0.0.1",
@@ -245,8 +252,20 @@ fn db_check() {
         "database": dir.to_string_lossy(),
     }));
     let _ = std::fs::remove_file(&dir);
-    let connect_err = db::connect(&serde_json::json!({
+    let mysql_profile = serde_json::json!({
         "engine": "mysql",
+        "host": "127.0.0.1",
+        "port": 1,
+        "username": "root",
+        "password": "x",
+        "connect_timeout_ms": 800,
+    });
+    let mysql_connect_err = db::connect(&mysql_profile).err().unwrap_or_default();
+    let mysql_query_err = db::query_inline(&mysql_profile, "SELECT 1")
+        .err()
+        .unwrap_or_default();
+    let pg_connect_err = db::connect(&serde_json::json!({
+        "engine": "postgresql",
         "host": "127.0.0.1",
         "username": "root",
         "password": "x",
@@ -284,11 +303,14 @@ fn db_check() {
     let _ = std::fs::remove_file(format!("{}-shm", store_path.display()));
     let result = serde_json::json!({
         "engine_count": engines.len(),
-        "all_unavailable_in_t018": all_unavailable,
+        "mysql_available": mysql_available,
+        "other_engines_unavailable": other_engines_unavailable,
         "tcp_refused_graceful": tcp["reachable"] == serde_json::Value::Bool(false),
         "sqlite_missing_reported": sqlite_missing["reachable"] == serde_json::Value::Bool(false),
         "sqlite_present_reported": sqlite_present["reachable"] == serde_json::Value::Bool(true),
-        "connect_not_wired": connect_err.contains("未接入"),
+        "mysql_connect_refused_graceful": mysql_connect_err.contains("失败"),
+        "mysql_query_refused_graceful": mysql_query_err.contains("失败"),
+        "pg_connect_not_wired": pg_connect_err.contains("未接入"),
         "db_connection_save_list_delete_ok": db_listed >= 1 && deleted,
     });
     println!("{}", serde_json::to_string(&result).expect("json"));
@@ -2340,10 +2362,6 @@ fn handle_rdp_commands(
     )
 }
 
-/// Handles MCP commands (mxterm parity T014): settings persistence, token
-/// rotation, local network info, executable path, remote service lifecycle,
-/// update blockers, and the remote service log.
-
 /// Handles the database workspace commands (navop parity T018+): engine
 /// catalog, DB connection CRUD via the shared connection store, reachability
 /// test, and connect/disconnect session lifecycle. Returns the reply JSON when
@@ -2429,6 +2447,55 @@ fn handle_db_commands(
                 .unwrap_or("");
             Ok(serde_json::Value::Bool(db::close_session(session_id)))
         }
+        "db_query" => {
+            let request = payload.get("request").cloned().unwrap_or(payload.clone());
+            let sql = request
+                .get("sql")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("")
+                .to_string();
+            let session_id = request
+                .get("session_id")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            let outcome = if !session_id.is_empty() {
+                db::query_session(session_id, &sql)
+            } else {
+                db::query_inline(&request, &sql)
+            };
+            outcome.map(|o| {
+                serde_json::json!({
+                    "columns": o.columns,
+                    "rows": o.rows,
+                    "affected_rows": o.affected_rows,
+                })
+            })
+        }
+        "db_exec" => {
+            let request = payload.get("request").cloned().unwrap_or(payload.clone());
+            let sql = request
+                .get("sql")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("")
+                .to_string();
+            let session_id = request
+                .get("session_id")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            let outcome = if !session_id.is_empty() {
+                db::query_session(session_id, &sql)
+            } else {
+                db::query_inline(&request, &sql)
+            };
+            outcome.map(|o| {
+                serde_json::json!({
+                    "affected_rows": o.affected_rows,
+                    "columns": o.columns,
+                    "rows": o.rows,
+                })
+            })
+        }
+
         _ => return None,
     };
     let reply_payload = match result {
@@ -2443,6 +2510,9 @@ fn handle_db_commands(
     )
 }
 
+/// Handles MCP commands (mxterm parity T014): settings persistence, token
+/// rotation, local network info, executable path, remote service lifecycle,
+/// update blockers, and the remote service log.
 fn handle_mcp_commands(
     state: &mut AppState,
     cmd: &str,
