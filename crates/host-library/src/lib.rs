@@ -7,6 +7,7 @@
 
 pub mod accessibility;
 pub mod android_integration;
+pub mod android_security;
 pub mod auth_prompt;
 pub mod backend_gate;
 pub mod command_palette;
@@ -35,6 +36,9 @@ pub use accessibility::{
     MotionPreference, ReduceMotionPolicy, TerminalAccessibleMode, ViolationSeverity,
 };
 pub use android_integration::{AppState, LifecycleModel, NetworkState};
+pub use android_security::{
+    BiometricPrompt, BiometricState, FileSelection, KeyImport, KeyImportFlow, ShareSheet,
+};
 pub use auth_prompt::{
     AuthPrompt, ConfirmState, HardwareConfirmation, KeyOption, KeySelection, PromptError,
     PromptKind, PromptState, SelectionError, SelectionState,

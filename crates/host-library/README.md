@@ -330,3 +330,15 @@
   deceptive exactly when the UI claims an active session that cannot be
   sustained under the current background / Doze / service state.
 - Real Doze / network-switch / process-reclaim tests run on Android devices.
+
+## T128: Android Keystore, biometrics, file selection, sharing
+
+`crates/host-library/src/android_security.rs`:
+
+- `KeyImportFlow` - imports a private key straight into the Keystore; no
+  plaintext copy is ever written (verified).
+- `BiometricPrompt` - confirm / cancel state machine per device state.
+- `FileSelection` - Storage Access Framework: a content URI with a one-time
+  read grant and no raw path (minimal permission).
+- `ShareSheet` - shares text without leaking secrets.
+- Real multi-vendor / API device matrix runs on Android devices.
