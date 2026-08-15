@@ -52,6 +52,7 @@ fn wired_engines() -> &'static [&'static str] {
         "dm",
         "kingbase",
         "gbase",
+        "oceanbase",
     ]
 }
 
@@ -239,7 +240,8 @@ impl DbProfile {
 /// Default TCP port per engine (for UI prefill and profile validation).
 fn default_port(engine: &str) -> u64 {
     match engine {
-        "mysql" | "oceanbase" => 3306,
+        "mysql" => 3306,
+        "oceanbase" => 2881,
         "postgresql" | "opengauss" => 5432,
         "gbase" => 9088,
         "kingbase" => 54321,
@@ -1151,7 +1153,7 @@ pub fn query_inline(profile: &Value, sql: &str) -> Result<QueryOutcome, String> 
     }
     let parsed = DbProfile::parse(profile)?;
     match parsed.engine.as_str() {
-        "mysql" => {
+        "mysql" | "oceanbase" => {
             let pool = build_mysql_pool(&parsed)?;
             runtime().block_on(mysql_run(&pool, sql))
         }
@@ -1278,7 +1280,7 @@ pub fn connect(profile: &Value) -> Result<String, String> {
         ));
     }
     let connection = match parsed.engine.as_str() {
-        "mysql" => EngineConnection::MySql(build_mysql_pool(&parsed)?),
+        "mysql" | "oceanbase" => EngineConnection::MySql(build_mysql_pool(&parsed)?),
         "postgresql" | "kingbase" => {
             if parsed.ssl {
                 return Err("PostgreSQL/Kingbase TLS 暂未接入（当前为明文 TCP）。".to_string());
@@ -1423,6 +1425,7 @@ mod tests {
         assert!(engine_available("dm"));
         assert!(engine_available("kingbase"));
         assert!(engine_available("gbase"));
+        assert!(engine_available("oceanbase"));
         assert!(DB_ENGINES.iter().all(|(key, _)| {
             *key == "mysql"
                 || *key == "postgresql"
@@ -1434,6 +1437,7 @@ mod tests {
                 || *key == "dm"
                 || *key == "kingbase"
                 || *key == "gbase"
+                || *key == "oceanbase"
                 || !engine_available(key)
         }));
         assert_eq!(engine_list().len(), 15);
@@ -1683,6 +1687,16 @@ mod tests {
             query_err.contains("失败") || query_err.contains("ODBC"),
             "got {query_err:?}"
         );
+    }
+
+    #[test]
+    fn oceanbase_refused_endpoints_are_graceful() {
+        let profile = json!({ "engine": "oceanbase", "host": "127.0.0.1", "port": 1, "username": "root", "password": "x", "connect_timeout_ms": 800 });
+        let connect_err = connect(&profile).expect_err("refused");
+        assert!(connect_err.contains("失败"), "got {connect_err:?}");
+
+        let query_err = query_inline(&profile, "SELECT 1").expect_err("refused");
+        assert!(query_err.contains("失败"), "got {query_err:?}");
     }
 
     #[test]
