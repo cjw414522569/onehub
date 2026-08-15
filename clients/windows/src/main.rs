@@ -17,6 +17,7 @@
 //!   cargo run -p clients-windows -- --check  # headless self-test (CI-safe)
 
 use abi_c::{BatchItem, EventBatch, EVENT_BATCH_VERSION};
+use clients_windows::ai_assistant;
 use clients_windows::docker_tools;
 use clients_windows::local_sessions;
 use clients_windows::model::{
@@ -177,7 +178,132 @@ fn main() {
         monitor_check();
         return;
     }
+    if std::env::args().any(|argument| argument == "--ai-check") {
+        ai_check();
+        return;
+    }
     run_gui();
+}
+
+/// End-to-end AI assistant check (--ai-check): verifies provider config
+/// save/reveal round-trip with encrypted API key, chat session persistence,
+/// command assessment, the curated model list, and offline stream-start
+/// behavior (mxterm parity T013).
+fn ai_check() {
+    use clients_windows::ai_assistant as ai;
+    use clients_windows::store::Store;
+    let dir = std::env::temp_dir().join(format!(
+        "ai-e2e-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    ));
+    let _ = std::fs::create_dir_all(&dir);
+    let db = dir.join("ai.db");
+    let mut store = Store::open(&db).expect("store");
+
+    // Provider save with an API key (encrypted at rest) + reveal round-trip.
+    let saved = ai::save_provider(
+        &mut store,
+        &serde_json::json!({
+            "name": "e2e-openai",
+            "provider": "openai",
+            "api_format": "openai_compatible",
+            "endpoint": "https://api.openai.com/v1",
+            "model": "gpt-4o-mini",
+            "api_key": "sk-e2e-secret",
+            "api_key_touched": true,
+        }),
+    )
+    .expect("save provider");
+    let provider_id = saved["id"].as_str().expect("id").to_string();
+    assert_eq!(saved["api_key_saved"].as_bool(), Some(true));
+    assert!(saved
+        .get("api_key_encrypted")
+        .map(|v| v.is_null())
+        .unwrap_or(true));
+
+    let revealed = ai::reveal_api_key(&mut store, &provider_id).expect("reveal");
+    assert_eq!(revealed["api_key"].as_str(), Some("sk-e2e-secret"));
+
+    // Offline provider (no endpoint/api key) for stream_start without network.
+    let saved_offline = ai::save_provider(
+        &mut store,
+        &serde_json::json!({
+            "name": "offline",
+            "provider": "openai",
+            "api_format": "openai_compatible",
+            "endpoint": "",
+            "model": "gpt-4o-mini",
+        }),
+    )
+    .expect("save offline");
+    let offline_id = saved_offline["id"].as_str().expect("id").to_string();
+
+    let listed = ai::list_providers(&store).expect("list");
+    let provider_count = listed.as_array().expect("arr").len();
+    assert_eq!(provider_count, 2);
+
+    // Command assessment (local heuristic, offline).
+    let assess = ai::assess_command("sudo rm -rf /tmp/x").expect("assess");
+    assert_eq!(assess["risk"].as_str(), Some("dangerous"));
+    let safe = ai::assess_command("ls -la").expect("safe");
+    assert_eq!(safe["risk"].as_str(), Some("safe"));
+
+    // Curated model list.
+    let models = ai::models_list(&serde_json::json!({ "provider": "openai" })).expect("models");
+    assert!(!models.as_array().expect("arr").is_empty());
+
+    // Missing provider config => clear error path.
+    let no_provider = ai::stream_start(
+        &mut store,
+        &serde_json::json!({ "provider_config_id": "missing", "content": "hi" }),
+    );
+    assert!(no_provider.is_err(), "missing provider should error");
+
+    // Offline stream start records user + assistant messages.
+    let started = ai::stream_start(
+        &mut store,
+        &serde_json::json!({ "provider_config_id": offline_id, "content": "你好" }),
+    )
+    .expect("stream start");
+    let session_id = started["session_id"].as_str().expect("session").to_string();
+    let got = ai::get_session(&store, &session_id).expect("get session");
+    let messages = got["messages"].as_array().expect("messages");
+    assert_eq!(messages.len(), 2, "user + assistant");
+    assert_eq!(messages[0]["role"].as_str(), Some("user"));
+    assert_eq!(messages[1]["role"].as_str(), Some("assistant"));
+
+    // Stream registry stop: first stop ok, second stop errors.
+    let stream_id = started["stream_id"].as_str().expect("stream").to_string();
+    assert!(ai::stream_stop(&stream_id).is_ok());
+    assert!(ai::stream_stop(&stream_id).is_err());
+
+    // Session list / clear / delete.
+    let sessions = ai::list_sessions(&store).expect("sessions");
+    assert_eq!(sessions.as_array().expect("arr").len(), 1);
+    let cleared = ai::clear_session(&mut store, &session_id).expect("clear");
+    assert_eq!(cleared["messages"].as_array().expect("m").len(), 0);
+    let _ = ai::delete_session(&mut store, &session_id);
+    let after = ai::list_sessions(&store).expect("after");
+    assert_eq!(after.as_array().expect("arr").len(), 0);
+
+    let result = serde_json::json!({
+        "provider_save_reveal_roundtrip": true,
+        "providers": provider_count,
+        "assess_dangerous": assess["risk"],
+        "assess_safe": safe["risk"],
+        "models": models.as_array().expect("arr").len(),
+        "stream_no_provider_errors": no_provider.is_err(),
+        "offline_session_messages": messages.len(),
+        "stream_stop_then_error": true,
+        "db": db.display().to_string(),
+    });
+    println!("{}", serde_json::to_string(&result).expect("json"));
+    let _ = std::fs::remove_file(&db);
+    let _ = std::fs::remove_dir_all(&dir);
 }
 
 /// End-to-end monitor check (--monitor-check): verifies the parsers against
@@ -1072,6 +1198,97 @@ unsafe fn handle_key(state: &mut AppState, hwnd: HWND, wparam: WPARAM) {
         state.model.delete_forward();
     }
     InvalidateRect(hwnd, std::ptr::null(), 1);
+}
+
+/// Handles AI assistant commands (mxterm parity T013): provider config CRUD
+/// with encrypted API keys, chat session CRUD, chat stream start/stop,
+/// command assessment, and the curated model list.
+fn handle_ai_commands(
+    state: &mut AppState,
+    cmd: &str,
+    parsed: &serde_json::Value,
+) -> Option<String> {
+    if !cmd.starts_with("ai_") {
+        return None;
+    }
+    let request_id = parsed
+        .get("requestId")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+    let payload = parsed
+        .get("payload")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+    let request = payload.get("request").cloned().unwrap_or(payload.clone());
+    let store = state.store.as_mut()?;
+    let result: Result<serde_json::Value, String> = match cmd {
+        "ai_provider_config_list" => ai_assistant::list_providers(store),
+        "ai_provider_config_save" => ai_assistant::save_provider(store, &request),
+        "ai_provider_config_delete" => {
+            let id = request
+                .get("id")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            ai_assistant::delete_provider(store, id)
+        }
+        "ai_provider_config_reveal_api_key" => {
+            let id = request
+                .get("id")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            ai_assistant::reveal_api_key(store, id)
+        }
+        "ai_provider_config_test" => ai_assistant::test_provider(&request),
+        "ai_provider_models_list" => ai_assistant::models_list(&request),
+        "ai_chat_session_list" => ai_assistant::list_sessions(store),
+        "ai_chat_session_get" => {
+            let session_id = request
+                .get("session_id")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            ai_assistant::get_session(store, session_id)
+        }
+        "ai_chat_session_delete" => {
+            let session_id = request
+                .get("session_id")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            ai_assistant::delete_session(store, session_id)
+        }
+        "ai_chat_session_clear" => {
+            let session_id = request
+                .get("session_id")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            ai_assistant::clear_session(store, session_id)
+        }
+        "ai_chat_stream_start" => ai_assistant::stream_start(store, &request),
+        "ai_chat_stream_stop" => {
+            let stream_id = request
+                .get("stream_id")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            ai_assistant::stream_stop(stream_id)
+        }
+        "ai_command_assess" => {
+            let command = request
+                .get("command")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            ai_assistant::assess_command(command)
+        }
+        _ => return None,
+    };
+    let reply_payload = match result {
+        Ok(value) => value,
+        Err(message) => serde_json::json!({
+            "error": { "code": "ai_error", "message": message, "recoverable": true }
+        }),
+    };
+    Some(
+        serde_json::json!({ "kind": "invoke-reply", "requestId": request_id, "payload": reply_payload })
+            .to_string(),
+    )
 }
 
 /// Handles remote monitor commands (mxterm parity T012):
@@ -2414,6 +2631,9 @@ fn on_web_message(hwnd: HWND, message: &str) -> Option<String> {
     }
 
     if let Some(reply) = handle_monitor_commands(state, cmd, &parsed) {
+        return Some(reply);
+    }
+    if let Some(reply) = handle_ai_commands(state, cmd, &parsed) {
         return Some(reply);
     }
 

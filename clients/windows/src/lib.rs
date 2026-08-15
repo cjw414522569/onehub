@@ -7,6 +7,7 @@
 //! `ssh-gui` binary (`src/main.rs`): it only renders the model and feeds it
 //! keystrokes, so every GUI behavior is verifiable without opening a window.
 
+pub mod ai_assistant;
 pub mod docker_tools;
 pub mod local_sessions;
 pub mod model;

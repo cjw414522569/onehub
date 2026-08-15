@@ -326,6 +326,57 @@ impl Store {
     pub fn delete_tunnel(&mut self, id: &str) -> rusqlite::Result<bool> {
         self.delete("tunnel", id)
     }
+    /// Reads an app-level secret value (internal keys, not user secrets).
+    pub fn get_app_secret(&self, key: &str) -> rusqlite::Result<Option<String>> {
+        self.get("app_secret", key)
+            .map(|v| v.and_then(|val| val.as_str().map(|s| s.to_string())))
+    }
+
+    /// Writes an app-level secret value.
+    pub fn put_app_secret(&mut self, key: &str, value: &str) -> rusqlite::Result<()> {
+        self.put("app_secret", key, &serde_json::json!(value))
+    }
+    // ---- AI assistant ----
+
+    /// Lists AI provider configs.
+    pub fn list_ai_providers(&self) -> rusqlite::Result<Vec<Value>> {
+        self.list("ai_provider")
+    }
+
+    /// Gets one AI provider config.
+    pub fn get_ai_provider(&self, id: &str) -> rusqlite::Result<Option<Value>> {
+        self.get("ai_provider", id)
+    }
+
+    /// Upserts an AI provider config.
+    pub fn put_ai_provider(&mut self, id: &str, provider: &Value) -> rusqlite::Result<()> {
+        self.put("ai_provider", id, provider)
+    }
+
+    /// Deletes an AI provider config.
+    pub fn delete_ai_provider(&mut self, id: &str) -> rusqlite::Result<bool> {
+        self.delete("ai_provider", id)
+    }
+
+    /// Lists AI chat sessions.
+    pub fn list_ai_sessions(&self) -> rusqlite::Result<Vec<Value>> {
+        self.list("ai_session")
+    }
+
+    /// Gets one AI chat session.
+    pub fn get_ai_session(&self, id: &str) -> rusqlite::Result<Option<Value>> {
+        self.get("ai_session", id)
+    }
+
+    /// Upserts an AI chat session.
+    pub fn put_ai_session(&mut self, id: &str, session: &Value) -> rusqlite::Result<()> {
+        self.put("ai_session", id, session)
+    }
+
+    /// Deletes an AI chat session.
+    pub fn delete_ai_session(&mut self, id: &str) -> rusqlite::Result<bool> {
+        self.delete("ai_session", id)
+    }
     // ---- scheduled tasks ----
 
     /// Lists scheduled tasks.
