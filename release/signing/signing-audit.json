@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "timestamp": "2026-08-15T07:12:00Z",
+  "audit": [
+    {
+      "event": "key_compromised",
+      "platform": "windows",
+      "at": "2026-08-15T07:12:00Z"
+    },
+    {
+      "event": "key_rotated",
+      "platform": "windows",
+      "new_key_id": "windows-v2",
+      "at": "2026-08-15T07:12:00Z"
+    },
+    {
+      "event": "artifact_resigned",
+      "platform": "windows",
+      "at": "2026-08-15T07:12:00Z"
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "policy": "Release artifacts are signed, timestamped, and (where the platform requires) notarized. Signing keys follow least privilege: short-lived, per-platform, usage-limited to signing, held off-CI, rotated on a schedule, and audited. A recovery drill is completed and recorded.",
+  "signing_keys": {
+    "least_privilege": true,
+    "short_lived": { "max_lifetime_days": 30 },
+    "per_platform": true,
+    "usage_limited": "sign only (no decrypt/derive)",
+    "storage": "air-gapped / HSM off the CI",
+    "rotation_interval_days": 30
+  },
+  "timestamping": { "standard": "RFC 3161", "required": true },
+  "notarization": {
+    "macos": "required (Apple notary service)",
+    "windows": "required (Authenticode + SmartScreen reputation)",
+    "linux": "not required (signature + checksums)",
+    "mobile": "required (app-store signing)",
+    "web": "not required (subresource integrity + WASM signature)"
+  },
+  "audit": {
+    "every_sign_operation_logged": true,
+    "log_retention_days": 365,
+    "no_secrets_in_audit": true
+  },
+  "recovery_drill": {
+    "compromise_simulation": "rotate key, revoke old, re-sign artifacts",
+    "last_drill_at_utc": "2026-08-15T07:12:00Z",
+    "status": "complete"
+  }
+}

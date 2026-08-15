@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "timestamp": "2026-08-15T07:12:00Z",
+  "artifacts": [
+    {
+      "platform": "windows",
+      "path": "target/release/ssh-cli.exe",
+      "sha256": "42e7490ca4ac8df793ae1bfb4ea70652a5c4566807b010b98a58dde8e35d43b2",
+      "signature": "48a60a7a8aa213292b460bc11fa2a3fdb33cc9567d5665a8db906b9516909d55",
+      "timestamped_at": "2026-08-15T07:12:00Z",
+      "notarization": "required"
+    },
+    {
+      "platform": "web",
+      "path": "target/wasm32-unknown-unknown/release/wasm.wasm",
+      "sha256": "84e8358174906ed7797428c6555ee4971a47aed2ee021395087921801e84a44c",
+      "signature": "7e944bc3b64260c768242c2050179110f79b8271b9ac20bcd5147f4c40797fb8",
+      "timestamped_at": "2026-08-15T07:12:00Z",
+      "notarization": "not-required"
+    },
+    {
+      "platform": "cli",
+      "path": "target/release/ssh-cli.exe",
+      "sha256": "42e7490ca4ac8df793ae1bfb4ea70652a5c4566807b010b98a58dde8e35d43b2",
+      "signature": "263b6f2b82737a4dd72078304ec0f592f37ff99d7dd893d7c4a7558cac9f08f8",
+      "timestamped_at": "2026-08-15T07:12:00Z",
+      "notarization": "not-required"
+    }
+  ]
+}
