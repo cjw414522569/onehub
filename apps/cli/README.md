@@ -30,3 +30,19 @@
 
 Dependencies added: `storage-sqlite`, `secure-store` (declared in
 `architecture/dependency-rules.json`).
+
+## T143: config, connect, exec, and exit-code contract
+
+`apps/cli/src/cli.rs`:
+
+- `CliConfig` - parses a host-alias config (`[alias]` sections with
+  host/user/port/gateway); missing host/user or an invalid port are rejected.
+- `CommandRunner` - injectable connect/exec backend (SSH/gateway adapter
+  wired in a later row); `MockRunner` keeps the contract deterministic.
+- `ExitCode` - stable script exit codes: 0 ok, 1 internal, 2 usage,
+  3 config, 4 connect, 5 remote failure.
+- Interactive vs non-interactive output separation: non-interactive stdout
+  carries only the remote command's stdout (no ANSI, no banners); status
+  lines go to stderr (interactive only).
+- Real binary E2E: `--version` 0, `--help` 0, bad args 2,
+  `config --check` 0/3/3, `exec` 4 (connect backend pending).
