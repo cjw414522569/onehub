@@ -272,3 +272,15 @@
   explicit confirmation are T132; here the shape is parsed).
 - The real Win32 tray / message-loop / installer bindings run on Windows
   hosts; this module locks the deterministic model.
+
+## T122: ConPTY / system OpenSSH backend capability gate
+
+`crates/host-library/src/backend_gate.rs`:
+
+- `BackendGate` - the system OpenSSH backend is only enabled when
+  **explicitly selected**; the built-in backend is the default and the system
+  backend is never enabled implicitly.
+- `BackendComparison` - the feature-support matrix (UTF-8, true color,
+  bracketed paste, mouse, resize, unicode width, OSC 52 clipboard, bell)
+  exposes the behavior differences between the built-in and system backends
+  so they are visible to the user.

@@ -7,6 +7,7 @@
 
 pub mod accessibility;
 pub mod auth_prompt;
+pub mod backend_gate;
 pub mod command_palette;
 pub mod diagnostics;
 pub mod editor;
@@ -32,6 +33,9 @@ pub use accessibility::{
 pub use auth_prompt::{
     AuthPrompt, ConfirmState, HardwareConfirmation, KeyOption, KeySelection, PromptError,
     PromptKind, PromptState, SelectionError, SelectionState,
+};
+pub use backend_gate::{
+    BackendComparison, BackendGate, BackendSelection, Feature, FeatureSupport, TerminalBackend,
 };
 pub use command_palette::{CommandPalette, FlowKey, KeyboardFlow, PaletteAction, PaletteCommand};
 pub use diagnostics::{
