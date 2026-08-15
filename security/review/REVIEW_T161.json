@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "reviewed_at_utc": "2026-08-15T06:45:00Z",
+  "reviewer": "security-team (independent structured review over the verified security properties and the security pipeline)",
+  "scope": ["ssh", "keys", "sync", "gateway"],
+  "summary": {
+    "critical": 0,
+    "high": 1,
+    "medium": 4,
+    "critical_fixed": 0,
+    "high_mitigated_or_fixed": 1,
+    "medium_with_disposition": 4
+  },
+  "findings": [
+    {
+      "id": "SEC-001",
+      "area": "gateway",
+      "component": "ssh-key/rsa",
+      "severity": "high",
+      "title": "RSA timing side channel (Marvin Attack, RUSTSEC-2023-0071)",
+      "status": "mitigated",
+      "disposition": "Exempted with owner + future expiry (2026-11-15). Usage is client-side host-key validation / RSA key parsing with no network-observable private-key operations; the advisory workaround (local use) applies. Plan: reassess at expiry and upgrade when an upstream constant-time patch lands.",
+      "retest": "cargo-audit re-run confirms exactly the one exempted advisory; no unexempted high/critical."
+    },
+    {
+      "id": "SEC-002",
+      "area": "gateway",
+      "component": "SessionRegistry",
+      "severity": "medium",
+      "title": "Single-use token replay window could grow unboundedly over a long soak",
+      "status": "fixed",
+      "disposition": "Fixed in T142: consumed tokens are pruned (token_id -> expires_at) so the replay window stays bounded; soak test verifies peak <= 4096.",
+      "retest": "gateway-auth contract + gateway-soak contract pass; bounded-memory assertion green."
+    },
+    {
+      "id": "SEC-003",
+      "area": "gateway",
+      "component": "AddressPolicy",
+      "severity": "medium",
+      "title": "SSRF: private/metadata/link-local targets reachable through the gateway",
+      "status": "fixed",
+      "disposition": "Fixed in T136: default-deny private/link-local/loopback/metadata/reserved ranges, SSH-only port policy, host allowlist, DNS-rebinding guard.",
+      "retest": "gateway-address-policy contract passes the SSRF bypass test set."
+    },
+    {
+      "id": "SEC-004",
+      "area": "keys",
+      "component": "CredentialPolicy",
+      "severity": "medium",
+      "title": "Risk of long-lived SSH keys being persisted by the gateway",
+      "status": "fixed",
+      "disposition": "Fixed in T137: CredentialPolicy rejects long-lived key persistence; keys stay client-side end-to-end; short-lived in-memory session keys only.",
+      "retest": "gateway-auth contract (long-term-key-persistence-rejected) passes."
+    },
+    {
+      "id": "SEC-005",
+      "area": "sync",
+      "component": "device lifecycle / sync protocol",
+      "severity": "medium",
+      "title": "Cross-device isolation and field encryption need verification",
+      "status": "fixed",
+      "disposition": "Verified in T093-T095: field-encrypted sync protocol, CRDT with device lifecycle isolation, e2e device lifecycle test.",
+      "retest": "sync-service e2e + crdt + sync-protocol + field-encryption contracts pass."
+    }
+  ],
+  "retest_confirmation": {
+    "security_pipeline": "pass (scripts/test-security-pipeline.mjs): static analysis, dependency audit, binary hardening, secret scan, supply-chain gate",
+    "security_contracts": "pass (gateway auth/session/address-policy/soak, sync, telemetry privacy/crash/diagnostics)",
+    "archive": "docs/reports/SECURITY_REVIEW_T161.json|md"
+  }
+}
