@@ -35,18 +35,20 @@ use windows_sys::Win32::UI::HiDpi::{
     SetProcessDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
 };
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
-    EnableWindow, SetFocus, VK_BACK, VK_DELETE, VK_ESCAPE, VK_LEFT, VK_RETURN, VK_RIGHT,
+    EnableWindow, ReleaseCapture, SetFocus, VK_BACK, VK_DELETE, VK_ESCAPE, VK_LEFT, VK_RETURN,
+    VK_RIGHT,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetClientRect, GetDlgItem,
     GetMessageW, GetWindowLongPtrW, GetWindowRect, GetWindowTextLengthW, GetWindowTextW, IsWindow,
-    KillTimer, LoadCursorW, PostMessageW, PostQuitMessage, RegisterClassW, SendMessageW, SetTimer,
-    SetWindowLongPtrW, ShowWindow, TranslateMessage, BS_PUSHBUTTON, CS_HREDRAW, CS_VREDRAW,
-    CW_USEDEFAULT, ES_AUTOHSCROLL, GWLP_USERDATA, HMENU, IDCANCEL, IDC_ARROW, IDOK, MSG,
-    SW_MAXIMIZE, SW_MINIMIZE, SW_SHOW, SW_SHOWDEFAULT, WM_CHAR, WM_CLOSE, WM_COMMAND, WM_CREATE,
-    WM_DESTROY, WM_KEYDOWN, WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_PAINT, WM_SETFONT, WM_SIZE,
-    WM_TIMER, WNDCLASSW, WS_CAPTION, WS_CHILD, WS_EX_CLIENTEDGE, WS_OVERLAPPEDWINDOW, WS_POPUP,
-    WS_SYSMENU, WS_TABSTOP, WS_VISIBLE,
+    IsZoomed, KillTimer, LoadCursorW, PostMessageW, PostQuitMessage, RegisterClassW, SendMessageW,
+    SetTimer, SetWindowLongPtrW, ShowWindow, TranslateMessage, BS_PUSHBUTTON, CS_HREDRAW,
+    CS_VREDRAW, CW_USEDEFAULT, ES_AUTOHSCROLL, GWLP_USERDATA, HMENU, HTCAPTION, IDCANCEL,
+    IDC_ARROW, IDOK, MINMAXINFO, MSG, SW_MAXIMIZE, SW_MINIMIZE, SW_RESTORE, SW_SHOW,
+    SW_SHOWDEFAULT, WM_CHAR, WM_CLOSE, WM_COMMAND, WM_CREATE, WM_DESTROY, WM_GETMINMAXINFO,
+    WM_KEYDOWN, WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_NCLBUTTONDOWN, WM_PAINT, WM_SETFONT,
+    WM_SIZE, WM_TIMER, WNDCLASSW, WS_CAPTION, WS_CHILD, WS_EX_CLIENTEDGE,
+    WS_POPUP, WS_SYSMENU, WS_TABSTOP, WS_THICKFRAME, WS_VISIBLE,
 };
 
 use webview2_com::Microsoft::Web::WebView2::Win32::{ICoreWebView2, ICoreWebView2Controller};
@@ -58,10 +60,14 @@ mod webview2;
 
 /// Timer id used for the periodic re-render / command drain.
 const TIMER_ID: usize = 1;
-/// Default window width in pixels.
-const WINDOW_WIDTH: i32 = 1040;
-/// Default window height in pixels.
-const WINDOW_HEIGHT: i32 = 680;
+/// Default window width in pixels (mirrors mXterm 1440x900).
+const WINDOW_WIDTH: i32 = 1440;
+/// Default window height in pixels (mirrors mXterm 1440x900).
+const WINDOW_HEIGHT: i32 = 900;
+/// Minimum window width in pixels (mirrors mXterm minWidth 1100).
+const MIN_WINDOW_WIDTH: i32 = 1100;
+/// Minimum window height in pixels (mirrors mXterm minHeight 720).
+const MIN_WINDOW_HEIGHT: i32 = 720;
 /// Top connection-tab bar height.
 const TABS_H: i32 = 34;
 /// Left session-repository width.
@@ -250,7 +256,7 @@ fn run_gui() {
             0,
             w!("SshGuiClass"),
             w!("SSH Client — PC GUI (host shell)"),
-            WS_OVERLAPPEDWINDOW | WS_VISIBLE,
+            WS_POPUP | WS_THICKFRAME | WS_VISIBLE,
             CW_USEDEFAULT,
             CW_USEDEFAULT,
             WINDOW_WIDTH,
@@ -344,6 +350,14 @@ unsafe extern "system" fn wnd_proc(
             InvalidateRect(hwnd, std::ptr::null(), 1);
             0
         }
+        WM_GETMINMAXINFO => {
+            let info = &mut *(lparam as *mut MINMAXINFO);
+            info.ptMinTrackSize = windows_sys::Win32::Foundation::POINT {
+                x: MIN_WINDOW_WIDTH,
+                y: MIN_WINDOW_HEIGHT,
+            };
+            0
+        }
         WM_CLOSE => {
             DestroyWindow(hwnd);
             0
@@ -391,6 +405,14 @@ unsafe extern "system" fn dialog_proc(
             } else if id == IDCANCEL {
                 DestroyWindow(hwnd);
             }
+            0
+        }
+        WM_GETMINMAXINFO => {
+            let info = &mut *(lparam as *mut MINMAXINFO);
+            info.ptMinTrackSize = windows_sys::Win32::Foundation::POINT {
+                x: MIN_WINDOW_WIDTH,
+                y: MIN_WINDOW_HEIGHT,
+            };
             0
         }
         WM_CLOSE => {
@@ -560,6 +582,15 @@ fn on_web_message(hwnd: HWND, message: &str) -> Option<String> {
         return Some(reply.to_string());
     }
 
+    if cmd == "plugin:window|is_maximized" {
+        let reply = serde_json::json!({
+            "kind": "invoke-reply",
+            "requestId": request_id,
+            "payload": unsafe { IsZoomed(hwnd) != 0 },
+        });
+        return Some(reply.to_string());
+    }
+
     let payload = parsed
         .get("payload")
         .cloned()
@@ -591,6 +622,17 @@ fn on_web_message(hwnd: HWND, message: &str) -> Option<String> {
         },
         bridge::WindowAction::Maximize => unsafe {
             ShowWindow(hwnd, SW_MAXIMIZE);
+        },
+        bridge::WindowAction::StartDrag => unsafe {
+            ReleaseCapture();
+            SendMessageW(hwnd, WM_NCLBUTTONDOWN, HTCAPTION as usize, 0);
+        },
+        bridge::WindowAction::ToggleMaximize => unsafe {
+            if IsZoomed(hwnd) != 0 {
+                ShowWindow(hwnd, SW_RESTORE);
+            } else {
+                ShowWindow(hwnd, SW_MAXIMIZE);
+            }
         },
         bridge::WindowAction::Close => unsafe {
             DestroyWindow(hwnd);

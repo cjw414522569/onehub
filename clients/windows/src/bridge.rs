@@ -14,6 +14,8 @@ pub(crate) enum WindowAction {
     Minimize,
     Maximize,
     Close,
+    StartDrag,
+    ToggleMaximize,
 }
 
 fn profile_json(model: &GuiModel, index: usize) -> Value {
@@ -254,7 +256,7 @@ pub(crate) fn handle_message(
             "version": env!("CARGO_PKG_VERSION"),
         }),
         "get_windows_pty_info" => Value::Null,
-        "get_supported_window_materials" => json!([]),
+        "get_supported_window_materials" => json!([{ "id": 0, "name": "auto" }]),
         "secret_vault_status" | "secret_vault_unlock" | "secret_vault_unlock_local" => {
             json!({ "initialized": true, "unlocked": true })
         }
@@ -304,9 +306,24 @@ pub(crate) fn handle_message(
         "plugin:window|outer_size" | "plugin:window|inner_size" => {
             json!({ "width": 1440, "height": 900 })
         }
-        "plugin:window|is_maximized"
-        | "plugin:window|is_minimized"
-        | "plugin:window|is_fullscreen" => json!(false),
+        "plugin:window|minimize" => {
+            action = WindowAction::Minimize;
+            Value::Null
+        }
+        "plugin:window|toggle_maximize" => {
+            action = WindowAction::ToggleMaximize;
+            Value::Null
+        }
+        "plugin:window|close" => {
+            action = WindowAction::Close;
+            Value::Null
+        }
+        "plugin:window|start_dragging" => {
+            action = WindowAction::StartDrag;
+            Value::Null
+        }
+        "plugin:window|is_maximized" => json!(false),
+        "plugin:window|is_minimized" | "plugin:window|is_fullscreen" => json!(false),
         "plugin:window|is_visible" => json!(true),
         "plugin:window|scale_factor" => json!(1.0),
         "plugin:window|current_monitor" => json!({
@@ -467,6 +484,22 @@ mod tests {
         let monitors = invoke(&mut model, "plugin:window|available_monitors", json!({}));
         assert!(monitors.as_array().is_some());
         // plugin:event|listen is handled by on_web_message (the WebView2 layer).
+    }
+
+    #[test]
+    fn plugin_window_actions_map_to_window_actions() {
+        let mut model = GuiModel::with_size(4, 24);
+        for (cmd, expected) in [
+            ("plugin:window|minimize", WindowAction::Minimize),
+            ("plugin:window|toggle_maximize", WindowAction::ToggleMaximize),
+            ("plugin:window|close", WindowAction::Close),
+            ("plugin:window|start_dragging", WindowAction::StartDrag),
+        ] {
+            let msg = json!({ "kind": "invoke", "requestId": 1, "cmd": cmd, "payload": {} })
+                .to_string();
+            let (_, action) = handle_message(&mut model, &msg).expect("reply");
+            assert_eq!(action, expected, "{cmd} should map to {expected:?}");
+        }
     }
 
     #[test]
