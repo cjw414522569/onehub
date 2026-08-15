@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "platform": "windows",
+  "device": "ci-host",
+  "generated_at_utc": "2026-08-15T06:06:55Z",
+  "metrics": {
+    "startup_ms": {
+      "p95": 3.6073,
+      "mean": 2.9499033333333333,
+      "count": 30
+    },
+    "parse_throughput_mbps": {
+      "p50": "40.2",
+      "p95": "40.8"
+    },
+    "input_to_pixel_us": {
+      "count": 30,
+      "mean_us": "43.597",
+      "p50_us": "33.500",
+      "p95_us": "77.200",
+      "p99_us": "215.500"
+    },
+    "scrollback_10k_lines_ms": {
+      "count": 30,
+      "mean_ms": "43.696",
+      "p50_ms": "42.323",
+      "p95_ms": "53.102",
+      "p99_ms": "58.010"
+    },
+    "memory": {
+      "status": "blocked_unavailable_toolchain"
+    },
+    "power": {
+      "status": "blocked_unavailable_toolchain"
+    }
+  }
+}

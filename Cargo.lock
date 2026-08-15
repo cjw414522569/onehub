@@ -1346,6 +1346,7 @@ name = "wasm"
 version = "0.1.0"
 dependencies = [
  "core-protocol",
+ "serde_json",
  "terminal-parser",
  "terminal-state",
  "wasm-bindgen",

@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "platform": "windows",
+  "device": "ci-host",
+  "captured_commit": "T156",
+  "differential_tolerance_pct": 10.0,
+  "metrics": {
+    "startup_ms": {
+      "budget_p95": 500.0,
+      "baseline_p95": 40.0,
+      "status": "measured"
+    },
+    "parse_throughput_mbps": {
+      "budget_min_p50": 30.0,
+      "baseline_p50": 40.5,
+      "status": "measured"
+    },
+    "input_to_pixel_us": {
+      "budget_p95": 45000.0,
+      "baseline_p50": 33.0,
+      "status": "measured"
+    },
+    "scrollback_10k_lines_ms": {
+      "budget_p95": 100.0,
+      "baseline_p95": 57.0,
+      "status": "measured"
+    },
+    "memory": {
+      "status": "blocked_unavailable_toolchain"
+    },
+    "power": {
+      "status": "blocked_unavailable_toolchain"
+    }
+  }
+}
