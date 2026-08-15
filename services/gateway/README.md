@@ -57,3 +57,13 @@ that speaks the versioned session protocol (T135) with the auth registry
 paths, SSRF denial, close, isolation) 100 consecutive times and prints a
 stable summary; `scripts/test-cross-language.mjs` runs it repeatedly and
 asserts byte-identical output (no flakiness).
+
+## T154: network fault injection matrix
+
+`services/gateway/examples/fault-matrix.rs` deterministically covers
+latency, packet loss (retransmission recovery), reordering (sequence
+watermark), disconnect (resume without re-auth), DNS failure (stable
+`NoAddresses`), and network switching (resume on a fresh channel). It runs
+the matrix 50 times and prints a stable report; `scripts/test-fault-matrix.mjs`
+runs it three times and asserts byte-identical output plus a byte-identical
+`fault-injection/fault-matrix.report.json`.

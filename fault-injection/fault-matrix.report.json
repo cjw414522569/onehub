@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "covered": [
+    "latency",
+    "packet_loss",
+    "reordering",
+    "disconnect",
+    "dns_failure",
+    "network_switch"
+  ],
+  "passed": 6,
+  "stable": true,
+  "runs_verified": 3,
+  "results": [
+    "latency=true received=64/64",
+    "packet_loss=true delivered=64/64 after retransmission",
+    "reordering=true received=64/64 max_seq=63",
+    "disconnect=true resume->Ready without re-auth",
+    "dns_failure=true Err(NoAddresses)",
+    "network_switch=true resume on new network -> Ready"
+  ]
+}
