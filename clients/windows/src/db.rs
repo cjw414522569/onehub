@@ -40,7 +40,7 @@ pub const DB_ENGINES: &[(&str, &str)] = &[
 
 /// Engines whose real connection is implemented (wired by later rows).
 fn wired_engines() -> &'static [&'static str] {
-    &["mysql", "postgresql"]
+    &["mysql", "postgresql", "sqlite"]
 }
 
 /// Returns true when the engine key is part of the known catalog.
@@ -257,6 +257,7 @@ pub fn test_connection(profile: &Value) -> Value {
 enum EngineConnection {
     MySql(mysql_async::Pool),
     Postgres(std::sync::Arc<tokio_postgres::Client>),
+    Sqlite(std::sync::Arc<std::sync::Mutex<rusqlite::Connection>>),
 }
 
 /// A live database session. `connection` holds the engine handle for wired
@@ -336,6 +337,76 @@ fn pg_connect(parsed: &DbProfile) -> Result<std::sync::Arc<tokio_postgres::Clien
         Ok::<std::sync::Arc<tokio_postgres::Client>, String>(std::sync::Arc::new(client))
     })?;
     Ok(client)
+}
+
+/// Opens a SQLite database (file path or :memory:) and initializes it.
+fn sqlite_open(parsed: &DbProfile) -> Result<rusqlite::Connection, String> {
+    let path = if parsed.database.is_empty() {
+        ":memory:".to_string()
+    } else {
+        parsed.database.clone()
+    };
+    let conn = rusqlite::Connection::open(&path).map_err(|e| format!("SQLite 打开失败：{e}"))?;
+    conn.execute_batch("PRAGMA journal_mode=WAL;")
+        .map_err(|e| format!("SQLite 初始化失败：{e}"))?;
+    Ok(conn)
+}
+
+/// Converts a rusqlite value into a JSON value.
+fn sqlite_value_to_json(value: rusqlite::types::Value) -> Value {
+    match value {
+        rusqlite::types::Value::Null => Value::Null,
+        rusqlite::types::Value::Integer(i) => serde_json::json!(i),
+        rusqlite::types::Value::Real(f) => serde_json::Number::from_f64(f)
+            .map(Value::Number)
+            .unwrap_or(Value::Null),
+        rusqlite::types::Value::Text(t) => Value::String(t),
+        rusqlite::types::Value::Blob(b) => Value::String(String::from_utf8_lossy(&b).to_string()),
+    }
+}
+
+/// Runs a statement against a SQLite connection (synchronous).
+fn sqlite_run(conn: &rusqlite::Connection, sql: &str) -> Result<QueryOutcome, String> {
+    let mut stmt = conn
+        .prepare(sql)
+        .map_err(|e| format!("SQL 准备失败：{e}"))?;
+    let column_count = stmt.column_count();
+    if column_count == 0 {
+        let affected = conn
+            .execute(sql, [])
+            .map_err(|e| format!("SQL 执行失败：{e}"))?;
+        return Ok(QueryOutcome {
+            columns: Vec::new(),
+            rows: Vec::new(),
+            affected_rows: affected as u64,
+        });
+    }
+    let columns: Vec<String> = stmt
+        .column_names()
+        .iter()
+        .map(|name| name.to_string())
+        .collect();
+    let rows = stmt
+        .query_map([], |row| {
+            let mut values = Vec::new();
+            for index in 0..column_count {
+                let value = row
+                    .get::<usize, rusqlite::types::Value>(index)
+                    .unwrap_or(rusqlite::types::Value::Null);
+                values.push(sqlite_value_to_json(value));
+            }
+            Ok(values)
+        })
+        .map_err(|e| format!("查询失败：{e}"))?;
+    let mut result_rows = Vec::new();
+    for row in rows {
+        result_rows.push(row.map_err(|e| format!("读取结果失败：{e}"))?);
+    }
+    Ok(QueryOutcome {
+        columns,
+        rows: result_rows,
+        affected_rows: 0,
+    })
 }
 
 /// Converts a mysql_async value into a JSON value.
@@ -559,6 +630,10 @@ pub fn query_inline(profile: &Value, sql: &str) -> Result<QueryOutcome, String> 
             let client = pg_connect(&parsed)?;
             runtime().block_on(pg_run(&client, sql))
         }
+        "sqlite" => {
+            let conn = sqlite_open(&parsed)?;
+            sqlite_run(&conn, sql)
+        }
         other => {
             let label = engine_label(other).unwrap_or(other);
             Err(format!("数据库引擎未接入：{other}（{label}）"))
@@ -582,12 +657,19 @@ pub fn query_session(session_id: &str, sql: &str) -> Result<QueryOutcome, String
             Some(EngineConnection::Postgres(client)) => {
                 EngineConnection::Postgres(std::sync::Arc::clone(client))
             }
+            Some(EngineConnection::Sqlite(conn)) => {
+                EngineConnection::Sqlite(std::sync::Arc::clone(conn))
+            }
             None => return Err("会话没有活动连接。".to_string()),
         }
     };
     match connection {
         EngineConnection::MySql(pool) => runtime().block_on(mysql_run(&pool, sql)),
         EngineConnection::Postgres(client) => runtime().block_on(pg_run(client.as_ref(), sql)),
+        EngineConnection::Sqlite(conn) => {
+            let guard = conn.lock().expect("sqlite session lock");
+            sqlite_run(&guard, sql)
+        }
     }
 }
 
@@ -610,6 +692,10 @@ pub fn connect(profile: &Value) -> Result<String, String> {
             }
             EngineConnection::Postgres(pg_connect(&parsed)?)
         }
+        "sqlite" => {
+            let conn = sqlite_open(&parsed)?;
+            EngineConnection::Sqlite(std::sync::Arc::new(std::sync::Mutex::new(conn)))
+        }
         other => return Err(format!("数据库引擎未接入：{other}")),
     };
     // Real handshake verification for both engines.
@@ -629,6 +715,12 @@ pub fn connect(profile: &Value) -> Result<String, String> {
             runtime()
                 .block_on(client.query_one("SELECT 1", &[]))
                 .map_err(|e| format!("PostgreSQL 连接失败：{e}"))?;
+        }
+        EngineConnection::Sqlite(conn) => {
+            let guard = conn.lock().expect("sqlite session lock");
+            guard
+                .query_row("SELECT 1", [], |_| Ok(()))
+                .map_err(|e| format!("SQLite 连接失败：{e}"))?;
         }
     }
     let id = new_id("db");
@@ -686,12 +778,13 @@ mod tests {
         assert!(is_known_engine("iotdb"));
         assert!(!is_known_engine("nosql-unknown"));
         assert_eq!(engine_label("mysql"), Some("MySQL"));
-        // T019/T020 wire MySQL and PostgreSQL; others must stay unwired.
+        // T019-T021 wire MySQL/PostgreSQL/SQLite; others must stay unwired.
         assert!(engine_available("mysql"));
         assert!(engine_available("postgresql"));
-        assert!(DB_ENGINES
-            .iter()
-            .all(|(key, _)| { *key == "mysql" || *key == "postgresql" || !engine_available(key) }));
+        assert!(engine_available("sqlite"));
+        assert!(DB_ENGINES.iter().all(|(key, _)| {
+            *key == "mysql" || *key == "postgresql" || *key == "sqlite" || !engine_available(key)
+        }));
         assert_eq!(engine_list().len(), 15);
     }
 
@@ -793,6 +886,36 @@ mod tests {
         )
         .expect_err("tls not wired");
         assert!(ssl_err.contains("TLS"), "got {ssl_err:?}");
+    }
+
+    #[test]
+    fn sqlite_roundtrip_works() {
+        let dir =
+            std::env::temp_dir().join(format!("onehub-sqlite-test-{}.sqlite", std::process::id()));
+        let _ = std::fs::remove_file(&dir);
+        let profile = json!({ "engine": "sqlite", "database": dir.to_string_lossy() });
+        let create = query_inline(
+            &profile,
+            "CREATE TABLE demo (id INTEGER PRIMARY KEY, name TEXT)",
+        )
+        .expect("create");
+        assert_eq!(create.affected_rows, 0);
+        let insert =
+            query_inline(&profile, "INSERT INTO demo(name) VALUES ('onehub')").expect("insert");
+        assert!(
+            insert.affected_rows >= 1,
+            "affected_rows={}",
+            insert.affected_rows
+        );
+        let select = query_inline(&profile, "SELECT id, name FROM demo").expect("select");
+        assert_eq!(select.columns, vec!["id".to_string(), "name".to_string()]);
+        assert_eq!(select.rows.len(), 1);
+        assert_eq!(select.rows[0][1], Value::String("onehub".to_string()));
+        let session = connect(&profile).expect("connect");
+        let via_session = query_session(&session, "SELECT name FROM demo").expect("session query");
+        assert_eq!(via_session.rows.len(), 1);
+        assert!(close_session(&session));
+        let _ = std::fs::remove_file(&dir);
     }
 
     #[test]

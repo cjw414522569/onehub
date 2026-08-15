@@ -240,9 +240,13 @@ fn db_check() {
     let postgresql_available = engines
         .iter()
         .any(|e| e["engine"] == "postgresql" && e["available"] == serde_json::Value::Bool(true));
+    let sqlite_available = engines
+        .iter()
+        .any(|e| e["engine"] == "sqlite" && e["available"] == serde_json::Value::Bool(true));
     let other_engines_unavailable = engines.iter().all(|e| {
         e["engine"] == "mysql"
             || e["engine"] == "postgresql"
+            || e["engine"] == "sqlite"
             || e["available"] == serde_json::Value::Bool(false)
     });
     let tcp = db::test_connection(&serde_json::json!({
@@ -286,6 +290,36 @@ fn db_check() {
     let pg_query_err = db::query_inline(&pg_profile, "SELECT 1")
         .err()
         .unwrap_or_default();
+    // SQLite round-trip through the real engine (create/insert/select).
+    let sqlite_path =
+        std::env::temp_dir().join(format!("onehub-db-check-sqlite-{}.db", std::process::id()));
+    let sqlite_profile = serde_json::json!({
+        "engine": "sqlite",
+        "database": sqlite_path.to_string_lossy(),
+    });
+    let sqlite_session = db::connect(&sqlite_profile);
+    let sqlite_session_id = sqlite_session.clone().unwrap_or_default();
+    let sqlite_create = db::query_session(
+        &sqlite_session_id,
+        "CREATE TABLE IF NOT EXISTS t (id INTEGER PRIMARY KEY, name TEXT)",
+    );
+    let sqlite_insert = db::query_session(
+        &sqlite_session_id,
+        "INSERT INTO t(name) VALUES ('onehub-sqlite-ok')",
+    );
+    let sqlite_select = db::query_session(&sqlite_session_id, "SELECT id, name FROM t");
+    let sqlite_roundtrip_ok = sqlite_session.is_ok()
+        && sqlite_create.is_ok()
+        && sqlite_insert
+            .as_ref()
+            .map(|o| o.affected_rows >= 1)
+            .unwrap_or(false)
+        && sqlite_select
+            .as_ref()
+            .map(|o| o.columns.len() == 2 && !o.rows.is_empty())
+            .unwrap_or(false);
+    let _ = db::close_session(&sqlite_session_id);
+    let _ = std::fs::remove_file(&sqlite_path);
     let store_path =
         std::env::temp_dir().join(format!("onehub-db-check-{}.sqlite", std::process::id()));
     let mut store = Store::open(&store_path).expect("store");
@@ -319,6 +353,7 @@ fn db_check() {
         "engine_count": engines.len(),
         "mysql_available": mysql_available,
         "postgresql_available": postgresql_available,
+        "sqlite_available": sqlite_available,
         "other_engines_unavailable": other_engines_unavailable,
         "tcp_refused_graceful": tcp["reachable"] == serde_json::Value::Bool(false),
         "sqlite_missing_reported": sqlite_missing["reachable"] == serde_json::Value::Bool(false),
@@ -327,6 +362,7 @@ fn db_check() {
         "mysql_query_refused_graceful": mysql_query_err.contains("失败"),
         "pg_connect_refused_graceful": pg_connect_err.contains("失败"),
         "pg_query_refused_graceful": pg_query_err.contains("失败"),
+        "sqlite_roundtrip_ok": sqlite_roundtrip_ok,
         "db_connection_save_list_delete_ok": db_listed >= 1 && deleted,
     });
     println!("{}", serde_json::to_string(&result).expect("json"));
