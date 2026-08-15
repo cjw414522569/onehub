@@ -95,11 +95,13 @@ pub(crate) const SHIM_JS: &str = r#"(function () {
   window.addEventListener('unhandledrejection', function (e) { window.__probeErrors.push('REJ:' + String(e.reason)); });
   var _req = 0;
   var _pending = {};
+  var _callbacks = {};
   function _post(m) { if (window.chrome && window.chrome.webview) { window.chrome.webview.postMessage(m); } }
   window.__TAURI_INTERNALS__ = {
     metadata: { currentWindow: { label: 'main' }, currentWebview: { label: 'main' } },
-    transformCallback: function (cb) { return (window.__TAURI_INTERNALS__._cb = (window.__TAURI_INTERNALS__._cb || 0) + 1); },
-    unregisterCallback: function (id) {},
+    transformCallback: function (cb) { var id = (window.__TAURI_INTERNALS__._cb = (window.__TAURI_INTERNALS__._cb || 0) + 1); if (typeof cb === 'function') { _callbacks[id] = cb; } return id; },
+    runCallback: function (id, payload) { if (_callbacks[id]) { _callbacks[id](payload); } },
+    unregisterCallback: function (id) { delete _callbacks[id]; },
     convertFileSrc: function (filePath) { return filePath; },
     postMessage: _post,
     invoke: function (cmd, payload, opts) {
@@ -116,9 +118,12 @@ pub(crate) const SHIM_JS: &str = r#"(function () {
   if (window.chrome && window.chrome.webview && window.chrome.webview.addEventListener) {
     window.chrome.webview.addEventListener('message', function (e) {
       var d = (typeof e.data === 'string') ? JSON.parse(e.data) : e.data;
-      if (d && d.kind === 'invoke-reply' && _pending[d.requestId]) {
+      if (!d) { return; }
+      if (d.kind === 'invoke-reply' && _pending[d.requestId]) {
         var p = _pending[d.requestId]; delete _pending[d.requestId];
         if (d.error) { p.reject(new Error(d.error)); } else { p.resolve(d.payload); }
+      } else if (d.kind === 'event' && typeof d.handlerId === 'number') {
+        window.__TAURI_INTERNALS__.runCallback(d.handlerId, d.payload);
       }
     });
   }

@@ -102,6 +102,7 @@ struct AppState {
     metrics_ready: bool,
     controller: Option<ICoreWebView2Controller>,
     webview: Option<ICoreWebView2>,
+    events: bridge::EventRegistry,
 }
 
 fn main() {
@@ -446,6 +447,7 @@ unsafe fn wm_create(hwnd: HWND) -> LRESULT {
         metrics_ready: false,
         controller: None,
         webview: None,
+        events: bridge::EventRegistry::default(),
     });
     SetWindowLongPtrW(hwnd, GWLP_USERDATA, Box::into_raw(state) as isize);
     SetTimer(hwnd, TIMER_ID, 250, None);
@@ -510,7 +512,79 @@ fn on_web_message(hwnd: HWND, message: &str) -> Option<String> {
         return None;
     }
     let state = unsafe { &mut *(raw as *mut AppState) };
+    let parsed: serde_json::Value = serde_json::from_str(message).ok()?;
+    let cmd = parsed
+        .get("cmd")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("");
+    let request_id = parsed
+        .get("requestId")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+
+    if cmd == "plugin:event|listen" || cmd == "plugin:event|unlisten" || cmd == "plugin:event|emit"
+    {
+        let payload = parsed
+            .get("payload")
+            .cloned()
+            .unwrap_or(serde_json::Value::Null);
+        let reply_payload = match cmd {
+            "plugin:event|listen" => {
+                let event = payload
+                    .get("event")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("")
+                    .to_string();
+                let handler = payload
+                    .get("handler")
+                    .and_then(serde_json::Value::as_u64)
+                    .unwrap_or(0);
+                serde_json::json!(state.events.listen(&event, handler))
+            }
+            "plugin:event|unlisten" => {
+                let event = payload
+                    .get("event")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("")
+                    .to_string();
+                let event_id = payload
+                    .get("eventId")
+                    .and_then(serde_json::Value::as_u64)
+                    .unwrap_or(0);
+                state.events.unlisten(&event, event_id);
+                serde_json::Value::Null
+            }
+            _ => serde_json::Value::Null,
+        };
+        let reply = serde_json::json!({ "kind": "invoke-reply", "requestId": request_id, "payload": reply_payload });
+        return Some(reply.to_string());
+    }
+
+    let payload = parsed
+        .get("payload")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
     let (reply, action) = bridge::handle_message(&mut state.model, message)?;
+
+    // Host-shell terminal echo: after terminal_write, emit terminal:output so
+    // the UI xterm renders it (mXterm TerminalOutputEvent: data as number[]).
+    if cmd == "terminal_write" {
+        if let Some(data) = payload.get("data").and_then(serde_json::Value::as_str) {
+            let events = state
+                .events
+                .terminal_output_events("session-0", data.as_bytes());
+            if let Some(webview) = &state.webview {
+                for (handler_id, event_obj) in events {
+                    let event_message = serde_json::json!({ "kind": "event", "handlerId": handler_id, "payload": event_obj }).to_string();
+                    let hstring = windows::core::HSTRING::from(event_message);
+                    unsafe {
+                        let _ = webview.PostWebMessageAsString(&hstring);
+                    }
+                }
+            }
+        }
+    }
+
     match action {
         bridge::WindowAction::Minimize => unsafe {
             ShowWindow(hwnd, SW_MINIMIZE);
@@ -544,6 +618,24 @@ unsafe fn bridge_check(webview: &webview2_com::Microsoft::Web::WebView2::Win32::
                 continue;
             }
             println!("[bridge-check] result={value}");
+            if value == "PASS" {
+                // Event round-trip: register a terminal:output listener, write,
+                // and verify the emitted event reached the JS callback.
+                let _ = webview2::execute_script(
+                    webview,
+                    "window.__evt='none'; window.__TAURI_INTERNALS__.invoke('plugin:event|listen',{event:'terminal:output',handler:window.__TAURI_INTERNALS__.transformCallback(function(ev){window.__evt=JSON.stringify(ev.payload);})}).then(function(){window.__TAURI_INTERNALS__.invoke('terminal_write',{data:'hello\\n'});});",
+                );
+                for _ in 0..12 {
+                    std::thread::sleep(std::time::Duration::from_millis(250));
+                    if let Ok(state) = webview2::execute_script(webview, "window.__evt") {
+                        let value = state.trim_matches('"').to_string();
+                        if value != "none" && !value.is_empty() {
+                            println!("[bridge-check] event={value}");
+                            break;
+                        }
+                    }
+                }
+            }
             if value == "PASS" {
                 if let Ok(state) = webview2::execute_script(
                     webview,

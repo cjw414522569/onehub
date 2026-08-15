@@ -5,7 +5,7 @@
 // so the UI still renders. The host injects this script before the app boots.
 
 interface WebViewMessageEvent extends MessageEvent {
-  data: { kind?: string; requestId?: number; payload?: unknown; error?: string };
+  data: { kind?: string; requestId?: number; handlerId?: number; payload?: unknown; error?: string };
 }
 
 interface SshBridgeWindow extends Window {
@@ -23,6 +23,7 @@ interface SshBridgeWindow extends Window {
     invoke(cmd: string, payload?: unknown, options?: unknown): Promise<unknown>;
     transformCallback(callback?: (response: unknown) => void, once?: boolean): number;
     unregisterCallback(id: number): void;
+    runCallback?(id: number, payload?: unknown): void;
     convertFileSrc(filePath: string, protocol?: string): string;
     postMessage(message: unknown): void;
   };
@@ -33,6 +34,7 @@ const globalWindow = window as SshBridgeWindow;
 let callbackCounter = 0;
 const callbacks = new Map<number, (response: unknown) => void>();
 const pendingInvokes = new Map<number, (value: unknown) => void>();
+const eventCallbacks = new Map<number, (payload: unknown) => void>();
 
 function bridgeAvailable(): boolean {
   return Boolean(globalWindow.chrome?.webview?.postMessage);
@@ -53,7 +55,11 @@ function install(): void {
     transformCallback(callback, _once) {
       const id = ++callbackCounter;
       if (callback) callbacks.set(id, callback);
+      if (callback) eventCallbacks.set(id, callback as (payload: unknown) => void);
       return id;
+    },
+    runCallback(id, payload) {
+      eventCallbacks.get(id)?.(payload);
     },
     unregisterCallback(_id: number) {},
     convertFileSrc(filePath: string) {
@@ -96,6 +102,10 @@ install();
 // Route host replies back to pending invoke promises.
 globalWindow.chrome?.webview?.addEventListener?.("message", (event: WebViewMessageEvent) => {
   const data = event.data;
+  if (data?.kind === "event" && typeof data.handlerId === "number") {
+    globalWindow.__TAURI_INTERNALS__?.runCallback?.(data.handlerId, data.payload);
+    return;
+  }
   if (data?.kind === "invoke-reply" && typeof data.requestId === "number") {
     const resolve = pendingInvokes.get(data.requestId);
     if (resolve) {

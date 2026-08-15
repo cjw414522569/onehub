@@ -148,18 +148,20 @@ if (process.argv.includes('--write')) {
         'WebView2 shim (__TAURI_INTERNALS__ + metadata + event plugin internals) -> chrome.webview.postMessage -> bridge.rs -> GuiModel; responses shaped to mXterm UI contracts (ConnectionProfile[] / sessionId string / void null / plugin window+event benign)',
       ui_session_flow:
         'Playwright drives the real connection dialog -> 创建连接 -> connection_upsert -> repository shows dev root@10.0.0.1:2222 -> click -> terminal_connect (test-mxterm-ui-flow.mjs)',
+      terminal_event_bridge:
+        'terminal_write -> bridge -> terminal:output event with TerminalOutputEvent shape (data as number[]) delivered to the JS callback (--bridge-check event round-trip); EventRegistry listen/unlisten unit-tested',
       contract:
         'layer L5, approved bridge abi-c, forbidden dependencies absent, dependency-rules external_imports synced',
       mxterm_reference:
         'light-neutral chrome (tabs bar, left session repository, status/input lines) and a modal new-SSH dialog referencing the mxterm prototype design; credentials are not persisted',
     },
     verification: {
-      unit_tests: 'pass (cargo test -p clients-windows --locked, 27 passed)',
+      unit_tests: 'pass (cargo test -p clients-windows --locked, 28 passed)',
       cargo_check: 'pass (cargo check -p clients-windows --locked)',
       cargo_fmt: 'pass (cargo fmt -p clients-windows --check)',
       clippy: 'pass (cargo clippy -p clients-windows --all-targets --all-features -- -D warnings)',
       self_check: 'pass (ssh-gui --check)',
-      bridge_check: 'pass (ssh-gui --bridge-check: shim injected + webmessage round-trip + render root=1/errors=[])',
+      bridge_check: 'pass (ssh-gui --bridge-check: invoke round-trip + terminal:output event round-trip + render root=1/errors=[])',
       ui_flow: 'pass (test-mxterm-ui-flow.mjs)',
       contract_test: 'pass (node scripts/test-pc-gui.mjs .)',
     },
@@ -183,7 +185,7 @@ pure, headless-testable UI model in \`clients/windows/src/model.rs\`.
 ## Verification
 
 \`\`\`text
-cargo test -p clients-windows --locked              PASS (27 tests)
+cargo test -p clients-windows --locked              PASS (28 tests)
 cargo check -p clients-windows --locked             PASS
 cargo fmt -p clients-windows --check                PASS
 cargo clippy -p clients-windows --all-targets --all-features -- -D warnings  PASS
@@ -203,5 +205,5 @@ product UI.
 }
 
 console.log(
-  'pc-gui contract valid: the Windows PC GUI builds, its 27 unit tests pass, the headless self-check passes, and the L5 contract (abi-c bridge, no forbidden dependencies, dependency-rules synced) holds.'
+  'pc-gui contract valid: the Windows PC GUI builds, its 28 unit tests pass, the headless self-check passes, and the L5 contract (abi-c bridge, no forbidden dependencies, dependency-rules synced) holds.'
 );

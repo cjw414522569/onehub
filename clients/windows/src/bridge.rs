@@ -56,6 +56,72 @@ fn field(value: &Value, key: &str) -> String {
         .to_string()
 }
 
+/// A registered Tauri-style event listener (used by the UI listen()).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct EventListener {
+    /// Listener id returned to the UI.
+    pub id: u64,
+    /// Event name (e.g. "terminal:output").
+    pub event: String,
+    /// The JS callback id (from transformCallback) to invoke on emit.
+    pub handler_id: u64,
+}
+
+/// Registry of event listeners with monotonically increasing ids.
+#[derive(Debug, Default)]
+pub(crate) struct EventRegistry {
+    listeners: Vec<EventListener>,
+    next_id: u64,
+}
+
+impl EventRegistry {
+    /// Registers a listener and returns its id.
+    pub fn listen(&mut self, event: &str, handler_id: u64) -> u64 {
+        self.next_id += 1;
+        self.listeners.push(EventListener {
+            id: self.next_id,
+            event: event.to_string(),
+            handler_id,
+        });
+        self.next_id
+    }
+
+    /// Removes a listener by event name + id.
+    pub fn unlisten(&mut self, event: &str, id: u64) {
+        self.listeners
+            .retain(|listener| !(listener.event == event && listener.id == id));
+    }
+
+    /// Builds terminal:output event objects for every registered listener.
+    /// Each entry is (handler_id, full event object) shaped for the mXterm UI
+    /// (TerminalOutputEvent: session_id, request_id, data as number[]).
+    pub fn terminal_output_events(&self, session_id: &str, data: &[u8]) -> Vec<(u64, Value)> {
+        let bytes: Vec<Value> = data.iter().map(|byte| json!(*byte)).collect();
+        self.listeners
+            .iter()
+            .filter(|listener| listener.event == "terminal:output")
+            .map(|listener| {
+                let event_obj = json!({
+                    "event": "terminal:output",
+                    "id": listener.id,
+                    "payload": {
+                        "session_id": session_id,
+                        "request_id": null,
+                        "data": bytes,
+                    },
+                });
+                (listener.handler_id, event_obj)
+            })
+            .collect()
+    }
+
+    /// Number of registered listeners (for tests).
+    #[cfg(test)]
+    pub fn len(&self) -> usize {
+        self.listeners.len()
+    }
+}
+
 /// Handles one `{kind:"invoke", requestId, cmd, payload}` message and returns
 /// the reply JSON (payload shaped for the mXterm UI) plus a window action.
 pub(crate) fn handle_message(
@@ -189,7 +255,14 @@ pub(crate) fn handle_message(
         }),
         "get_windows_pty_info" => Value::Null,
         "get_supported_window_materials" => json!([]),
-        "secret_vault_status" => json!({ "initialized": true, "unlocked": true }),
+        "secret_vault_status" | "secret_vault_unlock" | "secret_vault_unlock_local" => {
+            json!({ "initialized": true, "unlocked": true })
+        }
+        "secret_vault_lock"
+        | "secret_vault_enable_master_password"
+        | "secret_vault_disable_master_password" => {
+            json!({ "initialized": true, "unlocked": false })
+        }
         "command_snippet_list" => json!([]),
         "credential_list" => json!([]),
         "command_history_list" => json!([]),
@@ -219,7 +292,6 @@ pub(crate) fn handle_message(
             "size": { "width": 1920, "height": 1080 },
             "scaleFactor": 1,
         }]),
-        "plugin:event|listen" => json!(1),
         "plugin:event|unlisten" | "plugin:event|emit" | "plugin:event|emit_to" => Value::Null,
         "plugin:opener|open_url"
         | "plugin:opener|open_path"
@@ -367,9 +439,7 @@ mod tests {
         assert_eq!(pos["x"], 0);
         let monitors = invoke(&mut model, "plugin:window|available_monitors", json!({}));
         assert!(monitors.as_array().is_some());
-        let listen = invoke(&mut model, "plugin:event|listen", json!({}));
-        assert_eq!(listen, 1);
-        assert!(invoke(&mut model, "plugin:event|unlisten", json!({})).is_null());
+        // plugin:event|listen is handled by on_web_message (the WebView2 layer).
     }
 
     #[test]
@@ -377,6 +447,24 @@ mod tests {
         let mut model = GuiModel::with_size(4, 24);
         let body = invoke(&mut model, "docker_list_containers", json!({}));
         assert!(body.is_null());
+    }
+
+    #[test]
+    fn event_registry_listen_unlisten_and_output() {
+        let mut registry = EventRegistry::default();
+        let id = registry.listen("terminal:output", 42);
+        assert_eq!(id, 1);
+        assert_eq!(registry.len(), 1);
+        let events = registry.terminal_output_events("session-0", b"hi\n");
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].0, 42);
+        assert_eq!(events[0].1["payload"]["session_id"], "session-0");
+        assert_eq!(events[0].1["payload"]["data"][0], 104);
+        registry.unlisten("terminal:output", 1);
+        assert_eq!(registry.len(), 0);
+        assert!(registry
+            .terminal_output_events("session-0", b"x")
+            .is_empty());
     }
 
     #[test]
