@@ -144,3 +144,18 @@
   seven states have unique (glyph, pattern) pairs.
 - Latency is shown as text ("12 ms", "1.5 s") with a quality label, never by
   color alone.
+
+## T112: command snippets, variable hints, sensitive injection
+
+`crates/host-library/src/snippets.rs`:
+
+- `SnippetTemplate` - a command with `{{variable}}` placeholders; variables
+  are text or secret.
+- `SnippetEngine::render` - substitutes values in a **single pass** (a value
+  containing `{{...}}` is inserted literally - no template injection) and
+  produces a preview with secret values masked.
+- `CommandHistory` - records only the masked preview, so sensitive values
+  never enter history (verified by a leak test).
+- `VariableHints` - prefix-based autocomplete candidates.
+- Tests: template injection, history leak, missing-variable validation, and
+  hint resolution.
