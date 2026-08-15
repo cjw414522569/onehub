@@ -37,3 +37,5 @@ known_hosts.old
 
 # Public test-key fixtures from RustCrypto test vectors (not real credentials)
 !crates/ssh-backend/tests/fixtures/*.pem
+# Node / TypeScript shell dependencies
+web/app/node_modules/

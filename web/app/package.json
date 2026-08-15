@@ -1,0 +1,16 @@
+{
+  "name": "ssh-web-shell",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "TypeScript Web/PWA responsive shell, terminal surface, and input adapter (T139).",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "e2e": "node --experimental-strip-types test/e2e.ts",
+    "shots": "node --experimental-strip-types test/screenshot-matrix.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "typescript": "~5.9.3"
+  }
+}
