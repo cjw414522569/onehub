@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "tenant_boundary": "per-account session isolation; no cross-tenant data access; tenant-scoped rate limits and quotas",
+  "deployment_topology": [
+    "client -> gateway over TLS (WebSocket)",
+    "gateway -> target host over SSH",
+    "gateway isolates tenants; no direct client-to-target path",
+    "gateway has no inbound control-plane exposure beyond the authenticated proxy"
+  ],
+  "controls": {
+    "ssrf": {
+      "threat": "a tenant abuses the gateway to reach internal metadata endpoints",
+      "controls": [
+        "target host/port allowlist",
+        "link-local and cloud-metadata ranges blocked",
+        "private-range targets default-deny unless explicitly allowed"
+      ]
+    },
+    "internal_access": {
+      "threat": "the gateway is used to pivot into the internal network",
+      "controls": [
+        "per-tenant target allowlist",
+        "audit of every target connection",
+        "default-deny internal ranges"
+      ]
+    },
+    "credentials": {
+      "threat": "credentials stored or forwarded insecurely",
+      "controls": [
+        "credentials never stored on the gateway",
+        "keys stay client-side (end-to-end)",
+        "no plaintext password forwarding"
+      ]
+    },
+    "audit": {
+      "threat": "abuse happens without a trace",
+      "controls": [
+        "content-free audit of sessions and transfers",
+        "defined retention policy",
+        "no secret values in audit logs"
+      ]
+    },
+    "rate_limit": {
+      "threat": "a tenant floods the gateway",
+      "controls": [
+        "per-tenant rate limits",
+        "connection quotas",
+        "backpressure"
+      ]
+    },
+    "abuse": {
+      "threat": "the gateway is used for scanning or spam",
+      "controls": [
+        "tenant suspension policy",
+        "abuse detection on connection patterns",
+        "escalation workflow"
+      ]
+    }
+  }
+}
