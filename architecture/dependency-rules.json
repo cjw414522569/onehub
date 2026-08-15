@@ -177,6 +177,15 @@
       ]
     },
     {
+      "id": "host-library",
+      "layer": "L1",
+      "path": "crates/host-library",
+      "dependencies": [
+        "core-domain"
+      ],
+      "external_imports": []
+    },
+    {
       "id": "sync-core",
       "layer": "L1",
       "path": "crates/sync-core",

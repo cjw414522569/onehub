@@ -485,6 +485,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "host-library"
+version = "0.1.0"
+dependencies = [
+ "core-domain",
+]
+
+[[package]]
 name = "inout"
 version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"

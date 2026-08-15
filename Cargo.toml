@@ -10,6 +10,7 @@ members = [
   "crates/terminal-state",
   "crates/transfer",
   "crates/forwarding",
+  "crates/host-library",
   "crates/sync-core",
   "crates/ssh-backend",
   "crates/sftp-backend",
