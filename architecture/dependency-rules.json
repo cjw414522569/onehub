@@ -458,7 +458,9 @@
         "session-orchestrator",
         "terminal-parser",
         "transfer",
-        "forwarding"
+        "forwarding",
+        "storage-sqlite",
+        "secure-store"
       ],
       "external_imports": [
         "clap"
