@@ -18,3 +18,18 @@
 - `CapabilitySet::negotiate` - the intersection of client / server
   capabilities.
 - Tests cover the protocol contract and network-fault recovery (resume).
+
+## T136: target address policy and SSRF protection
+
+`services/gateway/src/address_policy.rs`:
+
+- `AddressPolicy` - configurable gate over every target: private /
+  link-local / loopback / cloud-metadata / reserved address classes, a
+  port policy (default SSH-only), and an optional host allowlist
+  (exact or `*.suffix` wildcard).
+- DNS rebinding guard - evaluation pins the validated addresses and
+  `verify_still_valid` rejects a connect-time re-resolution that returns
+  any address outside the pinned set.
+- Tests cover the SSRF bypass set: private/link-local/loopback/metadata
+  (IPv4, IPv6, IPv4-mapped), reserved and multicast ranges, port and
+  allowlist policy, and DNS rebinding detection.
