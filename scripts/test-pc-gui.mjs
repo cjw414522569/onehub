@@ -156,7 +156,7 @@ if (process.argv.includes('--write')) {
         'light-neutral chrome (tabs bar, left session repository, status/input lines) and a modal new-SSH dialog referencing the mxterm prototype design; credentials are not persisted',
     },
     verification: {
-      unit_tests: 'pass (cargo test -p clients-windows --locked, 28 passed)',
+      unit_tests: 'pass (cargo test -p clients-windows --locked, 29 passed)',
       cargo_check: 'pass (cargo check -p clients-windows --locked)',
       cargo_fmt: 'pass (cargo fmt -p clients-windows --check)',
       clippy: 'pass (cargo clippy -p clients-windows --all-targets --all-features -- -D warnings)',
@@ -185,7 +185,7 @@ pure, headless-testable UI model in \`clients/windows/src/model.rs\`.
 ## Verification
 
 \`\`\`text
-cargo test -p clients-windows --locked              PASS (28 tests)
+cargo test -p clients-windows --locked              PASS (29 tests)
 cargo check -p clients-windows --locked             PASS
 cargo fmt -p clients-windows --check                PASS
 cargo clippy -p clients-windows --all-targets --all-features -- -D warnings  PASS
@@ -205,5 +205,5 @@ product UI.
 }
 
 console.log(
-  'pc-gui contract valid: the Windows PC GUI builds, its 28 unit tests pass, the headless self-check passes, and the L5 contract (abi-c bridge, no forbidden dependencies, dependency-rules synced) holds.'
+  'pc-gui contract valid: the Windows PC GUI builds, its 29 unit tests pass, the headless self-check passes, and the L5 contract (abi-c bridge, no forbidden dependencies, dependency-rules synced) holds.'
 );

@@ -268,6 +268,33 @@ pub(crate) fn handle_message(
         "command_history_list" => json!([]),
         "local_terminal_list_profiles" => json!([]),
         "serial_list_ports" => json!([]),
+        // File / SFTP / transfer surface: interface-only in the host shell
+        // (no live SFTP session yet). list resolves to [] so the panel renders
+        // empty; mutations resolve null so nothing crashes. Real SFTP wiring
+        // goes through the abi-c bridge in a later row.
+        "remote_file_list" => json!([]),
+        "remote_file_metadata"
+        | "remote_file_read"
+        | "remote_file_write"
+        | "remote_file_create_file"
+        | "remote_file_create_directory"
+        | "remote_file_delete"
+        | "remote_file_rename"
+        | "remote_file_check_path"
+        | "remote_file_check_download_target"
+        | "remote_file_upload_file"
+        | "remote_file_upload_local_file"
+        | "remote_file_upload_archive"
+        | "remote_file_upload_local_archive"
+        | "remote_file_download"
+        | "remote_file_download_to_local"
+        | "remote_file_prepare_upload_temp"
+        | "remote_file_append_upload_temp"
+        | "remote_file_delete_upload_temp"
+        | "remote_file_cancel_transfer"
+        | "connection_transfer_export"
+        | "connection_transfer_import"
+        | "connection_transfer_preview" => Value::Null,
         // Tauri plugin IPC the copied UI needs at bootstrap (window state,
         // event listeners). Benign values keep the UI rendering; unknown
         // plugin commands resolve to null so the UI degrades gracefully.
@@ -465,6 +492,16 @@ mod tests {
         assert!(registry
             .terminal_output_events("session-0", b"x")
             .is_empty());
+    }
+
+    #[test]
+    fn file_transfer_surface_is_interface_only() {
+        let mut model = GuiModel::with_size(4, 24);
+        assert!(invoke(&mut model, "remote_file_list", json!({})).is_array());
+        assert!(invoke(&mut model, "remote_file_read", json!({})).is_null());
+        assert!(invoke(&mut model, "remote_file_write", json!({})).is_null());
+        assert!(invoke(&mut model, "remote_file_upload_file", json!({})).is_null());
+        assert!(invoke(&mut model, "connection_transfer_export", json!({})).is_null());
     }
 
     #[test]
