@@ -53,10 +53,10 @@ if (errors.length > 0) {
   process.exit(1);
 }
 
-// Archive the report.
+// Archive the report (only on --write, so re-runs do not churn the
+// committed evidence with new timestamps).
 const verifiedAt = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
 const reportDir = dirname(fileURLToPath(import.meta.url)) + '/../docs/reports';
-mkdirSync(reportDir, { recursive: true });
 const report = {
   task: 'T142',
   status: 'pass',
@@ -82,7 +82,10 @@ const report = {
     'SessionRegistry.consumed_tokens was changed to a pruned (token_id -> expires_at) map so a 72h soak has bounded memory; T137 contract re-verified.',
   ],
 };
-writeFileSync(join(reportDir, 'GATEWAY_SOAK_T142.json'), `${JSON.stringify(report, null, 2)}\n`, 'utf8');
+if (process.argv.includes('--write')) {
+  mkdirSync(reportDir, { recursive: true });
+  writeFileSync(join(reportDir, 'GATEWAY_SOAK_T142.json'), `${JSON.stringify(report, null, 2)}\n`, 'utf8');
+}
 
 const md = [
   '# T142 gateway concurrency / bandwidth / long-connection / failure-recovery soak report',
@@ -115,5 +118,8 @@ const md = [
   'AddressPolicy) under the T003 budgets. The consumed-token replay window',
   'is pruned (bounded memory over a 72-hour soak).',
 ].join('\n');
-writeFileSync(join(reportDir, 'GATEWAY_SOAK_T142.md'), `${md}\n`, 'utf8');
-console.log(`gateway-soak contract valid: ${checks.map((c) => c.name).join('; ')}; report archived.`);
+if (process.argv.includes('--write')) {
+  writeFileSync(join(reportDir, 'GATEWAY_SOAK_T142.md'), `${md}\n`, 'utf8');
+  console.log(`wrote GATEWAY_SOAK_T142.json|md`);
+}
+console.log(`gateway-soak contract valid: ${checks.map((c) => c.name).join('; ')}.`);
