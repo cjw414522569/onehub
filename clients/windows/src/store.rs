@@ -336,6 +336,15 @@ impl Store {
     pub fn put_app_secret(&mut self, key: &str, value: &str) -> rusqlite::Result<()> {
         self.put("app_secret", key, &serde_json::json!(value))
     }
+    /// Reads an app-level settings value (non-secret JSON settings).
+    pub fn get_app_setting(&self, key: &str) -> rusqlite::Result<Option<Value>> {
+        self.get("app_setting", key)
+    }
+
+    /// Writes an app-level settings value.
+    pub fn put_app_setting(&mut self, key: &str, value: &Value) -> rusqlite::Result<()> {
+        self.put("app_setting", key, value)
+    }
     // ---- AI assistant ----
 
     /// Lists AI provider configs.

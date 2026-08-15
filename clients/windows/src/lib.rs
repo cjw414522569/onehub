@@ -10,6 +10,7 @@
 pub mod ai_assistant;
 pub mod docker_tools;
 pub mod local_sessions;
+pub mod mcp_tools;
 pub mod model;
 pub mod network_diagnostic;
 pub mod probe;

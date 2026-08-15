@@ -20,6 +20,7 @@ use abi_c::{BatchItem, EventBatch, EVENT_BATCH_VERSION};
 use clients_windows::ai_assistant;
 use clients_windows::docker_tools;
 use clients_windows::local_sessions;
+use clients_windows::mcp_tools;
 use clients_windows::model::{
     GuiCommand, GuiModel, Rgb, SessionPhase, ACCENT, BORDER, CHROME_BG, DEFAULT_BG, DEFAULT_FG,
     PANEL_ACTIVE, PANEL_BG, TEXT_MAIN, TEXT_MUTED,
@@ -182,7 +183,154 @@ fn main() {
         ai_check();
         return;
     }
+    if std::env::args().any(|argument| argument == "--mcp-check") {
+        mcp_check();
+        return;
+    }
     run_gui();
+}
+
+/// End-to-end MCP check (--mcp-check): exercises settings save/get with token
+/// generation, token rotation/verification, network info, executable path,
+/// update blockers, log read/clear, and the remote-service error path when no
+/// sidecar binary exists (mxterm parity T014).
+fn mcp_check() {
+    use clients_windows::mcp_tools as mt;
+    use clients_windows::store::Store;
+    let dir = std::env::temp_dir().join(format!(
+        "mcp-e2e-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    ));
+    let _ = std::fs::create_dir_all(&dir);
+    let db = dir.join("mcp.db");
+    let mut store = Store::open(&db).expect("store");
+
+    // First save with remote enabled generates a token.
+    let saved = mt::settings_save(
+        &mut store,
+        &serde_json::json!({
+            "enabled": true,
+            "expose_connections": true,
+            "ssh_operations_enabled": true,
+            "allow_dangerous_commands": false,
+            "remote_enabled": true,
+            "remote_host": "127.0.0.1",
+            "remote_port": 9876,
+            "connection_exposure_mode": "custom",
+            "exposed_connection_ids": ["conn-1", "conn-2"],
+        }),
+    )
+    .expect("save settings");
+    let generated = saved["generated_remote_token"]
+        .as_str()
+        .expect("generated token")
+        .to_string();
+    assert_eq!(generated.len(), 43, "url-safe base64 of 32 bytes");
+    assert_eq!(saved["remote_token_saved"].as_bool(), Some(true));
+    assert_eq!(saved["remote_port"].as_u64(), Some(9876));
+    assert_eq!(
+        saved["exposed_connection_ids"]
+            .as_array()
+            .expect("ids")
+            .len(),
+        2
+    );
+    assert!(saved["remote_token_preview"]
+        .as_str()
+        .expect("preview")
+        .starts_with("..."));
+
+    // Second save without a token keeps the existing one (no regeneration).
+    let saved2 = mt::settings_save(
+        &mut store,
+        &serde_json::json!({
+            "enabled": true,
+            "remote_enabled": true,
+            "remote_host": "127.0.0.1",
+            "remote_port": 9876,
+        }),
+    )
+    .expect("save again");
+    assert!(saved2["generated_remote_token"].is_null());
+    let stored_token = saved2["remote_token"].as_str().expect("plaintext token");
+    assert_eq!(stored_token, generated);
+    assert!(mt::verify_remote_token(
+        stored_token,
+        &mt::hash_remote_token(stored_token)
+    ));
+
+    // Token rotation yields a fresh token.
+    let rotated = mt::remote_token_rotate(&mut store).expect("rotate");
+    let rotated_token = rotated["remote_token"].as_str().expect("rotated");
+    assert_ne!(rotated_token, generated);
+    assert!(rotated["remote_token_saved"].as_bool() == Some(true));
+
+    // Settings persist across a reopen.
+    let reopened = Store::open(&db).expect("reopen");
+    let fetched = mt::settings_get(&reopened).expect("get");
+    assert_eq!(fetched["enabled"].as_bool(), Some(true));
+    assert_eq!(fetched["remote_port"].as_u64(), Some(9876));
+
+    // Local network info shape.
+    let net = mt::local_network_info();
+    assert!(net["ip_addresses"].is_array());
+
+    // Executable path resolves next to the app.
+    let exe_path = mt::executable_path().expect("exe path");
+    assert!(exe_path.to_lowercase().ends_with("mxterm-mcp.exe"));
+
+    // Remote service: no sidecar on this host => clear error, stable shape.
+    let status = mt::remote_service_status(&reopened).expect("status");
+    assert_eq!(status["enabled"].as_bool(), Some(true));
+    assert_eq!(status["running"].as_bool(), Some(false));
+    assert_eq!(status["token_saved"].as_bool(), Some(true));
+    let started = mt::remote_service_start(&mut store).expect("start");
+    assert_eq!(started["running"].as_bool(), Some(false));
+    let start_error = started["error"].as_str().unwrap_or("").to_string();
+    assert!(
+        start_error.contains("sidecar"),
+        "missing sidecar error, got: {start_error}"
+    );
+
+    // Update blockers + prepare (no external mcp processes on this host).
+    let blockers = mt::update_blockers(&reopened).expect("blockers");
+    assert!(blockers["process_count"].as_u64().is_some());
+    assert!(blockers["managed_remote_running"].as_bool() == Some(false));
+    let prepared = mt::prepare_for_update(&mut store).expect("prepare");
+    assert!(prepared["process_count"].as_u64().is_some());
+
+    // Log read/clear round-trip on the real log file.
+    let cleared = mt::remote_log_clear().expect("log clear");
+    assert_eq!(cleared["content"], "");
+    let read = mt::remote_log_read().expect("log read");
+    assert!(read["path"]
+        .as_str()
+        .expect("path")
+        .contains("mcp-remote.log"));
+    assert!(read["updated_at"].as_str().is_some());
+
+    let result = serde_json::json!({
+        "settings_persisted": true,
+        "token_generated_once": true,
+        "token_rotated": true,
+        "token_verify": true,
+        "remote_port": saved2["remote_port"],
+        "network_info_addresses": net["ip_addresses"].as_array().expect("arr").len(),
+        "executable_path": exe_path,
+        "service_status_enabled": status["enabled"],
+        "service_running": status["running"],
+        "service_missing_sidecar_error": start_error,
+        "update_process_count": blockers["process_count"],
+        "log_roundtrip": true,
+        "db": db.display().to_string(),
+    });
+    println!("{}", serde_json::to_string(&result).expect("json"));
+    let _ = std::fs::remove_file(&db);
+    let _ = std::fs::remove_dir_all(&dir);
 }
 
 /// End-to-end AI assistant check (--ai-check): verifies provider config
@@ -1198,6 +1346,55 @@ unsafe fn handle_key(state: &mut AppState, hwnd: HWND, wparam: WPARAM) {
         state.model.delete_forward();
     }
     InvalidateRect(hwnd, std::ptr::null(), 1);
+}
+
+/// Handles MCP commands (mxterm parity T014): settings persistence, token
+/// rotation, local network info, executable path, remote service lifecycle,
+/// update blockers, and the remote service log.
+fn handle_mcp_commands(
+    state: &mut AppState,
+    cmd: &str,
+    parsed: &serde_json::Value,
+) -> Option<String> {
+    if !cmd.starts_with("mcp_") {
+        return None;
+    }
+    let request_id = parsed
+        .get("requestId")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+    let payload = parsed
+        .get("payload")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+    let request = payload.get("request").cloned().unwrap_or(payload.clone());
+    let store = state.store.as_mut()?;
+    let result: Result<serde_json::Value, String> = match cmd {
+        "mcp_settings_get" => mcp_tools::settings_get(store),
+        "mcp_settings_save" => mcp_tools::settings_save(store, &request),
+        "mcp_executable_path" => mcp_tools::executable_path().map(serde_json::Value::String),
+        "mcp_local_network_info" => Ok(mcp_tools::local_network_info()),
+        "mcp_remote_service_status" => mcp_tools::remote_service_status(store),
+        "mcp_remote_service_start" => mcp_tools::remote_service_start(store),
+        "mcp_remote_service_stop" => mcp_tools::remote_service_stop(store),
+        "mcp_remote_service_restart" => mcp_tools::remote_service_restart(store),
+        "mcp_update_blockers" => mcp_tools::update_blockers(store),
+        "mcp_prepare_for_update" => mcp_tools::prepare_for_update(store),
+        "mcp_remote_log_read" => mcp_tools::remote_log_read(),
+        "mcp_remote_log_clear" => mcp_tools::remote_log_clear(),
+        "mcp_remote_token_rotate" => mcp_tools::remote_token_rotate(store),
+        _ => return None,
+    };
+    let reply_payload = match result {
+        Ok(value) => value,
+        Err(message) => serde_json::json!({
+            "error": { "code": "mcp_error", "message": message, "recoverable": true }
+        }),
+    };
+    Some(
+        serde_json::json!({ "kind": "invoke-reply", "requestId": request_id, "payload": reply_payload })
+            .to_string(),
+    )
 }
 
 /// Handles AI assistant commands (mxterm parity T013): provider config CRUD
@@ -2634,6 +2831,9 @@ fn on_web_message(hwnd: HWND, message: &str) -> Option<String> {
         return Some(reply);
     }
     if let Some(reply) = handle_ai_commands(state, cmd, &parsed) {
+        return Some(reply);
+    }
+    if let Some(reply) = handle_mcp_commands(state, cmd, &parsed) {
         return Some(reply);
     }
 
