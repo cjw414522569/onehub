@@ -56,6 +56,8 @@ fn connection_json(
             "terminal_encoding": "utf-8"
         })),
         "notes": request.get("notes").cloned().unwrap_or(Value::Null),
+        "rdp": request.get("rdp").cloned().unwrap_or(Value::Null),
+        "vnc": request.get("vnc").cloned().unwrap_or(Value::Null),
         "is_favorite": is_favorite,
         "last_connected_at": last_connected_at.map(|s| json!(s)).unwrap_or(Value::Null),
         "remote_os_id": request.get("remote_os_id").cloned().unwrap_or(Value::Null),

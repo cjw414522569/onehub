@@ -27,6 +27,7 @@ use clients_windows::model::{
 };
 use clients_windows::network_diagnostic;
 use clients_windows::probe;
+use clients_windows::rdp_tools;
 use clients_windows::remote_monitor;
 use clients_windows::scheduled_tasks;
 use clients_windows::sftp;
@@ -187,7 +188,189 @@ fn main() {
         mcp_check();
         return;
     }
+    if std::env::args().any(|argument| argument == "--rdp-check") {
+        rdp_check();
+        return;
+    }
     run_gui();
+}
+
+/// End-to-end RDP check (--rdp-check): verifies runner probing, launch-plan
+/// construction (preview), protocol gating, the external custom-runner spawn
+/// path, and the close/reveal/resize state machine (mxterm parity T015).
+fn rdp_check() {
+    use clients_windows::rdp_tools as rt;
+    use clients_windows::store::Store;
+    let dir = std::env::temp_dir().join(format!(
+        "rdp-e2e-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    ));
+    let _ = std::fs::create_dir_all(&dir);
+    let db = dir.join("rdp.db");
+    let mut store = Store::open(&db).expect("store");
+
+    // Probe the runners available on this host.
+    let probe = rt::probe_runner(&serde_json::json!({ "config": null }));
+    assert!(!probe["available_runners"]
+        .as_array()
+        .expect("arr")
+        .is_empty());
+    assert!(probe["supports_dynamic_resize"].as_bool() == Some(true));
+
+    // Store an RDP connection profile (explicit id).
+    store
+        .upsert_connection(&serde_json::json!({
+            "id": "conn-rdp",
+            "name": "win-host",
+            "protocol": "rdp",
+            "host": "10.0.0.5",
+            "port": 3389,
+            "username": "Administrator",
+            "rdp": {
+                "domain": null,
+                "display": { "mode": "windowed", "width": null, "height": null, "dynamic_resize": true, "use_multimon": false },
+                "resources": { "clipboard": true, "audio": "local", "drives": false, "printers": false, "smart_cards": false },
+                "gateway": null,
+                "remote_app": { "enabled": false, "program": null, "working_dir": null, "args": null },
+                "performance": { "preset": "auto", "desktop_background": true, "font_smoothing": true, "visual_styles": true },
+                "security": { "credential_mode": "prompt", "nla": "auto", "certificate_policy": "prompt" },
+                "runner": { "render_mode": "external", "preferred_runner": null, "custom_executable": null, "custom_args_template": null },
+                "raw_rdp_settings": null,
+                "raw_runner_args": null
+            }
+        }))
+        .expect("upsert rdp connection");
+
+    // Preview builds the mstsc plan without launching.
+    let preview = rt::preview_launch(&store, &serde_json::json!({ "connection_id": "conn-rdp" }))
+        .expect("preview");
+    assert_eq!(preview["connection_id"], "conn-rdp");
+    assert_eq!(preview["runner"], "mstsc");
+    let content = preview["rdp_file_content"]
+        .as_str()
+        .expect("content")
+        .to_string();
+    assert!(content.contains("full address:s:10.0.0.5:3389"));
+    assert!(content.contains("username:s:Administrator"));
+    assert!(!preview["args"].as_array().expect("args").is_empty());
+
+    // Protocol gating + missing connection errors.
+    store
+        .upsert_connection(&serde_json::json!({
+            "id": "conn-ssh",
+            "name": "ssh-host",
+            "protocol": "ssh",
+            "host": "10.0.0.6",
+            "port": 22,
+            "username": "root",
+        }))
+        .expect("upsert ssh connection");
+    let wrong_protocol =
+        rt::preview_launch(&store, &serde_json::json!({ "connection_id": "conn-ssh" }));
+    assert!(wrong_protocol.is_err());
+    assert!(wrong_protocol.unwrap_err().contains("仅支持 RDP"));
+    let missing = rt::preview_launch(&store, &serde_json::json!({ "connection_id": "nope" }));
+    assert!(missing.is_err());
+
+    // Custom runner with a missing executable => clear error before spawn.
+    store
+        .upsert_connection(&serde_json::json!({
+            "id": "conn-custom-missing",
+            "name": "custom-missing",
+            "protocol": "rdp",
+            "host": "10.0.0.7",
+            "port": 3389,
+            "username": "u",
+            "rdp": {
+                "display": { "mode": "windowed", "width": null, "height": null, "dynamic_resize": true, "use_multimon": false },
+                "resources": { "clipboard": true, "audio": "local", "drives": false, "printers": false, "smart_cards": false },
+                "remote_app": { "enabled": false, "program": null, "working_dir": null, "args": null },
+                "performance": { "preset": "auto", "desktop_background": true, "font_smoothing": true, "visual_styles": true },
+                "security": { "credential_mode": "prompt", "nla": "auto", "certificate_policy": "prompt" },
+                "runner": { "render_mode": "custom", "custom_executable": "C:/definitely/missing-rdp.exe", "custom_args_template": "{rdp_file}" }
+            }
+        }))
+        .expect("upsert custom rdp");
+    let custom_missing = rt::launch_connection(
+        &mut store,
+        &serde_json::json!({ "connection_id": "conn-custom-missing" }),
+    );
+    assert!(custom_missing.is_err(), "missing custom runner must error");
+
+    // On Windows, launch via a harmless custom executable proves spawn +
+    // registry without opening a real RDP session.
+    let mut windows_launch = serde_json::Value::Null;
+    if cfg!(windows) {
+        store
+            .upsert_connection(&serde_json::json!({
+                "id": "conn-win-launch",
+                "name": "launch-probe",
+                "protocol": "rdp",
+                "host": "10.0.0.8",
+                "port": 3389,
+                "username": "u",
+                "rdp": {
+                    "display": { "mode": "windowed", "width": null, "height": null, "dynamic_resize": true, "use_multimon": false },
+                    "resources": { "clipboard": true, "audio": "local", "drives": false, "printers": false, "smart_cards": false },
+                    "remote_app": { "enabled": false, "program": null, "working_dir": null, "args": null },
+                    "performance": { "preset": "auto", "desktop_background": true, "font_smoothing": true, "visual_styles": true },
+                    "security": { "credential_mode": "prompt", "nla": "auto", "certificate_policy": "prompt" },
+                    "runner": { "render_mode": "custom", "custom_executable": "where.exe", "custom_args_template": "{rdp_file}" }
+                }
+            }))
+            .expect("upsert launch probe");
+        match rt::launch_connection(
+            &mut store,
+            &serde_json::json!({ "connection_id": "conn-win-launch" }),
+        ) {
+            Ok(r) => {
+                assert_eq!(r["launched"].as_bool(), Some(true));
+                assert!(r["process_id"].as_u64().is_some());
+                let session_id = r["session_id"].as_str().expect("sid").to_string();
+                let close = rt::close_session(&serde_json::json!({ "session_id": session_id }));
+                assert_eq!(
+                    close["ok"].as_bool(),
+                    Some(false),
+                    "external session is client-managed"
+                );
+                windows_launch = serde_json::json!({ "launched": true, "session_id": session_id });
+            }
+            Err(e) => {
+                windows_launch = serde_json::json!({ "launched": false, "error": e });
+            }
+        }
+    }
+
+    // Session state machine on a missing session.
+    let close = rt::close_session(&serde_json::json!({ "session_id": "nope" }));
+    assert_eq!(close["ok"].as_bool(), Some(false));
+    let reveal = rt::reveal_session(&serde_json::json!({ "session_id": "nope" }));
+    assert_eq!(reveal["ok"].as_bool(), Some(false));
+    let resize = rt::resize_embedded_session(&serde_json::json!({
+        "session_id": "nope",
+        "bounds": { "x": 0, "y": 0, "width": 800, "height": 600 },
+    }));
+    assert_eq!(resize["ok"].as_bool(), Some(false));
+    assert_eq!(resize["applied"].as_bool(), Some(false));
+
+    let result = serde_json::json!({
+        "probe_runners": probe["available_runners"].as_array().expect("arr").len(),
+        "preview_runner": preview["runner"],
+        "preview_has_rdp_content": true,
+        "protocol_gate": true,
+        "missing_connection_errors": true,
+        "custom_missing_executable_errors": true,
+        "close_reveal_resize_ok_false": true,
+        "windows_launch": windows_launch,
+        "db": db.display().to_string(),
+    });
+    println!("{}", serde_json::to_string(&result).expect("json"));
+    let _ = std::fs::remove_file(&db);
+    let _ = std::fs::remove_dir_all(&dir);
 }
 
 /// End-to-end MCP check (--mcp-check): exercises settings save/get with token
@@ -1346,6 +1529,47 @@ unsafe fn handle_key(state: &mut AppState, hwnd: HWND, wparam: WPARAM) {
         state.model.delete_forward();
     }
     InvalidateRect(hwnd, std::ptr::null(), 1);
+}
+
+/// Handles RDP commands (mxterm parity T015): runner probing, launch preview,
+/// external launch, and session close/reveal/resize.
+fn handle_rdp_commands(
+    state: &mut AppState,
+    cmd: &str,
+    parsed: &serde_json::Value,
+) -> Option<String> {
+    if !cmd.starts_with("rdp_") {
+        return None;
+    }
+    let request_id = parsed
+        .get("requestId")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+    let payload = parsed
+        .get("payload")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+    let request = payload.get("request").cloned().unwrap_or(payload.clone());
+    let store = state.store.as_mut()?;
+    let result: Result<serde_json::Value, String> = match cmd {
+        "rdp_test_runner" => Ok(rdp_tools::probe_runner(&request)),
+        "rdp_preview_launch" => rdp_tools::preview_launch(store, &request),
+        "rdp_launch_connection" => rdp_tools::launch_connection(store, &request),
+        "rdp_close_session" => Ok(rdp_tools::close_session(&request)),
+        "rdp_reveal_session" => Ok(rdp_tools::reveal_session(&request)),
+        "rdp_resize_embedded_session" => Ok(rdp_tools::resize_embedded_session(&request)),
+        _ => return None,
+    };
+    let reply_payload = match result {
+        Ok(value) => value,
+        Err(message) => serde_json::json!({
+            "error": { "code": "rdp_error", "message": message, "recoverable": true }
+        }),
+    };
+    Some(
+        serde_json::json!({ "kind": "invoke-reply", "requestId": request_id, "payload": reply_payload })
+            .to_string(),
+    )
 }
 
 /// Handles MCP commands (mxterm parity T014): settings persistence, token
@@ -2834,6 +3058,9 @@ fn on_web_message(hwnd: HWND, message: &str) -> Option<String> {
         return Some(reply);
     }
     if let Some(reply) = handle_mcp_commands(state, cmd, &parsed) {
+        return Some(reply);
+    }
+    if let Some(reply) = handle_rdp_commands(state, cmd, &parsed) {
         return Some(reply);
     }
 

@@ -14,6 +14,7 @@ pub mod mcp_tools;
 pub mod model;
 pub mod network_diagnostic;
 pub mod probe;
+pub mod rdp_tools;
 pub mod remote_monitor;
 pub mod scheduled_tasks;
 pub mod sftp;
