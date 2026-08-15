@@ -50,6 +50,7 @@ fn wired_engines() -> &'static [&'static str] {
         "oracle",
         "clickhouse",
         "dm",
+        "kingbase",
     ]
 }
 
@@ -238,7 +239,8 @@ impl DbProfile {
 fn default_port(engine: &str) -> u64 {
     match engine {
         "mysql" | "oceanbase" => 3306,
-        "postgresql" | "kingbase" | "opengauss" | "gbase" => 5432,
+        "postgresql" | "opengauss" | "gbase" => 5432,
+        "kingbase" => 54321,
         "sqlserver" | "dm" => 1433,
         "oracle" => 1521,
         "clickhouse" => 8123,
@@ -1146,9 +1148,9 @@ pub fn query_inline(profile: &Value, sql: &str) -> Result<QueryOutcome, String> 
             let pool = build_mysql_pool(&parsed)?;
             runtime().block_on(mysql_run(&pool, sql))
         }
-        "postgresql" => {
+        "postgresql" | "kingbase" => {
             if parsed.ssl {
-                return Err("PostgreSQL TLS 暂未接入（当前为明文 TCP）。".to_string());
+                return Err("PostgreSQL/Kingbase TLS 暂未接入（当前为明文 TCP）。".to_string());
             }
             let client = pg_connect(&parsed)?;
             runtime().block_on(pg_run(&client, sql))
@@ -1270,9 +1272,9 @@ pub fn connect(profile: &Value) -> Result<String, String> {
     }
     let connection = match parsed.engine.as_str() {
         "mysql" => EngineConnection::MySql(build_mysql_pool(&parsed)?),
-        "postgresql" => {
+        "postgresql" | "kingbase" => {
             if parsed.ssl {
-                return Err("PostgreSQL TLS 暂未接入（当前为明文 TCP）。".to_string());
+                return Err("PostgreSQL/Kingbase TLS 暂未接入（当前为明文 TCP）。".to_string());
             }
             EngineConnection::Postgres(pg_connect(&parsed)?)
         }
@@ -1412,6 +1414,7 @@ mod tests {
         assert!(engine_available("oracle"));
         assert!(engine_available("clickhouse"));
         assert!(engine_available("dm"));
+        assert!(engine_available("kingbase"));
         assert!(DB_ENGINES.iter().all(|(key, _)| {
             *key == "mysql"
                 || *key == "postgresql"
@@ -1421,6 +1424,7 @@ mod tests {
                 || *key == "oracle"
                 || *key == "clickhouse"
                 || *key == "dm"
+                || *key == "kingbase"
                 || !engine_available(key)
         }));
         assert_eq!(engine_list().len(), 15);
@@ -1645,6 +1649,16 @@ mod tests {
             query_err.contains("失败") || query_err.contains("ODBC"),
             "got {query_err:?}"
         );
+    }
+
+    #[test]
+    fn kingbase_refused_endpoints_are_graceful() {
+        let profile = json!({ "engine": "kingbase", "host": "127.0.0.1", "port": 1, "username": "system", "password": "x", "connect_timeout_ms": 800 });
+        let connect_err = connect(&profile).expect_err("refused");
+        assert!(connect_err.contains("失败"), "got {connect_err:?}");
+
+        let query_err = query_inline(&profile, "SELECT 1").expect_err("refused");
+        assert!(query_err.contains("失败"), "got {query_err:?}");
     }
 
     #[test]

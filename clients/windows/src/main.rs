@@ -258,6 +258,9 @@ fn db_check() {
     let dm_available = engines
         .iter()
         .any(|e| e["engine"] == "dm" && e["available"] == serde_json::Value::Bool(true));
+    let kingbase_available = engines
+        .iter()
+        .any(|e| e["engine"] == "kingbase" && e["available"] == serde_json::Value::Bool(true));
     let other_engines_unavailable = engines.iter().all(|e| {
         e["engine"] == "mysql"
             || e["engine"] == "postgresql"
@@ -267,6 +270,7 @@ fn db_check() {
             || e["engine"] == "oracle"
             || e["engine"] == "clickhouse"
             || e["engine"] == "dm"
+            || e["engine"] == "kingbase"
             || e["available"] == serde_json::Value::Bool(false)
     });
     let tcp = db::test_connection(&serde_json::json!({
@@ -354,6 +358,18 @@ fn db_check() {
     });
     let dm_connect_err = db::connect(&dm_profile).err().unwrap_or_default();
     let dm_query_err = db::query_inline(&dm_profile, "SELECT 1")
+        .err()
+        .unwrap_or_default();
+    let kingbase_profile = serde_json::json!({
+        "engine": "kingbase",
+        "host": "127.0.0.1",
+        "port": 1,
+        "username": "system",
+        "password": "x",
+        "connect_timeout_ms": 800,
+    });
+    let kingbase_connect_err = db::connect(&kingbase_profile).err().unwrap_or_default();
+    let kingbase_query_err = db::query_inline(&kingbase_profile, "SELECT 1")
         .err()
         .unwrap_or_default();
     // SQLite round-trip through the real engine (create/insert/select).
@@ -455,6 +471,7 @@ fn db_check() {
         "oracle_available": oracle_available,
         "clickhouse_available": clickhouse_available,
         "dm_available": dm_available,
+        "kingbase_available": kingbase_available,
         "other_engines_unavailable": other_engines_unavailable,
         "tcp_refused_graceful": tcp["reachable"] == serde_json::Value::Bool(false),
         "sqlite_missing_reported": sqlite_missing["reachable"] == serde_json::Value::Bool(false),
@@ -473,6 +490,8 @@ fn db_check() {
         "clickhouse_query_refused_graceful": clickhouse_query_err.contains("失败"),
         "dm_connect_graceful_without_driver": dm_connect_err.contains("失败") || dm_connect_err.contains("ODBC"),
         "dm_query_graceful_without_driver": dm_query_err.contains("失败") || dm_query_err.contains("ODBC"),
+        "kingbase_connect_refused_graceful": kingbase_connect_err.contains("失败"),
+        "kingbase_query_refused_graceful": kingbase_query_err.contains("失败"),
         "db_connection_save_list_delete_ok": db_listed >= 1 && deleted,
     });
     println!("{}", serde_json::to_string(&result).expect("json"));
