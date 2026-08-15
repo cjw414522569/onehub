@@ -7,5 +7,6 @@
   "native_toolkit": "WinUI 3 / Windows App SDK",
   "build_verification": "cargo-check-on-windows",
   "scope": "Buildable host-shell contract only; native UI wiring remains behind this boundary.",
-  "forbidden_dependencies": ["ssh-backend", "sftp-backend", "storage-sqlite", "secure-store", "sync-service"]
+  "forbidden_dependencies": ["ssh-backend", "sftp-backend", "storage-sqlite", "secure-store", "sync-service"],
+  "notes": "Implemented host shell: a native Win32 GDI window (windows-sys) that renders the pure, headless-testable model in src/model.rs and drives it through the Win32 message loop. WinUI 3 / Windows App SDK remains the target toolkit for the full product UI; the Win32 shell is the buildable Windows-first bootstrap behind this boundary."
 }

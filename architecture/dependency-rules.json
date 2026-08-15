@@ -410,7 +410,8 @@
       ],
       "external_imports": [
         "winui-3",
-        "windows-app-sdk"
+        "windows-app-sdk",
+        "windows-sys"
       ]
     },
     {
