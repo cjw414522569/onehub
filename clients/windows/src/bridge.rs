@@ -491,12 +491,15 @@ mod tests {
         let mut model = GuiModel::with_size(4, 24);
         for (cmd, expected) in [
             ("plugin:window|minimize", WindowAction::Minimize),
-            ("plugin:window|toggle_maximize", WindowAction::ToggleMaximize),
+            (
+                "plugin:window|toggle_maximize",
+                WindowAction::ToggleMaximize,
+            ),
             ("plugin:window|close", WindowAction::Close),
             ("plugin:window|start_dragging", WindowAction::StartDrag),
         ] {
-            let msg = json!({ "kind": "invoke", "requestId": 1, "cmd": cmd, "payload": {} })
-                .to_string();
+            let msg =
+                json!({ "kind": "invoke", "requestId": 1, "cmd": cmd, "payload": {} }).to_string();
             let (_, action) = handle_message(&mut model, &msg).expect("reply");
             assert_eq!(action, expected, "{cmd} should map to {expected:?}");
         }

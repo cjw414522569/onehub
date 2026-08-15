@@ -409,13 +409,14 @@
         "abi-c"
       ],
       "external_imports": [
-        "winui-3",
+        "rusqlite",
+        "serde-json",
+        "tiny-http",
+        "webview2",
+        "windows",
         "windows-app-sdk",
         "windows-sys",
-        "windows",
-        "webview2",
-        "tiny-http",
-        "serde-json"
+        "winui-3"
       ]
     },
     {

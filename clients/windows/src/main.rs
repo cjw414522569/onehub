@@ -46,9 +46,9 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     CS_VREDRAW, CW_USEDEFAULT, ES_AUTOHSCROLL, GWLP_USERDATA, HMENU, HTCAPTION, IDCANCEL,
     IDC_ARROW, IDOK, MINMAXINFO, MSG, SW_MAXIMIZE, SW_MINIMIZE, SW_RESTORE, SW_SHOW,
     SW_SHOWDEFAULT, WM_CHAR, WM_CLOSE, WM_COMMAND, WM_CREATE, WM_DESTROY, WM_GETMINMAXINFO,
-    WM_KEYDOWN, WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_NCLBUTTONDOWN, WM_PAINT, WM_SETFONT,
-    WM_SIZE, WM_TIMER, WNDCLASSW, WS_CAPTION, WS_CHILD, WS_EX_CLIENTEDGE,
-    WS_POPUP, WS_SYSMENU, WS_TABSTOP, WS_THICKFRAME, WS_VISIBLE,
+    WM_KEYDOWN, WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_NCLBUTTONDOWN, WM_PAINT, WM_SETFONT, WM_SIZE,
+    WM_TIMER, WNDCLASSW, WS_CAPTION, WS_CHILD, WS_EX_CLIENTEDGE, WS_POPUP, WS_SYSMENU, WS_TABSTOP,
+    WS_THICKFRAME, WS_VISIBLE,
 };
 
 use webview2_com::Microsoft::Web::WebView2::Win32::{ICoreWebView2, ICoreWebView2Controller};
@@ -56,6 +56,7 @@ use windows::Win32::System::Com::{CoInitializeEx, COINIT_APARTMENTTHREADED};
 
 mod bridge;
 mod httpserver;
+mod store;
 mod webview2;
 
 /// Timer id used for the periodic re-render / command drain.
@@ -109,6 +110,7 @@ struct AppState {
     controller: Option<ICoreWebView2Controller>,
     webview: Option<ICoreWebView2>,
     events: bridge::EventRegistry,
+    store: Option<store::Store>,
 }
 
 fn main() {
@@ -116,7 +118,56 @@ fn main() {
         self_check();
         return;
     }
+    if std::env::args().any(|argument| argument == "--store-check") {
+        store_check();
+        return;
+    }
     run_gui();
+}
+
+/// End-to-end store persistence check (--store-check): writes one row per
+/// category to a temp db, reopens it, and prints the persisted counts. This
+/// proves restart persistence on the real rusqlite backend (mxterm parity
+/// T001 evidence).
+fn store_check() {
+    let dir = std::env::temp_dir().join(format!("ssh-store-e2e-{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&dir);
+    let db = dir.join("e2e.db");
+    let _ = std::fs::remove_file(&db);
+    {
+        let mut store = store::Store::open(&db).expect("open store");
+        store
+            .upsert_connection(&serde_json::json!({
+                "name": "e2e-host", "host": "10.9.9.9", "port": 2222, "username": "root"
+            }))
+            .expect("upsert connection");
+        store
+            .upsert_credential(&serde_json::json!({
+                "name": "e2e-cred", "kind": "password", "username": "root"
+            }))
+            .expect("upsert credential");
+        store
+            .upsert_command_snippet(&serde_json::json!({
+                "title": "e2e-snippet", "command": "ls -la"
+            }))
+            .expect("upsert snippet");
+        store
+            .record_command_history(&serde_json::json!({
+                "command": "ls", "source": "terminal_input"
+            }))
+            .expect("record history");
+    }
+    let reopened = store::Store::open(&db).expect("reopen store");
+    let result = serde_json::json!({
+        "connections": reopened.list_connections().expect("connections").len(),
+        "credentials": reopened.list_credentials().expect("credentials").len(),
+        "snippets": reopened.list_command_snippets().expect("snippets").len(),
+        "history": reopened.list_command_history().expect("history").len(),
+        "db": db.display().to_string(),
+    });
+    println!("{}", serde_json::to_string(&result).expect("json"));
+    let _ = std::fs::remove_file(&db);
+    let _ = std::fs::remove_dir_all(&dir);
 }
 
 /// Headless self-test: exercises the model end-to-end without a window.
@@ -460,6 +511,13 @@ unsafe fn wm_create(hwnd: HWND) -> LRESULT {
     if ui_font.is_null() {
         ui_font = GetStockObject(DEFAULT_GUI_FONT);
     }
+    let store_path = std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(|dir| dir.to_path_buf()))
+        .map(|dir| dir.join("ssh-client.db"));
+    let store = store_path
+        .as_deref()
+        .and_then(|path| store::Store::open(path).ok());
     let state = Box::new(AppState {
         model: GuiModel::new(),
         term_font,
@@ -470,6 +528,7 @@ unsafe fn wm_create(hwnd: HWND) -> LRESULT {
         controller: None,
         webview: None,
         events: bridge::EventRegistry::default(),
+        store,
     });
     SetWindowLongPtrW(hwnd, GWLP_USERDATA, Box::into_raw(state) as isize);
     SetTimer(hwnd, TIMER_ID, 250, None);
@@ -524,6 +583,173 @@ unsafe fn handle_key(state: &mut AppState, hwnd: HWND, wparam: WPARAM) {
         state.model.delete_forward();
     }
     InvalidateRect(hwnd, std::ptr::null(), 1);
+}
+
+/// Handles commands that persist to the local SQLite store (mxterm parity
+/// T001): connection/credential/command-snippet/command-history CRUD. Returns
+/// the reply JSON when the command is persisted (store available), or None so
+/// the caller falls through to the pure bridge (headless/no-store mode).
+fn handle_persisted_commands(
+    state: &mut AppState,
+    cmd: &str,
+    parsed: &serde_json::Value,
+) -> Option<String> {
+    let payload = parsed
+        .get("payload")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+    let request_id = parsed
+        .get("requestId")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+    let store = state.store.as_mut()?;
+    let reply_payload: serde_json::Value = match cmd {
+        "connection_list" => store
+            .list_connections()
+            .ok()
+            .map(serde_json::Value::Array)?,
+        "connection_upsert" => {
+            let request = payload.get("request").cloned().unwrap_or(payload.clone());
+            let profile = store.upsert_connection(&request).ok()?;
+            // Mirror into the in-memory model so terminal_connect by id works.
+            let host = profile
+                .get("host")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            let user = profile
+                .get("username")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            let port = profile
+                .get("port")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(22) as u16;
+            let name = profile
+                .get("name")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or(host);
+            state.model.add_profile(name, host, port, user);
+            state
+                .model
+                .select_profile(state.model.profile_count().saturating_sub(1));
+            profile
+        }
+        "connection_delete" => {
+            let id = payload
+                .get("id")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            let _ = store.delete_connection(id);
+            // Remove from the in-memory model if the id maps to a session index.
+            if let Some(index) = id
+                .strip_prefix("session-")
+                .and_then(|s| s.parse::<usize>().ok())
+            {
+                state.model.remove_profile(index);
+            }
+            serde_json::Value::Null
+        }
+        "connection_set_favorite" => {
+            let id = payload
+                .get("id")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            let favorite = payload
+                .get("is_favorite")
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or(false);
+            store
+                .set_connection_favorite(id, favorite)
+                .ok()
+                .flatten()
+                .unwrap_or(serde_json::Value::Null)
+        }
+        "connection_mark_connected" => {
+            let id = payload
+                .get("id")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            store
+                .mark_connection_connected(id)
+                .ok()
+                .flatten()
+                .unwrap_or(serde_json::Value::Null)
+        }
+        "credential_list" => store
+            .list_credentials()
+            .ok()
+            .map(serde_json::Value::Array)?,
+        "credential_upsert" => {
+            let request = payload.get("request").cloned().unwrap_or(payload.clone());
+            store.upsert_credential(&request).ok()?
+        }
+        "credential_delete" => {
+            let id = payload
+                .get("id")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            let _ = store.delete_credential(id);
+            serde_json::Value::Null
+        }
+        "command_snippet_list" => store
+            .list_command_snippets()
+            .ok()
+            .map(serde_json::Value::Array)?,
+        "command_snippet_upsert" => {
+            let request = payload.get("request").cloned().unwrap_or(payload.clone());
+            store.upsert_command_snippet(&request).ok()?
+        }
+        "command_snippet_delete" => {
+            let id = payload
+                .get("request")
+                .and_then(|r| r.get("id"))
+                .and_then(serde_json::Value::as_str)
+                .or_else(|| payload.get("id").and_then(serde_json::Value::as_str))
+                .unwrap_or("");
+            let _ = store.delete_command_snippet(id);
+            serde_json::Value::Null
+        }
+        "command_snippet_mark_used" => {
+            let id = payload
+                .get("request")
+                .and_then(|r| r.get("id"))
+                .and_then(serde_json::Value::as_str)
+                .or_else(|| payload.get("id").and_then(serde_json::Value::as_str))
+                .unwrap_or("");
+            store
+                .mark_command_snippet_used(id)
+                .ok()
+                .flatten()
+                .unwrap_or(serde_json::Value::Null)
+        }
+        "command_history_list" => store
+            .list_command_history()
+            .ok()
+            .map(serde_json::Value::Array)?,
+        "command_history_record" => {
+            let request = payload.get("request").cloned().unwrap_or(payload.clone());
+            store.record_command_history(&request).ok()?
+        }
+        "command_history_delete" => {
+            let id = payload
+                .get("request")
+                .and_then(|r| r.get("id"))
+                .and_then(serde_json::Value::as_str)
+                .or_else(|| payload.get("id").and_then(serde_json::Value::as_str))
+                .unwrap_or("");
+            let _ = store.delete_command_history(id);
+            serde_json::Value::Null
+        }
+        "command_history_clear" => {
+            let _ = store.clear_command_history();
+            serde_json::Value::Null
+        }
+        _ => return None,
+    };
+    Some(
+        serde_json::json!({ "kind": "invoke-reply", "requestId": request_id, "payload": reply_payload })
+            .to_string(),
+    )
 }
 
 /// Handles a WebView2 postMessage invoke request via the bridge and applies
@@ -589,6 +815,10 @@ fn on_web_message(hwnd: HWND, message: &str) -> Option<String> {
             "payload": unsafe { IsZoomed(hwnd) != 0 },
         });
         return Some(reply.to_string());
+    }
+
+    if let Some(reply) = handle_persisted_commands(state, cmd, &parsed) {
+        return Some(reply);
     }
 
     let payload = parsed
