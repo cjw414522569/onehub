@@ -15,6 +15,10 @@ path = "src/main.rs"
 [dependencies]
 abi-c = { path = "../../crates/abi-c" }
 aes-gcm = "0.10"
+futures-util = "0.3"
+russh = { version = "0.61.1", default-features = false, features = ["ring", "flate2", "rsa"] }
+russh-sftp = "2.3"
+tokio = { version = "1", features = ["fs", "io-util", "net", "rt-multi-thread", "sync", "time", "macros"] }
 base64 = "0.22"
 argon2 = "0.5"
 getrandom = "0.2"

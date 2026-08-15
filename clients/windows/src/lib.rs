@@ -9,6 +9,7 @@
 
 pub mod model;
 pub mod probe;
+pub mod sftp;
 pub mod store;
 
 /// Platform identity used by diagnostics and architecture tooling.

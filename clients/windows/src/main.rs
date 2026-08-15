@@ -22,6 +22,7 @@ use clients_windows::model::{
     PANEL_ACTIVE, PANEL_BG, TEXT_MAIN, TEXT_MUTED,
 };
 use clients_windows::probe;
+use clients_windows::sftp;
 use windows_sys::core::w;
 use windows_sys::Win32::Foundation::{GetLastError, HWND, LPARAM, LRESULT, RECT, SIZE, WPARAM};
 use windows_sys::Win32::Graphics::Gdi::{
@@ -133,7 +134,40 @@ fn main() {
         probe_check();
         return;
     }
+    if std::env::args().any(|argument| argument == "--sftp-check") {
+        sftp_check();
+        return;
+    }
     run_gui();
+}
+
+/// End-to-end SFTP check (--sftp-check): attempts a real SSH+SFTP connection
+/// to a loopback target. In this environment (no SSH server) it must return a
+/// clear, recoverable error rather than a fake success, proving the russh
+/// transport is genuinely wired (mxterm parity T004).
+fn sftp_check() {
+    let target = clients_windows::sftp::SshTarget {
+        host: "127.0.0.1".to_string(),
+        port: 22022,
+        username: "root".to_string(),
+        password: Some("unused".to_string()),
+        private_key_path: None,
+        private_key_passphrase: None,
+    };
+    let rt = tokio::runtime::Runtime::new().expect("rt");
+    let result = rt.block_on(clients_windows::sftp::list_dir(&target, "."));
+    let payload = match result {
+        Ok(v) => v,
+        Err(message) => serde_json::json!({
+            "error": { "code": "remote_file_error", "message": message, "recoverable": true }
+        }),
+    };
+    let out = serde_json::json!({
+        "command": "remote_file_list",
+        "transport": "russh+russh-sftp",
+        "response": payload,
+    });
+    println!("{}", serde_json::to_string(&out).expect("json"));
 }
 
 /// End-to-end probe check (--probe-check): starts a local SSH-banner echo
@@ -680,6 +714,156 @@ unsafe fn handle_key(state: &mut AppState, hwnd: HWND, wparam: WPARAM) {
     InvalidateRect(hwnd, std::ptr::null(), 1);
 }
 
+/// Handles remote file commands (mxterm parity T004) via a real SSH + SFTP
+/// session. Resolves the saved connection (host/port/username + credentials)
+/// from the store, runs the async SFTP operation on a tokio runtime, and
+/// returns the reply JSON (or an AppError-shaped error payload).
+fn handle_sftp_commands(
+    state: &mut AppState,
+    cmd: &str,
+    parsed: &serde_json::Value,
+) -> Option<String> {
+    let request_id = parsed
+        .get("requestId")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+    let payload = parsed
+        .get("payload")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+    let request = payload.get("request").cloned().unwrap_or(payload.clone());
+
+    // Only remote file commands are handled here.
+    let is_file_cmd = matches!(
+        cmd,
+        "remote_file_list"
+            | "remote_file_metadata"
+            | "remote_file_read"
+            | "remote_file_write"
+            | "remote_file_delete"
+            | "remote_file_rename"
+            | "remote_file_create_file"
+            | "remote_file_create_directory"
+            | "remote_file_check_path"
+            | "remote_file_check_download_target"
+    );
+    if !is_file_cmd {
+        return None;
+    }
+
+    // Resolve connection profile + credentials.
+    let mut target = sftp::SshTarget::from_request(&request);
+    if let Some(connection_id) = request
+        .get("connection_id")
+        .and_then(serde_json::Value::as_str)
+    {
+        if let Some(store) = &state.store {
+            if let Ok(Some(profile)) = store.get_connection(connection_id) {
+                if target.host.is_empty() {
+                    target.host = profile
+                        .get("host")
+                        .and_then(serde_json::Value::as_str)
+                        .unwrap_or("")
+                        .to_string();
+                }
+                if target.port == 22 {
+                    target.port = profile
+                        .get("port")
+                        .and_then(serde_json::Value::as_u64)
+                        .unwrap_or(22) as u16;
+                }
+                if target.username.is_empty() {
+                    target.username = profile
+                        .get("username")
+                        .and_then(serde_json::Value::as_str)
+                        .unwrap_or("")
+                        .to_string();
+                }
+                if target.password.is_none() {
+                    target.password = profile
+                        .get("password")
+                        .and_then(serde_json::Value::as_str)
+                        .map(|s| s.to_string());
+                }
+                if target.private_key_path.is_none() {
+                    target.private_key_path = profile
+                        .get("private_key_path")
+                        .and_then(serde_json::Value::as_str)
+                        .map(|s| s.to_string());
+                }
+            }
+        }
+    }
+
+    let path = request
+        .get("path")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("");
+    let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
+    let result = rt.block_on(async {
+        match cmd {
+            "remote_file_list" => sftp::list_dir(&target, path).await,
+            "remote_file_metadata" => sftp::metadata(&target, path).await,
+            "remote_file_read" => sftp::read_file(&target, path).await,
+            "remote_file_write" => {
+                let content = request
+                    .get("content")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("");
+                let expected_mtime = request
+                    .get("expectedMtime")
+                    .and_then(serde_json::Value::as_u64);
+                let expected_size = request
+                    .get("expectedSize")
+                    .and_then(serde_json::Value::as_u64);
+                let overwrite = request
+                    .get("overwrite")
+                    .and_then(serde_json::Value::as_bool)
+                    .unwrap_or(false);
+                sftp::write_file(
+                    &target,
+                    path,
+                    content,
+                    expected_mtime,
+                    expected_size,
+                    overwrite,
+                )
+                .await
+            }
+            "remote_file_delete" => {
+                let recursive = request
+                    .get("recursive")
+                    .and_then(serde_json::Value::as_bool)
+                    .unwrap_or(false);
+                sftp::delete(&target, path, recursive).await
+            }
+            "remote_file_rename" => {
+                let new_path = request
+                    .get("newPath")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("");
+                sftp::rename(&target, path, new_path).await
+            }
+            "remote_file_create_file" => sftp::create_file(&target, path).await,
+            "remote_file_create_directory" => sftp::create_directory(&target, path).await,
+            "remote_file_check_path" => sftp::check_path(&target, path).await,
+            "remote_file_check_download_target" => sftp::check_download_target(&target, path).await,
+            _ => Err("未知命令".to_string()),
+        }
+    });
+
+    let reply_payload = match result {
+        Ok(value) => value,
+        Err(message) => serde_json::json!({
+            "error": { "code": "remote_file_error", "message": message, "recoverable": true }
+        }),
+    };
+    Some(
+        serde_json::json!({ "kind": "invoke-reply", "requestId": request_id, "payload": reply_payload })
+            .to_string(),
+    )
+}
+
 /// Handles network probe commands (mxterm parity T003): connection_test,
 /// connection_test_profile, connection_probe_latency, connection_probe_system.
 /// Resolves a saved connection by id from the store when present, otherwise
@@ -1060,6 +1244,10 @@ fn on_web_message(hwnd: HWND, message: &str) -> Option<String> {
     }
 
     if let Some(reply) = handle_network_commands(state, cmd, &parsed) {
+        return Some(reply);
+    }
+
+    if let Some(reply) = handle_sftp_commands(state, cmd, &parsed) {
         return Some(reply);
     }
 
