@@ -75,6 +75,12 @@ pub(crate) unsafe fn init_webview2(
     Ok((controller, webview))
 }
 
+/// Navigates the WebView2 to a URL.
+pub(crate) unsafe fn navigate(webview: &ICoreWebView2, url: &str) -> windows::core::Result<()> {
+    let uri = windows::core::HSTRING::from(url);
+    webview.Navigate(&uri)
+}
+
 /// Updates the WebView2 controller bounds (call on WM_SIZE).
 pub(crate) unsafe fn set_bounds(
     controller: &ICoreWebView2Controller,

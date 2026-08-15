@@ -413,7 +413,8 @@
         "windows-app-sdk",
         "windows-sys",
         "windows",
-        "webview2"
+        "webview2",
+        "tiny-http"
       ]
     },
     {

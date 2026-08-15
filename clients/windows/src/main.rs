@@ -52,6 +52,7 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 use webview2_com::Microsoft::Web::WebView2::Win32::{ICoreWebView2, ICoreWebView2Controller};
 use windows::Win32::System::Com::{CoInitializeEx, COINIT_APARTMENTTHREADED};
 
+mod httpserver;
 mod webview2;
 
 /// Timer id used for the periodic re-render / command drain.
@@ -81,8 +82,6 @@ const IDC_USER: i32 = 104;
 
 /// Custom message that kicks off WebView2 initialization after the window exists.
 const WM_APP_INIT_WEBVIEW: u32 = 0x8000 + 1;
-/// T005 verification page: proves the WebView2 pipeline renders (blue + text).
-const T005_HTML: &str = "<body style=\"margin:0;background:#2374c6\"><div style=\"color:#ffffff;font:28px 'Segoe UI',sans-serif;padding:18px\">WebView2 OK - PC GUI</div></body>";
 
 /// What a click on the tabs bar means.
 enum TabAction {
@@ -508,7 +507,26 @@ unsafe fn init_webview(hwnd: HWND) {
     if raw == 0 {
         return;
     }
-    match webview2::init_webview2(hwnd, T005_HTML) {
+    let dist_dir = std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(|dir| dir.to_path_buf()))
+        .and_then(|exe_dir| {
+            httpserver::resolve_dist_dir(&exe_dir, &std::env::current_dir().unwrap_or_default())
+        });
+    let url = match dist_dir {
+        Some(dir) => match httpserver::serve(dir) {
+            Ok(port) => format!("http://127.0.0.1:{port}/"),
+            Err(error) => {
+                eprintln!("PC GUI: static server failed: {error}");
+                format!("data:text/html,<h1>UI server failed: {error}</h1>")
+            }
+        },
+        None => {
+            "data:text/html,<h1>dist not built - run npm.cmd run build in clients/windows/ui</h1>"
+                .to_string()
+        }
+    };
+    match webview2::init_webview2(hwnd, "") {
         Ok((controller, webview)) => {
             let state = &mut *(raw as *mut AppState);
             state.controller = Some(controller);
@@ -526,6 +544,9 @@ unsafe fn init_webview(hwnd: HWND) {
                     client.right - client.left,
                     client.bottom - client.top,
                 );
+            }
+            if let Some(webview) = &state.webview {
+                let _ = webview2::navigate(webview, &url);
             }
             InvalidateRect(hwnd, std::ptr::null(), 1);
         }
