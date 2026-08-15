@@ -3,9 +3,11 @@ import { SqlEditor } from "./SqlEditor";
 import {
   dbConnectionConnect,
   dbConnectionDelete,
+  dbConnectionDisconnect,
   dbConnectionList,
   dbConnectionSave,
   dbConnectionTest,
+  dbCompare,
   dbEngineList,
   dbExplain,
   dbExport,
@@ -15,6 +17,7 @@ import {
 } from "../../shared/tauri/commands";
 import type {
   DbConnectionInput,
+  DbCompareResult,
   DbConnectionProfile,
   DbEngineInfo,
   DbObjectInfo,
@@ -95,6 +98,8 @@ export function DatabasePanel({ open, onClose }: DatabasePanelProps) {
   const [transferTable, setTransferTable] = useState("");
   const [importContent, setImportContent] = useState("");
   const [exportContent, setExportContent] = useState("");
+  const [compareTargetId, setCompareTargetId] = useState("");
+  const [compareResult, setCompareResult] = useState<DbCompareResult | null>(null);
   const [objects, setObjects] = useState<DbObjectInfo[]>([]);
   const [objectsLoaded, setObjectsLoaded] = useState(false);
 
@@ -270,6 +275,42 @@ export function DatabasePanel({ open, onClose }: DatabasePanelProps) {
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error));
     } finally {
+      setBusy(false);
+    }
+  };
+
+  const runCompare = async () => {
+    if (!sessionId) {
+      setMessage("请先连接源数据库。");
+      return;
+    }
+    const target = connections.find((conn) => conn.id === compareTargetId);
+    if (!target) {
+      setMessage("请选择目标连接。");
+      return;
+    }
+    setBusy(true);
+    setMessage(null);
+    let targetSessionId = "";
+    try {
+      const targetConnect = await dbConnectionConnect({
+        engine: (target.engine || target.protocol || "sqlite") as DbConnectionInput["engine"],
+        host: target.host,
+        port: target.port,
+        username: target.username,
+        password: target.password,
+        database: target.database,
+      });
+      targetSessionId = targetConnect.session_id;
+      const result = await dbCompare(sessionId, targetSessionId);
+      setCompareResult(result);
+      setMessage("比对完成。");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      if (targetSessionId) {
+        await dbConnectionDisconnect(targetSessionId).catch(() => {});
+      }
       setBusy(false);
     }
   };
@@ -610,6 +651,35 @@ export function DatabasePanel({ open, onClose }: DatabasePanelProps) {
                   ))}
                 </tbody>
               </table>
+            </div>
+          ) : null}
+        </section>
+
+        <section style={{ marginTop: 14 }}>
+          <h3 style={{ margin: "0 0 8px", fontSize: 13 }}>Schema / Data 比对{sessionId ? "（源已连接）" : ""}</h3>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <select value={compareTargetId} onChange={(event) => setCompareTargetId(event.target.value)} style={{ flex: 1 }}>
+              <option value="">选择目标连接...</option>
+              {connections.map((conn) => (
+                <option key={conn.id} value={conn.id}>
+                  {conn.name || conn.host || conn.engine}
+                </option>
+              ))}
+            </select>
+            <button type="button" onClick={() => void runCompare()} disabled={busy || !sessionId || !compareTargetId}>
+              比对
+            </button>
+          </div>
+          {compareResult ? (
+            <div style={{ marginTop: 8, fontSize: 12, maxHeight: 200, overflow: "auto" }}>
+              <p style={{ margin: 0 }}>
+                仅源有表：{(compareResult.schema?.only_in_source || []).length}；仅目标有表：{(compareResult.schema?.only_in_target || []).length}；列差异：{(compareResult.schema?.column_diffs || []).length}；数据差异：{(compareResult.data?.diffs || []).length}
+              </p>
+              <ul style={{ margin: "4px 0 0", paddingLeft: 16 }}>
+                {(compareResult.data?.diffs || []).slice(0, 20).map((diff: unknown, index: number) => (
+                  <li key={index}>{JSON.stringify(diff)}</li>
+                ))}
+              </ul>
             </div>
           ) : null}
         </section>

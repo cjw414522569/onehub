@@ -1852,6 +1852,156 @@ fn split_sql_statements(sql: &str) -> Vec<String> {
     statements
 }
 
+/// Returns the per-engine SQL that lists a table's column names.
+fn column_sql(engine: &str, table: &str) -> Option<String> {
+    let quoted = table.replace('\'', "''");
+    match engine {
+        "mysql" | "oceanbase" => Some(format!(
+            "SELECT column_name FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = '{quoted}'"
+        )),
+        "postgresql" | "kingbase" | "opengauss" => Some(format!(
+            "SELECT column_name FROM information_schema.columns WHERE table_name = '{quoted}'"
+        )),
+        "sqlite" => Some(format!("SELECT name FROM pragma_table_info('{quoted}')")),
+        "duckdb" => Some(format!(
+            "SELECT column_name FROM information_schema.columns WHERE table_name = '{quoted}'"
+        )),
+        "sqlserver" => Some(format!(
+            "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '{quoted}'"
+        )),
+        "oracle" | "dm" => Some(format!(
+            "SELECT column_name FROM all_tab_columns WHERE table_name = '{quoted}'"
+        )),
+        "clickhouse" => Some(format!(
+            "SELECT name FROM system.columns WHERE table = '{quoted}'"
+        )),
+        _ => None,
+    }
+}
+
+/// Lists a session's table names (kind == "table").
+fn session_tables(session_id: &str) -> Result<Vec<String>, String> {
+    let objects = list_objects(session_id, Some("table"))?;
+    Ok(objects
+        .into_iter()
+        .filter_map(|object| object["name"].as_str().map(str::to_string))
+        .collect())
+}
+
+/// Lists a table's column names for a session.
+fn session_columns(session_id: &str, table: &str) -> Result<Vec<String>, String> {
+    let engine = {
+        let guard = sessions_map().lock().expect("db sessions lock");
+        guard
+            .as_ref()
+            .and_then(|m| m.get(session_id))
+            .map(|s| s.engine.clone())
+            .ok_or_else(|| "数据库会话不存在。".to_string())?
+    };
+    let Some(sql) = column_sql(&engine, table) else {
+        return Ok(Vec::new());
+    };
+    let outcome = query_session(session_id, &sql)?;
+    Ok(outcome
+        .rows
+        .iter()
+        .filter_map(|row| row.first().and_then(Value::as_str).map(str::to_string))
+        .collect())
+}
+
+/// Compares the schema (tables + columns) of two sessions.
+pub fn compare_schema(source_session: &str, target_session: &str) -> Result<Value, String> {
+    let source_tables = session_tables(source_session)?;
+    let target_tables = session_tables(target_session)?;
+    let only_in_source: Vec<String> = source_tables
+        .iter()
+        .filter(|table| !target_tables.contains(table))
+        .cloned()
+        .collect();
+    let only_in_target: Vec<String> = target_tables
+        .iter()
+        .filter(|table| !source_tables.contains(table))
+        .cloned()
+        .collect();
+    let mut column_diffs = Vec::new();
+    for table in &source_tables {
+        if !target_tables.contains(table) {
+            continue;
+        }
+        let source_columns = session_columns(source_session, table)?;
+        let target_columns = session_columns(target_session, table)?;
+        let only_source: Vec<String> = source_columns
+            .iter()
+            .filter(|column| !target_columns.contains(column))
+            .cloned()
+            .collect();
+        let only_target: Vec<String> = target_columns
+            .iter()
+            .filter(|column| !source_columns.contains(column))
+            .cloned()
+            .collect();
+        if !only_source.is_empty() || !only_target.is_empty() {
+            column_diffs.push(json!({
+                "table": table,
+                "only_in_source": only_source,
+                "only_in_target": only_target,
+            }));
+        }
+    }
+    Ok(json!({
+        "only_in_source": only_in_source,
+        "only_in_target": only_in_target,
+        "column_diffs": column_diffs,
+    }))
+}
+
+/// Compares row counts and distinct counts for common tables of two sessions.
+pub fn compare_data(source_session: &str, target_session: &str) -> Result<Value, String> {
+    let source_tables = session_tables(source_session)?;
+    let target_tables = session_tables(target_session)?;
+    let mut diffs = Vec::new();
+    for table in &source_tables {
+        if !target_tables.contains(table) {
+            continue;
+        }
+        let quoted = table.replace('\'', "''");
+        let source_count = query_session(
+            source_session,
+            &format!("SELECT count(*) AS n FROM \"{quoted}\""),
+        )
+        .ok()
+        .and_then(|outcome| outcome.rows.first().and_then(|row| row.first().cloned()));
+        let target_count = query_session(
+            target_session,
+            &format!("SELECT count(*) AS n FROM \"{quoted}\""),
+        )
+        .ok()
+        .and_then(|outcome| outcome.rows.first().and_then(|row| row.first().cloned()));
+        let source_distinct = query_session(
+            source_session,
+            &format!("SELECT count(*) AS n FROM (SELECT DISTINCT * FROM \"{quoted}\")"),
+        )
+        .ok()
+        .and_then(|outcome| outcome.rows.first().and_then(|row| row.first().cloned()));
+        let target_distinct = query_session(
+            target_session,
+            &format!("SELECT count(*) AS n FROM (SELECT DISTINCT * FROM \"{quoted}\")"),
+        )
+        .ok()
+        .and_then(|outcome| outcome.rows.first().and_then(|row| row.first().cloned()));
+        if source_count != target_count || source_distinct != target_distinct {
+            diffs.push(json!({
+                "table": table,
+                "source_rows": source_count,
+                "target_rows": target_count,
+                "source_distinct": source_distinct,
+                "target_distinct": target_distinct,
+            }));
+        }
+    }
+    Ok(json!({ "diffs": diffs }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2345,6 +2495,67 @@ mod tests {
         assert!(err.contains("不支持的导出格式"));
         let _ = close_session(&session);
         let _ = std::fs::remove_file(&dir);
+    }
+    #[test]
+    fn schema_data_compare_on_sqlite() {
+        let dir_a =
+            std::env::temp_dir().join(format!("onehub-cmp-a-{}.sqlite", std::process::id()));
+        let dir_b =
+            std::env::temp_dir().join(format!("onehub-cmp-b-{}.sqlite", std::process::id()));
+        let _ = std::fs::remove_file(&dir_a);
+        let _ = std::fs::remove_file(&dir_b);
+        let profile_a = json!({ "engine": "sqlite", "database": dir_a.to_string_lossy() });
+        let profile_b = json!({ "engine": "sqlite", "database": dir_b.to_string_lossy() });
+        let session_a = connect(&profile_a).expect("connect a");
+        let session_b = connect(&profile_b).expect("connect b");
+        let _ = query_session(
+            &session_a,
+            "CREATE TABLE common (id INTEGER PRIMARY KEY, name TEXT)",
+        );
+        let _ = query_session(&session_a, "CREATE TABLE only_a (x INTEGER)");
+        let _ = query_session(
+            &session_a,
+            "INSERT INTO common(name) VALUES ('alice'), ('bob')",
+        );
+        let _ = query_session(
+            &session_b,
+            "CREATE TABLE common (id INTEGER PRIMARY KEY, name TEXT, extra TEXT)",
+        );
+        let _ = query_session(
+            &session_b,
+            "INSERT INTO common(name, extra) VALUES ('alice', 'e1')",
+        );
+        let schema = compare_schema(&session_a, &session_b).expect("compare schema");
+        assert_eq!(schema["only_in_source"], json!(["only_a"]));
+        assert!(schema["only_in_target"]
+            .as_array()
+            .map(|a| a.is_empty())
+            .unwrap_or(false));
+        let common_diff = schema["column_diffs"]
+            .as_array()
+            .and_then(|diffs| diffs.iter().find(|d| d["table"] == "common"));
+        assert!(
+            common_diff.is_some(),
+            "column diff for common expected: {schema}"
+        );
+        let data = compare_data(&session_a, &session_b).expect("compare data");
+        let common_data = data["diffs"]
+            .as_array()
+            .and_then(|diffs| diffs.iter().find(|d| d["table"] == "common"));
+        assert!(
+            common_data.is_some(),
+            "data diff for common expected: {data}"
+        );
+        let _ = close_session(&session_a);
+        let _ = close_session(&session_b);
+        let _ = std::fs::remove_file(&dir_a);
+        let _ = std::fs::remove_file(&dir_b);
+    }
+
+    #[test]
+    fn compare_missing_session_is_graceful() {
+        let err = compare_schema("db-missing", "db-missing").expect_err("no session");
+        assert!(err.contains("会话不存在"));
     }
     #[test]
     fn unwired_engine_connect_is_honest() {

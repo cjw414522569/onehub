@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  DbCompareResult,
   DbConnectionInput,
   DbConnectionProfile,
   DbConnectResult,
@@ -1291,6 +1292,12 @@ export function dbExport(request: { session_id: string; sql: string; format: str
 
 export function dbImport(request: { session_id: string; table: string; format: string; content: string }) {
   return invoke<{ format: string; statements: number; imported: boolean }>("db_import", { request });
+}
+
+export function dbCompare(sourceSessionId: string, targetSessionId: string, mode = "all") {
+  return invoke<DbCompareResult>("db_compare", {
+    request: { source_session_id: sourceSessionId, target_session_id: targetSessionId, mode },
+  });
 }
 
 export function dbObjectList(sessionId: string, kind?: string) {

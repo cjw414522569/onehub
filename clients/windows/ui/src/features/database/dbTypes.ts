@@ -69,6 +69,21 @@ export interface DbObjectInfo {
   kind: string;
 }
 
+export interface DbCompareSchema {
+  only_in_source?: string[];
+  only_in_target?: string[];
+  column_diffs?: unknown[];
+}
+
+export interface DbCompareData {
+  diffs?: unknown[];
+}
+
+export interface DbCompareResult {
+  schema?: DbCompareSchema | null;
+  data?: DbCompareData | null;
+}
+
 export interface DbQueryResult {
   columns: string[];
   rows: unknown[][];

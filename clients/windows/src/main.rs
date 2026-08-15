@@ -2706,6 +2706,35 @@ fn handle_db_commands(
                 .unwrap_or("");
             Ok(serde_json::Value::Bool(db::close_session(session_id)))
         }
+        "db_compare" => {
+            let request = payload.get("request").cloned().unwrap_or(payload.clone());
+            let source_session = request
+                .get("source_session_id")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            let target_session = request
+                .get("target_session_id")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            let mode = request
+                .get("mode")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("all")
+                .to_string();
+            let schema_result = if mode == "schema" || mode == "all" {
+                db::compare_schema(source_session, target_session)
+            } else {
+                Ok(serde_json::Value::Null)
+            };
+            let data_result = if mode == "data" || mode == "all" {
+                db::compare_data(source_session, target_session)
+            } else {
+                Ok(serde_json::Value::Null)
+            };
+            schema_result.and_then(|schema| {
+                data_result.map(|data| serde_json::json!({ "schema": schema, "data": data }))
+            })
+        }
         "db_export" => {
             let request = payload.get("request").cloned().unwrap_or(payload.clone());
             let session_id = request
