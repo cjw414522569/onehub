@@ -200,3 +200,18 @@
 - Tests: queue lifecycle/stats, cancel/retry without duplicates, transient
   auto-retry and permanent no-retry, background progress, and notification
   leak safety.
+
+## T116: settings, theme, font, terminal, and network-policy UI
+
+`crates/host-library/src/settings.rs`:
+
+- `Settings` - appearance (theme), font, terminal, and network policy; every
+  item declares its `EffectTiming` (immediate / on-reconnect / on-restart) so
+  the UI can label exactly when a change applies.
+- Persistence: versioned `SettingsSnapshot` with `snapshot` / `from_snapshot`
+  (validates ranges: font size 8..72, scrollback 0..1M, keepalive 0..86400).
+- `migrate_snapshot` - upgrades older snapshots, filling missing keys with
+  defaults.
+- `reset_to_defaults` - restores defaults.
+- Tests: persistence round-trip, migration, defaults restore, and invalid /
+  unknown value handling.

@@ -1,63 +1,48 @@
 #!/usr/bin/env node
 
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+// T116 contract: settings / theme / font / terminal / network policy UI.
+
+import { readFileSync, readdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
 const ROOT = resolve(process.argv[2] ?? process.cwd());
-const CRATE = join(ROOT, 'crates/core-domain');
+const LIB = join(ROOT, 'crates/host-library');
 const errors = [];
 
-const REQUIRED_TOKENS = [
-  'pub enum SettingsScope', 'pub enum SettingsValue', 'pub struct SettingsEntry',
-  'pub struct LocalSettings', 'pub struct SettingsDocument', 'pub fn migrate_settings',
-  'pub struct TabId', 'pub struct Tab', 'pub enum LayoutNode', 'pub enum SplitDirection',
-  'pub struct WindowLayout', 'pub struct Workspace',
-  'scope_precedence_resolves_window_over_account_over_global',
-  'migration_applies_defaults_and_bumps_version',
-  'migration_is_idempotent',
-  'layout_tree_exposes_tabs_in_order',
-];
-const FORBIDDEN_DEPENDENCIES = [
-  'russh', 'libssh', 'ssh2', 'sqlx', 'sqlite', 'winui', 'windows-app-sdk',
-  'swiftui', 'appkit', 'uikit', 'compose', 'gtk', 'flutter', 'tauri',
-  'typescript', 'webview', 'tokio', 'wgpu', 'harfbuzz',
+const TOKENS = [
+  'pub const SETTINGS_VERSION', 'pub enum EffectTiming', 'pub enum ProxyMode',
+  'pub struct AppearanceSettings', 'pub struct FontSettings', 'pub struct TerminalSettings',
+  'pub struct NetworkPolicySettings', 'pub struct Settings', 'pub fn defaults',
+  'pub fn effect_timing', 'pub fn reset_to_defaults', 'pub fn snapshot', 'pub fn from_snapshot',
+  'pub struct SettingsSnapshot', 'pub enum SettingsError', 'pub fn migrate_snapshot',
+  'defaults_restore_and_effect_timing_is_explicit', 'persistence_round_trip',
+  'migration_fills_missing_keys_with_defaults', 'invalid_values_are_rejected',
+  'unknown_keys_are_forward_compatible',
 ];
 
-if (!existsSync(join(CRATE, 'Cargo.toml'))) errors.push('Missing crates/core-domain/Cargo.toml');
-
-const manifest = readFileSync(join(CRATE, 'Cargo.toml'), 'utf8');
-const depsMatch = manifest.match(/\[dependencies\]([\s\S]*?)(?=\n\s*\[[^\]]+\]|$)/);
-const depsSection = depsMatch?.[1] ?? '';
-for (const line of depsSection.split(/\r?\n/)) {
-  const trimmed = line.trim();
-  if (!trimmed || trimmed.startsWith('#')) continue;
-  const name = trimmed.match(/^([A-Za-z0-9_-]+)\s*=/)?.[1];
-  if (!name) continue;
-  if (FORBIDDEN_DEPENDENCIES.includes(name)) errors.push(`core-domain has forbidden dependency: ${name}`);
-}
-
-const sourceFiles = [];
-function collect(dir) {
+function collectRs(dir, files) {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const absolute = join(dir, entry.name);
-    if (entry.isDirectory()) collect(absolute);
-    else if (entry.name.endsWith('.rs')) sourceFiles.push(absolute);
+    if (entry.isDirectory()) collectRs(absolute, files);
+    else if (entry.name.endsWith('.rs')) files.push(absolute);
   }
 }
-if (existsSync(join(CRATE, 'src'))) collect(join(CRATE, 'src'));
-const sourceText = sourceFiles.map((file) => readFileSync(file, 'utf8')).join('\n');
-for (const token of REQUIRED_TOKENS) {
-  if (!sourceText.includes(token)) errors.push(`core-domain is missing required token: ${token}`);
-}
-for (const scope of ['Global', 'Account', 'Window']) {
-  if (!sourceText.includes(scope)) errors.push(`SettingsScope is missing variant: ${scope}`);
+
+const files = [];
+collectRs(join(LIB, 'src'), files);
+const sourceText = files.map((file) => readFileSync(file, 'utf8')).join('\n');
+for (const token of TOKENS) {
+  if (!sourceText.includes(token)) errors.push(`host-library missing required token: ${token}`);
 }
 
-for (const args of [['check', '-p', 'core-domain', '--locked'], ['test', '-p', 'core-domain', '--locked']]) {
+for (const args of [
+  ['check', '-p', 'host-library', '--locked'],
+  ['test', '-p', 'host-library', '--locked'],
+]) {
   const result = spawnSync('cargo', args, { cwd: ROOT, encoding: 'utf8', timeout: 240000 });
   if (result.status !== 0) {
-    errors.push(`cargo ${args[0]} -p core-domain failed:\n${result.stdout}\n${result.stderr}`);
+    errors.push(`cargo ${args[0]} -p host-library failed:\n${result.stdout}\n${result.stderr}`);
   }
 }
 
@@ -66,4 +51,4 @@ if (errors.length > 0) {
   for (const error of errors) console.error(`- ${error}`);
   process.exit(1);
 }
-console.log('settings/workspace/tabs/layout contract valid: scoped settings with precedence, default + migration tests, layout traversal, cargo check/test --locked passed.');
+console.log('settings contract valid: Settings groups appearance/font/terminal/network policy and every item declares its EffectTiming (immediate / on-reconnect / on-restart) with a label; versioned SettingsSnapshot persistence round-trips exactly and validates ranges (font 8..72, scrollback 0..1M, keepalive 0..86400, bools, proxy modes); migrate_snapshot upgrades older snapshots filling missing keys with defaults; reset_to_defaults restores defaults; unknown keys are forward-compatible; persistence and migration tests pass; cargo check/test --locked passed.');

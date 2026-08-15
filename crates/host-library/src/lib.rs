@@ -16,6 +16,7 @@ pub mod mobile;
 pub mod paste;
 pub mod port_forwarding;
 pub mod session_status;
+pub mod settings;
 pub mod snippets;
 pub mod transfer_queue;
 pub mod workspace;
