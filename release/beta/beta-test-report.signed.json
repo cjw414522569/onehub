@@ -1,0 +1,55 @@
+{
+  "report": {
+    "task": "T171",
+    "title": "Beta entry gate test report",
+    "verified_at_utc": "2026-08-15T07:44:55Z",
+    "commit": "0c119115f5c37ef5c98e9d736dd924a3fdd19bf6",
+    "areas": {
+      "six_platform_critical_paths": "pass",
+      "migration": "pass",
+      "crash_rate": "pass (no crashes; leaks 0)",
+      "performance": "pass (within budgets)"
+    },
+    "contracts": [
+      {
+        "contract": "e2e-smoke (six platforms)",
+        "pass": true
+      },
+      {
+        "contract": "startup/migration",
+        "pass": true
+      },
+      {
+        "contract": "db migration drill (blue-green)",
+        "pass": true
+      },
+      {
+        "contract": "crash diagnostics",
+        "pass": true
+      },
+      {
+        "contract": "resource soak (10k)",
+        "pass": true
+      },
+      {
+        "contract": "72h soak",
+        "pass": true
+      },
+      {
+        "contract": "benchmarks",
+        "pass": true
+      },
+      {
+        "contract": "input-to-pixel latency",
+        "pass": true
+      },
+      {
+        "contract": "high-speed stress",
+        "pass": true
+      }
+    ]
+  },
+  "digest": "8ed0aeada8ca30d3fa8276e6f8d830695d5818fab30c2079316463a30141c3d7",
+  "signature": "df836b475e62ae8929300fb178fc944876f0857655e8fb13484c03169f43327e",
+  "signature_scheme": "release-signing-v1 (T165)"
+}
