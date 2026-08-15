@@ -72,3 +72,17 @@
 - Focus ring: `focus_next` / `focus_prev` cycle panes, tabs, and windows.
 - Restore: `snapshot` / `restore` serialize the whole multi-window layout to a
   versioned snapshot (validated on restore; invalid indices rejected).
+
+## T107: mobile session stack, bottom action bar, safe-area adaptation
+
+`crates/host-library/src/mobile.rs`:
+
+- `Viewport` - derives `FormFactor` (phone/tablet via the smaller dimension)
+  and `Orientation`; one-handed compatibility (phone portrait).
+- `effective_safe_area` - applies system safe-area insets (landscape phones
+  gain side insets for a display cutout; tablets keep system values).
+- `BottomActionBar` - deterministic `layout` metrics per form factor
+  (golden-tested: phone portrait 3 actions / tablet & landscape expanded 5
+  actions, 48/56px).
+- `SessionStack` - `on_system_back` pops history, otherwise asks the app to
+  exit (Android/iOS system-back contract).

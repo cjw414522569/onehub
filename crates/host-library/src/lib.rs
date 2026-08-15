@@ -9,6 +9,7 @@ pub mod auth_prompt;
 pub mod editor;
 pub mod fingerprint;
 pub mod host;
+pub mod mobile;
 pub mod workspace;
 
 pub use auth_prompt::{
@@ -25,6 +26,10 @@ pub use fingerprint::{
 };
 pub use host::{
     GroupSummary, HostLibrary, HostRecord, SelectionModel, SortField, SortOrder, TagSummary,
+};
+pub use mobile::{
+    effective_safe_area, BarLayout, BottomActionBar, FormFactor, Orientation, SafeAreaInsets,
+    SessionStack, SystemBack, Viewport,
 };
 pub use workspace::{
     FocusLocation, PaneModel, PaneSnapshot, RestoreError, ShortcutAction, ShortcutMap,
