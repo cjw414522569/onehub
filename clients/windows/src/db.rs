@@ -48,6 +48,7 @@ fn wired_engines() -> &'static [&'static str] {
         "duckdb",
         "sqlserver",
         "oracle",
+        "clickhouse",
     ]
 }
 
@@ -272,6 +273,7 @@ enum EngineConnection {
     DuckDb(std::sync::Arc<std::sync::Mutex<duckdb::Connection>>),
     SqlServer(std::sync::Arc<tokio::sync::Mutex<MsSqlClient>>),
     Oracle(std::sync::Arc<std::sync::Mutex<oracle::Connection>>),
+    ClickHouse(String),
 }
 
 /// A live database session. `connection` holds the engine handle for wired
@@ -513,6 +515,79 @@ fn oracle_run(conn: &oracle::Connection, sql: &str) -> Result<QueryOutcome, Stri
         }
     }
 }
+/// Builds the ClickHouse HTTP base URL and runs a statement over HTTP.
+///
+/// SELECT-like statements get "FORMAT JSONEachRow" appended so results are
+/// returned as JSON lines; DML/DDL return an empty body (affected rows are not
+/// reported by the HTTP protocol and stay 0).
+fn clickhouse_query(parsed: &DbProfile, sql: &str) -> Result<QueryOutcome, String> {
+    if sql.trim().is_empty() {
+        return Err("SQL 为空。".to_string());
+    }
+    let scheme = if parsed.ssl { "https" } else { "http" };
+    let base = format!("{scheme}://{}:{}", parsed.host, parsed.port);
+    let upper = sql.trim().to_uppercase();
+    let leading = upper.trim_start();
+    let is_query = ["SELECT", "SHOW", "DESCRIBE", "DESC", "EXISTS", "WITH"]
+        .iter()
+        .any(|keyword| leading.starts_with(keyword));
+    let mut statement = sql.trim().to_string();
+    if is_query && !upper.contains("FORMAT") {
+        statement.push_str(" FORMAT JSONEachRow");
+    }
+    let response = ureq::post(&base)
+        .set("X-ClickHouse-User", parsed.username.as_str())
+        .set("X-ClickHouse-Key", parsed.password.as_deref().unwrap_or(""))
+        .set("Content-Type", "text/plain; charset=utf-8")
+        .timeout(Duration::from_millis(parsed.connect_timeout_ms.max(1000)))
+        .send_string(&statement)
+        .map_err(|e| format!("ClickHouse 连接失败：{e}"))?;
+    let text = response
+        .into_string()
+        .map_err(|e| format!("ClickHouse 响应失败：{e}"))?;
+    let trimmed = text.trim();
+    if trimmed.is_empty() || trimmed == "Ok." {
+        return Ok(QueryOutcome {
+            columns: Vec::new(),
+            rows: Vec::new(),
+            affected_rows: 0,
+        });
+    }
+    let mut columns: Vec<String> = Vec::new();
+    let mut result_rows = Vec::new();
+    for line in text.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let value: Value =
+            serde_json::from_str(line).map_err(|e| format!("ClickHouse 结果解析失败：{e}"))?;
+        match value {
+            Value::Object(map) => {
+                if columns.is_empty() {
+                    columns = map.keys().cloned().collect();
+                }
+                let mut values = Vec::new();
+                for column in &columns {
+                    values.push(map.get(column).cloned().unwrap_or(Value::Null));
+                }
+                result_rows.push(values);
+            }
+            other => {
+                if columns.is_empty() {
+                    columns.push("value".to_string());
+                }
+                result_rows.push(vec![other]);
+            }
+        }
+    }
+    Ok(QueryOutcome {
+        columns,
+        rows: result_rows,
+        affected_rows: 0,
+    })
+}
+
 /// Connects a SQL Server client (tiberius + rustls). Windows integrated auth
 /// is used when the username is blank, otherwise SQL Server auth.
 fn mssql_connect(parsed: &DbProfile) -> Result<MsSqlClient, String> {
@@ -980,6 +1055,7 @@ pub fn query_inline(profile: &Value, sql: &str) -> Result<QueryOutcome, String> 
             let conn = oracle_connect(&parsed)?;
             oracle_run(&conn, sql)
         }
+        "clickhouse" => clickhouse_query(&parsed, sql),
         other => {
             let label = engine_label(other).unwrap_or(other);
             Err(format!("数据库引擎未接入：{other}（{label}）"))
@@ -1015,6 +1091,7 @@ pub fn query_session(session_id: &str, sql: &str) -> Result<QueryOutcome, String
             Some(EngineConnection::Oracle(conn)) => {
                 EngineConnection::Oracle(std::sync::Arc::clone(conn))
             }
+            Some(EngineConnection::ClickHouse(base)) => EngineConnection::ClickHouse(base.clone()),
             None => return Err("会话没有活动连接。".to_string()),
         }
     };
@@ -1036,6 +1113,18 @@ pub fn query_session(session_id: &str, sql: &str) -> Result<QueryOutcome, String
         EngineConnection::Oracle(conn) => {
             let guard = conn.lock().expect("oracle session lock");
             oracle_run(&guard, sql)
+        }
+        EngineConnection::ClickHouse(_) => {
+            let profile = {
+                let guard = sessions_map().lock().expect("db sessions lock");
+                guard
+                    .as_ref()
+                    .and_then(|m| m.get(session_id))
+                    .map(|s| s.profile.clone())
+                    .ok_or_else(|| "数据库会话不存在。".to_string())?
+            };
+            let parsed = DbProfile::parse(&profile)?;
+            clickhouse_query(&parsed, sql)
         }
     }
 }
@@ -1074,6 +1163,10 @@ pub fn connect(profile: &Value) -> Result<String, String> {
         "oracle" => {
             let conn = oracle_connect(&parsed)?;
             EngineConnection::Oracle(std::sync::Arc::new(std::sync::Mutex::new(conn)))
+        }
+        "clickhouse" => {
+            let scheme = if parsed.ssl { "https" } else { "http" };
+            EngineConnection::ClickHouse(format!("{scheme}://{}:{}", parsed.host, parsed.port))
         }
         other => return Err(format!("数据库引擎未接入：{other}")),
     };
@@ -1117,6 +1210,10 @@ pub fn connect(profile: &Value) -> Result<String, String> {
             let guard = conn.lock().expect("oracle session lock");
             oracle_run(&guard, "SELECT 1 FROM dual")
                 .map_err(|e| format!("Oracle 连接失败：{e}"))?;
+        }
+        EngineConnection::ClickHouse(_) => {
+            clickhouse_query(&parsed, "SELECT 1")
+                .map_err(|e| format!("ClickHouse 连接失败：{e}"))?;
         }
     }
     let id = new_id("db");
@@ -1174,13 +1271,14 @@ mod tests {
         assert!(is_known_engine("iotdb"));
         assert!(!is_known_engine("nosql-unknown"));
         assert_eq!(engine_label("mysql"), Some("MySQL"));
-        // T019-T024 wire MySQL/PostgreSQL/SQLite/DuckDB/SQL Server/Oracle; others stay unwired.
+        // T019-T025 wire MySQL/PostgreSQL/SQLite/DuckDB/SQL Server/Oracle/ClickHouse; others stay unwired.
         assert!(engine_available("mysql"));
         assert!(engine_available("postgresql"));
         assert!(engine_available("sqlite"));
         assert!(engine_available("duckdb"));
         assert!(engine_available("sqlserver"));
         assert!(engine_available("oracle"));
+        assert!(engine_available("clickhouse"));
         assert!(DB_ENGINES.iter().all(|(key, _)| {
             *key == "mysql"
                 || *key == "postgresql"
@@ -1188,6 +1286,7 @@ mod tests {
                 || *key == "duckdb"
                 || *key == "sqlserver"
                 || *key == "oracle"
+                || *key == "clickhouse"
                 || !engine_available(key)
         }));
         assert_eq!(engine_list().len(), 15);
@@ -1371,9 +1470,21 @@ mod tests {
     }
 
     #[test]
+    fn clickhouse_refused_endpoints_are_graceful() {
+        let profile = json!({ "engine": "clickhouse", "host": "127.0.0.1", "port": 1, "username": "default", "password": "x", "connect_timeout_ms": 800 });
+        let connect_err = connect(&profile).expect_err("refused");
+        assert!(connect_err.contains("失败"), "got {connect_err:?}");
+
+        let query_err = query_inline(&profile, "SELECT 1").expect_err("refused");
+        assert!(query_err.contains("失败"), "got {query_err:?}");
+    }
+
+    #[test]
     fn unwired_engine_connect_is_honest() {
-        let err = connect(&json!({ "engine": "clickhouse", "host": "127.0.0.1", "username": "default", "password": "x" }))
-            .expect_err("clickhouse not wired");
+        let err = connect(
+            &json!({ "engine": "dm", "host": "127.0.0.1", "username": "SYSDBA", "password": "x" }),
+        )
+        .expect_err("dm not wired");
         assert!(err.contains("未接入"), "got {err:?}");
         assert!(!close_session("db-missing"));
         assert!(active_db_session_ids().is_empty());

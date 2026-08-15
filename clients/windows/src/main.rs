@@ -252,6 +252,9 @@ fn db_check() {
     let oracle_available = engines
         .iter()
         .any(|e| e["engine"] == "oracle" && e["available"] == serde_json::Value::Bool(true));
+    let clickhouse_available = engines
+        .iter()
+        .any(|e| e["engine"] == "clickhouse" && e["available"] == serde_json::Value::Bool(true));
     let other_engines_unavailable = engines.iter().all(|e| {
         e["engine"] == "mysql"
             || e["engine"] == "postgresql"
@@ -259,6 +262,7 @@ fn db_check() {
             || e["engine"] == "duckdb"
             || e["engine"] == "sqlserver"
             || e["engine"] == "oracle"
+            || e["engine"] == "clickhouse"
             || e["available"] == serde_json::Value::Bool(false)
     });
     let tcp = db::test_connection(&serde_json::json!({
@@ -322,6 +326,18 @@ fn db_check() {
     });
     let oracle_connect_err = db::connect(&oracle_profile).err().unwrap_or_default();
     let oracle_query_err = db::query_inline(&oracle_profile, "SELECT 1 FROM dual")
+        .err()
+        .unwrap_or_default();
+    let clickhouse_profile = serde_json::json!({
+        "engine": "clickhouse",
+        "host": "127.0.0.1",
+        "port": 1,
+        "username": "default",
+        "password": "x",
+        "connect_timeout_ms": 800,
+    });
+    let clickhouse_connect_err = db::connect(&clickhouse_profile).err().unwrap_or_default();
+    let clickhouse_query_err = db::query_inline(&clickhouse_profile, "SELECT 1")
         .err()
         .unwrap_or_default();
     // SQLite round-trip through the real engine (create/insert/select).
@@ -421,6 +437,7 @@ fn db_check() {
         "duckdb_available": duckdb_available,
         "sqlserver_available": sqlserver_available,
         "oracle_available": oracle_available,
+        "clickhouse_available": clickhouse_available,
         "other_engines_unavailable": other_engines_unavailable,
         "tcp_refused_graceful": tcp["reachable"] == serde_json::Value::Bool(false),
         "sqlite_missing_reported": sqlite_missing["reachable"] == serde_json::Value::Bool(false),
@@ -435,6 +452,8 @@ fn db_check() {
         "mssql_query_refused_graceful": mssql_query_err.contains("失败"),
         "oracle_connect_refused_graceful": oracle_connect_err.contains("失败"),
         "oracle_query_refused_graceful": oracle_query_err.contains("失败"),
+        "clickhouse_connect_refused_graceful": clickhouse_connect_err.contains("失败"),
+        "clickhouse_query_refused_graceful": clickhouse_query_err.contains("失败"),
         "db_connection_save_list_delete_ok": db_listed >= 1 && deleted,
     });
     println!("{}", serde_json::to_string(&result).expect("json"));
