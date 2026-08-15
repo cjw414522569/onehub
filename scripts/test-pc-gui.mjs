@@ -122,6 +122,15 @@ if (!matrixOk) {
   errors.push(`feature matrix failed:\n${matrix.stdout}\n${matrix.stderr}`);
 }
 
+const layout = spawnSync('node', [join(ROOT, 'scripts/test-mxterm-layout.mjs'), ROOT], {
+  cwd: ROOT, encoding: 'utf8', timeout: 180000,
+});
+const layoutOk = layout.status === 0 && (layout.stdout ?? '').includes('mxterm-layout PASS');
+results.push({ label: 'mxterm layout', status: layoutOk ? 'pass' : 'fail' });
+if (!layoutOk) {
+  errors.push(`mxterm layout failed:\n${layout.stdout}\n${layout.stderr}`);
+}
+
 if (errors.length > 0) {
   console.error(`pc-gui contract failed with ${errors.length} error(s):`);
   for (const error of errors) console.error(`- ${error}`);
