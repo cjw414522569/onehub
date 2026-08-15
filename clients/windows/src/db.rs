@@ -53,6 +53,7 @@ fn wired_engines() -> &'static [&'static str] {
         "kingbase",
         "gbase",
         "oceanbase",
+        "opengauss",
     ]
 }
 
@@ -1157,9 +1158,11 @@ pub fn query_inline(profile: &Value, sql: &str) -> Result<QueryOutcome, String> 
             let pool = build_mysql_pool(&parsed)?;
             runtime().block_on(mysql_run(&pool, sql))
         }
-        "postgresql" | "kingbase" => {
+        "postgresql" | "kingbase" | "opengauss" => {
             if parsed.ssl {
-                return Err("PostgreSQL/Kingbase TLS 暂未接入（当前为明文 TCP）。".to_string());
+                return Err(
+                    "PostgreSQL/Kingbase/openGauss TLS 暂未接入（当前为明文 TCP）。".to_string(),
+                );
             }
             let client = pg_connect(&parsed)?;
             runtime().block_on(pg_run(&client, sql))
@@ -1281,9 +1284,11 @@ pub fn connect(profile: &Value) -> Result<String, String> {
     }
     let connection = match parsed.engine.as_str() {
         "mysql" | "oceanbase" => EngineConnection::MySql(build_mysql_pool(&parsed)?),
-        "postgresql" | "kingbase" => {
+        "postgresql" | "kingbase" | "opengauss" => {
             if parsed.ssl {
-                return Err("PostgreSQL/Kingbase TLS 暂未接入（当前为明文 TCP）。".to_string());
+                return Err(
+                    "PostgreSQL/Kingbase/openGauss TLS 暂未接入（当前为明文 TCP）。".to_string(),
+                );
             }
             EngineConnection::Postgres(pg_connect(&parsed)?)
         }
@@ -1426,6 +1431,7 @@ mod tests {
         assert!(engine_available("kingbase"));
         assert!(engine_available("gbase"));
         assert!(engine_available("oceanbase"));
+        assert!(engine_available("opengauss"));
         assert!(DB_ENGINES.iter().all(|(key, _)| {
             *key == "mysql"
                 || *key == "postgresql"
@@ -1438,6 +1444,7 @@ mod tests {
                 || *key == "kingbase"
                 || *key == "gbase"
                 || *key == "oceanbase"
+                || *key == "opengauss"
                 || !engine_available(key)
         }));
         assert_eq!(engine_list().len(), 15);
@@ -1692,6 +1699,16 @@ mod tests {
     #[test]
     fn oceanbase_refused_endpoints_are_graceful() {
         let profile = json!({ "engine": "oceanbase", "host": "127.0.0.1", "port": 1, "username": "root", "password": "x", "connect_timeout_ms": 800 });
+        let connect_err = connect(&profile).expect_err("refused");
+        assert!(connect_err.contains("失败"), "got {connect_err:?}");
+
+        let query_err = query_inline(&profile, "SELECT 1").expect_err("refused");
+        assert!(query_err.contains("失败"), "got {query_err:?}");
+    }
+
+    #[test]
+    fn opengauss_refused_endpoints_are_graceful() {
+        let profile = json!({ "engine": "opengauss", "host": "127.0.0.1", "port": 1, "username": "gaussdb", "password": "x", "connect_timeout_ms": 800 });
         let connect_err = connect(&profile).expect_err("refused");
         assert!(connect_err.contains("失败"), "got {connect_err:?}");
 

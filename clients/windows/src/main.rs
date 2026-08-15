@@ -267,6 +267,9 @@ fn db_check() {
     let oceanbase_available = engines
         .iter()
         .any(|e| e["engine"] == "oceanbase" && e["available"] == serde_json::Value::Bool(true));
+    let opengauss_available = engines
+        .iter()
+        .any(|e| e["engine"] == "opengauss" && e["available"] == serde_json::Value::Bool(true));
     let other_engines_unavailable = engines.iter().all(|e| {
         e["engine"] == "mysql"
             || e["engine"] == "postgresql"
@@ -279,6 +282,7 @@ fn db_check() {
             || e["engine"] == "kingbase"
             || e["engine"] == "gbase"
             || e["engine"] == "oceanbase"
+            || e["engine"] == "opengauss"
             || e["available"] == serde_json::Value::Bool(false)
     });
     let tcp = db::test_connection(&serde_json::json!({
@@ -404,6 +408,18 @@ fn db_check() {
     let oceanbase_query_err = db::query_inline(&oceanbase_profile, "SELECT 1")
         .err()
         .unwrap_or_default();
+    let opengauss_profile = serde_json::json!({
+        "engine": "opengauss",
+        "host": "127.0.0.1",
+        "port": 1,
+        "username": "gaussdb",
+        "password": "x",
+        "connect_timeout_ms": 800,
+    });
+    let opengauss_connect_err = db::connect(&opengauss_profile).err().unwrap_or_default();
+    let opengauss_query_err = db::query_inline(&opengauss_profile, "SELECT 1")
+        .err()
+        .unwrap_or_default();
     // SQLite round-trip through the real engine (create/insert/select).
     let sqlite_path =
         std::env::temp_dir().join(format!("onehub-db-check-sqlite-{}.db", std::process::id()));
@@ -506,6 +522,7 @@ fn db_check() {
         "kingbase_available": kingbase_available,
         "gbase_available": gbase_available,
         "oceanbase_available": oceanbase_available,
+        "opengauss_available": opengauss_available,
         "other_engines_unavailable": other_engines_unavailable,
         "tcp_refused_graceful": tcp["reachable"] == serde_json::Value::Bool(false),
         "sqlite_missing_reported": sqlite_missing["reachable"] == serde_json::Value::Bool(false),
@@ -530,6 +547,8 @@ fn db_check() {
         "gbase_query_graceful_without_driver": gbase_query_err.contains("失败") || gbase_query_err.contains("ODBC"),
         "oceanbase_connect_refused_graceful": oceanbase_connect_err.contains("失败"),
         "oceanbase_query_refused_graceful": oceanbase_query_err.contains("失败"),
+        "opengauss_connect_refused_graceful": opengauss_connect_err.contains("失败"),
+        "opengauss_query_refused_graceful": opengauss_query_err.contains("失败"),
         "db_connection_save_list_delete_ok": db_listed >= 1 && deleted,
     });
     println!("{}", serde_json::to_string(&result).expect("json"));
