@@ -7,6 +7,7 @@
 
 pub mod accessibility;
 pub mod auth_prompt;
+pub mod command_palette;
 pub mod diagnostics;
 pub mod editor;
 pub mod file_manager;
@@ -31,6 +32,7 @@ pub use auth_prompt::{
     AuthPrompt, ConfirmState, HardwareConfirmation, KeyOption, KeySelection, PromptError,
     PromptKind, PromptState, SelectionError, SelectionState,
 };
+pub use command_palette::{CommandPalette, FlowKey, KeyboardFlow, PaletteAction, PaletteCommand};
 pub use diagnostics::{
     DiagnosticBundle, DiagnosticCategory, DiagnosticExporter, DiagnosticInput, DiagnosticPreview,
     DiagnosticSection, RedactionPolicy, Redactor, REDACTED,

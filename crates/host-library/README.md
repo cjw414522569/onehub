@@ -244,3 +244,17 @@
   text buffer with a cursor announcement.
 - `screen_reader_checklist` - automated in-model checks plus the
   VoiceOver / NVDA / TalkBack live-check matrix (run on native hosts).
+
+## T120: command palette and full keyboard navigation
+
+`crates/host-library/src/command_palette.rs`:
+
+- `CommandPalette` - filters commands by title / keywords, navigates results
+  (next / prev / wrap), and executes the selected command (closing on
+  execute).
+- `KeyboardFlow` - drives the palette with keyboard events only (toggle /
+  type / backspace / next / prev / enter / escape) and applies the executed
+  actions to the session state (connect / switch tab / switch window /
+  search / port forward / disconnect).
+- The keyboard end-to-end test completes connect, switch, search, forward,
+  and disconnect **without a mouse**.
