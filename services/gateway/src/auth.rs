@@ -174,6 +174,18 @@ impl SessionRegistry {
         self.consumed_tokens.len()
     }
 
+    /// Removes a session when it closes, so repeated connect/disconnect
+    /// cycles return the registry to baseline (no leaked sessions). Returns
+    /// whether a session was removed.
+    pub fn close_session(&mut self, session_id: u64) -> bool {
+        self.sessions.remove(&session_id).is_some()
+    }
+
+    /// The number of live (open) sessions.
+    pub fn open_session_count(&self) -> usize {
+        self.sessions.len()
+    }
+
     /// Enforces the tenant boundary for a session-bound operation: `tenant`
     /// must be the owner of `session_id`.
     pub fn access(&self, tenant: TenantId, session_id: u64) -> Result<(), AuthError> {
@@ -335,6 +347,21 @@ mod tests {
             registry.authenticate(&unknown, 1100),
             Err(AuthError::UnknownSession)
         );
+    }
+
+    #[test]
+    fn close_session_returns_registry_to_baseline() {
+        let mut issuer = TokenIssuer::new();
+        let mut registry = SessionRegistry::new();
+        assert_eq!(registry.open_session_count(), 0);
+        let token_a = registry.create_session(&mut issuer, TenantId(1), 1000);
+        let token_b = registry.create_session(&mut issuer, TenantId(2), 1000);
+        assert_eq!(registry.open_session_count(), 2);
+        assert!(registry.close_session(token_a.session_id));
+        assert!(!registry.close_session(token_a.session_id)); // idempotent
+        assert_eq!(registry.open_session_count(), 1);
+        assert!(registry.close_session(token_b.session_id));
+        assert_eq!(registry.open_session_count(), 0);
     }
 
     #[test]

@@ -67,3 +67,15 @@ watermark), disconnect (resume without re-auth), DNS failure (stable
 the matrix 50 times and prints a stable report; `scripts/test-fault-matrix.mjs`
 runs it three times and asserts byte-identical output plus a byte-identical
 `fault-injection/fault-matrix.report.json`.
+
+## T155: resource-leak soak (10k cycles)
+
+`services/gateway/examples/resource-soak.rs` runs 10,000 connect /
+disconnect / window / handle / transfer / GPU-frame cycles with RAII
+resource gauges and asserts every gauge returns to baseline (zero leaked
+connections, windows, handles, transfers, frames) with zero thread delta.
+`SessionRegistry::close_session` (added in T155) removes closed sessions so
+the registry returns to baseline. The sanitizer (ASan) is
+`blocked_unavailable_toolchain` on this stable-only host (requires nightly);
+`scripts/test-resource-soak.mjs` verifies the soak and archives
+`fault-injection/resource-leak-soak.report.json`.

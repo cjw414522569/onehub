@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "cycles": 10000,
+  "leaks": 0,
+  "thread_delta": 0,
+  "stable": true,
+  "runs_verified": 3,
+  "sanitizer": {
+    "status": "blocked_unavailable_toolchain",
+    "reason": "stable-only toolchain; -Zsanitizer=address requires nightly",
+    "attempt": "RUSTFLAGS=-Zsanitizer=address cargo check -> \"error: 1 nightly option were parsed\""
+  },
+  "resources": [
+    "connections_live=0 peak=1",
+    "windows_live=0 peak=1",
+    "handles_live=0 peak=1",
+    "transfers_live=0 peak=1",
+    "frames_live=0 peak=1"
+  ]
+}
