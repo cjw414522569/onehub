@@ -4,6 +4,7 @@ import type {
   DbConnectionProfile,
   DbConnectResult,
   DbEngineInfo,
+  DbObjectInfo,
   DbQueryRequest,
   DbQueryResult,
   DbTestResult,
@@ -1282,6 +1283,10 @@ export function dbConnectionConnect(input: DbConnectionInput) {
 
 export function dbConnectionDisconnect(sessionId: string) {
   return invoke<boolean>("db_connection_disconnect", { request: { session_id: sessionId } });
+}
+
+export function dbObjectList(sessionId: string, kind?: string) {
+  return invoke<DbObjectInfo[]>("db_object_list", { request: { session_id: sessionId, kind } });
 }
 
 export function dbQuery(request: DbQueryRequest) {

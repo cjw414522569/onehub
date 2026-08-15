@@ -1,4 +1,5 @@
 ﻿import { useCallback, useEffect, useState } from "react";
+import { SqlEditor } from "./SqlEditor";
 import {
   dbConnectionConnect,
   dbConnectionDelete,
@@ -78,7 +79,11 @@ export function DatabasePanel({ open, onClose }: DatabasePanelProps) {
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
-  const [sql, setSql] = useState("");
+  const [sqlTabs, setSqlTabs] = useState<{ id: string; title: string; sql: string }[]>([
+    { id: "sql-1", title: "SQL 1", sql: "" },
+  ]);
+  const [activeSqlTabId, setActiveSqlTabId] = useState("sql-1");
+  const activeSqlTab = sqlTabs.find((tab) => tab.id === activeSqlTabId) || sqlTabs[0];
   const [queryResult, setQueryResult] = useState<DbQueryResult | null>(null);
   const [objects, setObjects] = useState<DbObjectInfo[]>([]);
   const [objectsLoaded, setObjectsLoaded] = useState(false);
@@ -158,13 +163,13 @@ export function DatabasePanel({ open, onClose }: DatabasePanelProps) {
     }
   };
 
-  const runQuery = async () => {
+  const runQuery = async (sqlText: string) => {
     setBusy(true);
     setMessage(null);
     try {
       const result: DbQueryResult = await dbQuery({
         session_id: sessionId || undefined,
-        sql,
+        sql: sqlText,
         engine: form.engine,
         host: form.host,
         port: form.port,
@@ -179,6 +184,31 @@ export function DatabasePanel({ open, onClose }: DatabasePanelProps) {
     } finally {
       setBusy(false);
     }
+  };
+
+  const addSqlTab = () => {
+    const id = `sql-${sqlTabs.length + 1}-${Date.now()}`;
+    setSqlTabs((tabs) => [...tabs, { id, title: `SQL ${tabs.length + 1}`, sql: "" }]);
+    setActiveSqlTabId(id);
+  };
+
+  const closeSqlTab = (id: string) => {
+    setSqlTabs((tabs) => {
+      const next = tabs.filter((tab) => tab.id !== id);
+      if (next.length === 0) {
+        const freshId = "sql-empty";
+        setActiveSqlTabId(freshId);
+        return [{ id: freshId, title: "SQL 1", sql: "" }];
+      }
+      if (id === activeSqlTabId) {
+        setActiveSqlTabId(next[0].id);
+      }
+      return next;
+    });
+  };
+
+  const updateSqlTab = (id: string, nextSql: string) => {
+    setSqlTabs((tabs) => tabs.map((tab) => (tab.id === id ? { ...tab, sql: nextSql } : tab)));
   };
 
   const loadObjects = async () => {
@@ -415,16 +445,29 @@ export function DatabasePanel({ open, onClose }: DatabasePanelProps) {
         </section>
 
         <section style={{ marginTop: 14 }}>
-          <h3 style={{ margin: "0 0 8px", fontSize: 13 }}>SQL 查询{sessionId ? "（已连接）" : "（未连接，使用表单内联连接）"}</h3>
-          <textarea
-            aria-label="SQL 查询"
-            value={sql}
-            onChange={(event) => setSql(event.target.value)}
-            placeholder="输入 SQL，例如：SELECT 1"
-            rows={3}
-            style={{ width: "100%", boxSizing: "border-box", fontFamily: "monospace", fontSize: 12 }}
+          <h3 style={{ margin: "0 0 8px", fontSize: 13 }}>SQL 编辑器{sessionId ? "（已连接）" : "（未连接，使用表单内联连接）"}（Ctrl+Enter 执行）</h3>
+          <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 4, flexWrap: "wrap" }}>
+            {sqlTabs.map((tab) => (
+              <span key={tab.id} style={{ display: "inline-flex", alignItems: "center", gap: 4, border: tab.id === activeSqlTabId ? "1px solid #2374c6" : "1px solid #d1d5db", borderRadius: 4, padding: "2px 6px", fontSize: 12, background: tab.id === activeSqlTabId ? "#e8f0fe" : "transparent" }}>
+                <button type="button" onClick={() => setActiveSqlTabId(tab.id)} style={{ border: "none", background: "transparent", cursor: "pointer", padding: 0, fontSize: 12 }}>
+                  {tab.title}
+                </button>
+                <button type="button" onClick={() => closeSqlTab(tab.id)} aria-label="关闭标签" style={{ border: "none", background: "transparent", cursor: "pointer", padding: 0, fontSize: 12 }}>
+                  ×
+                </button>
+              </span>
+            ))}
+            <button type="button" onClick={addSqlTab} style={{ border: "none", background: "transparent", cursor: "pointer", fontSize: 14 }}>
+              +
+            </button>
+          </div>
+          <SqlEditor
+            value={activeSqlTab.sql}
+            onChange={(nextSql) => updateSqlTab(activeSqlTab.id, nextSql)}
+            onRun={() => void runQuery(activeSqlTab.sql)}
+            objectNames={objects.map((obj) => obj.name)}
           />
-          <button type="button" onClick={() => void runQuery()} disabled={busy || !sql.trim()} style={{ marginTop: 6 }}>
+          <button type="button" onClick={() => void runQuery(activeSqlTab.sql)} disabled={busy || !activeSqlTab.sql.trim()} style={{ marginTop: 6 }}>
             执行
           </button>
           {queryResult ? (
