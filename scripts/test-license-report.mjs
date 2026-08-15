@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 
 const reportPath = 'artifacts/reports/LICENSE_COMPLIANCE.json';
-const policyPath = 'docs/LICENSE_POLICY.md';
+const policyPath = 'architecture/LICENSE_POLICY.md';
 assert.equal(existsSync(reportPath), true, 'license report must exist');
 assert.equal(existsSync(policyPath), true, 'license policy must exist');
 
@@ -10,7 +10,7 @@ const report = JSON.parse(readFileSync(reportPath, 'utf8').replace(/^\uFEFF/, ''
 const policy = readFileSync(policyPath, 'utf8');
 
 assert.equal(report.schema_version, 1);
-assert.equal(report.project_license, 'Apache-2.0');
+assert.equal(report.project_license, 'AGPL-3.0');
 assert.deepEqual(report.scopes, ['release_candidate', 'development_only']);
 assert.ok(Array.isArray(report.dependencies) && report.dependencies.length > 0);
 assert.equal(report.metadata_inputs.length, 4);
@@ -32,7 +32,7 @@ assert.equal(report.cryptography.export_review_required, true);
 assert.equal(report.cryptography.status, 'review_required');
 
 for (const token of [
-  'Apache-2.0', 'SPDX', 'MIT', 'BSD-2-Clause', 'BSD-3-Clause', 'ISC', 'Zlib',
+  'Apache-2.0', 'AGPL-3.0', 'SPDX', 'MIT', 'BSD-2-Clause', 'BSD-3-Clause', 'ISC', 'Zlib',
   'WTFPL', 'GPL', 'LGPL', '动态链接', '静态链接', '字体', '图标', '加密出口',
   'review_required', '商业分发',
 ]) {

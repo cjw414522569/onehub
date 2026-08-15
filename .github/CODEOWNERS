@@ -11,7 +11,7 @@
 /docs/THREAT_MODEL.md @ssh-client/security-reviewers
 /LICENSE @ssh-client/release-engineering
 /NOTICE @ssh-client/release-engineering
-/docs/LICENSE_POLICY.md @ssh-client/security-reviewers @ssh-client/release-engineering
+/architecture/LICENSE_POLICY.md @ssh-client/security-reviewers @ssh-client/release-engineering
 
 # CI, hooks, and governance configuration require release-engineering review.
 /.github/ @ssh-client/release-engineering

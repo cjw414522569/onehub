@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "generated_at_utc": "2026-08-14T13:11:55.906Z",
-  "project_license": "Apache-2.0",
+  "generated_at_utc": "2026-08-15T20:02:09.969Z",
+  "project_license": "AGPL-3.0",
   "metadata_inputs": [
     {
       "path": "artifacts/license-metadata-wgpu-full.json",
@@ -16,8 +16,8 @@
     {
       "path": "artifacts/license-metadata-terminal-full.json",
       "exists": true,
-      "bytes": 2333800,
-      "sha256": "ebc90d4996a366b9df3a99a6973f7958eb8d527f554ae943fec89812b975f4bb",
+      "bytes": 2333796,
+      "sha256": "eefc335affd03db660c710c5e1aaffaa37967e8e2268a5344f89fde1b5bc1d58",
       "package_count": 285,
       "workspace_members": [
         "path+file:///C:/work/ssh/spikes/terminal-engines#terminal-engine-spike@0.1.0"
@@ -26,8 +26,8 @@
     {
       "path": "artifacts/license-metadata-ssh-full.json",
       "exists": true,
-      "bytes": 2744,
-      "sha256": "040fc6c941eff171d443305d61c8ed4d28fdec817e910f7f16276de901a20906",
+      "bytes": 2740,
+      "sha256": "a3adac8fdb9393e0b53c4433e668a2059520e8963132b7e27317ffb134fb6230",
       "package_count": 1,
       "workspace_members": [
         "path+file:///C:/work/ssh/spikes/ssh-engines#ssh-engine-spike-probe@0.1.0"
@@ -36,8 +36,8 @@
     {
       "path": "artifacts/license-metadata-contract-full.json",
       "exists": true,
-      "bytes": 2610,
-      "sha256": "c28310eb58d9e018fec8064c5c6f9d6dff2dfdc29b98d80b6d7e732e6b5b94e9",
+      "bytes": 2606,
+      "sha256": "0c591a3efcce8530f0401b93ea2e47deb7b8971536676a387ec2623e909d335a",
       "package_count": 1,
       "workspace_members": [
         "path+file:///C:/work/ssh/spikes/terminal-contract#0.1.0"
@@ -55,7 +55,7 @@
     "terminal-contract"
   ],
   "policy": {
-    "document": "docs/LICENSE_POLICY.md",
+    "document": "architecture/LICENSE_POLICY.md",
     "spdx": true,
     "release_allowlist": [
       "Apache-2.0",
@@ -4479,12 +4479,12 @@
     {
       "name": "ssh-engine-spike-probe",
       "version": "0.1.0",
-      "license": "Apache-2.0",
+      "license": "AGPL-3.0",
       "source": "workspace",
       "repository": null,
       "scope": "development_only",
       "release_eligible": false,
-      "classification": "allowlist_candidate",
+      "classification": "restricted_copyleft",
       "link_mode": "undetermined_until_packaging",
       "evidence": "cargo metadata workspace package",
       "notes": "",
@@ -4795,12 +4795,12 @@
     {
       "name": "terminal-contract",
       "version": "0.1.0",
-      "license": "Apache-2.0",
+      "license": "AGPL-3.0",
       "source": "workspace",
       "repository": null,
       "scope": "development_only",
       "release_eligible": false,
-      "classification": "allowlist_candidate",
+      "classification": "restricted_copyleft",
       "link_mode": "undetermined_until_packaging",
       "evidence": "cargo metadata workspace package",
       "notes": "",
@@ -4813,12 +4813,12 @@
     {
       "name": "terminal-engine-spike",
       "version": "0.1.0",
-      "license": "Apache-2.0",
+      "license": "AGPL-3.0",
       "source": "workspace",
       "repository": null,
       "scope": "development_only",
       "release_eligible": false,
-      "classification": "allowlist_candidate",
+      "classification": "restricted_copyleft",
       "link_mode": "undetermined_until_packaging",
       "evidence": "cargo metadata workspace package",
       "notes": "",
@@ -10069,33 +10069,1876 @@
     }
   ],
   "resources": {
-    "status": "not_present",
-    "files": []
+    "status": "review_required",
+    "files": [
+      {
+        "path": "artifacts/tmp/mxterm-layout-app-dialog.png",
+        "bytes": 111802,
+        "sha256": "2f35594f0c917f11ab127058119f0219356942d95945537a79417281445ca511",
+        "status": "review_required"
+      },
+      {
+        "path": "artifacts/tmp/mxterm-layout-app.png",
+        "bytes": 46325,
+        "sha256": "ea4ec5a7c55f4334e38d44ffe02be03fd74e4f09a0ec74c9be9f657e1b63badc",
+        "status": "review_required"
+      },
+      {
+        "path": "artifacts/tmp/mxterm-layout-reference-dialog.png",
+        "bytes": 68687,
+        "sha256": "b8fb9667ad96649f8e5e2a3e7d3d391603bdc393ab1eebc0f1cdac2228145398",
+        "status": "review_required"
+      },
+      {
+        "path": "artifacts/tmp/mxterm-layout-reference.png",
+        "bytes": 85958,
+        "sha256": "e7db08ecbb4d8a8bfdef557819fd4989f90515e07d972ecddd857e584c9daf18",
+        "status": "review_required"
+      },
+      {
+        "path": "artifacts/tmp/mxterm-render-contract.png",
+        "bytes": 170567,
+        "sha256": "79edac4fa1ceb133316b9f9c0efd58c53ab5612a1c6cc3d98a1159f61ee398e4",
+        "status": "review_required"
+      },
+      {
+        "path": "artifacts/tmp/mxterm-render-playwright.png",
+        "bytes": 170567,
+        "sha256": "79edac4fa1ceb133316b9f9c0efd58c53ab5612a1c6cc3d98a1159f61ee398e4",
+        "status": "review_required"
+      },
+      {
+        "path": "artifacts/tmp/mxterm-render.png",
+        "bytes": 18132,
+        "sha256": "736d9e60e7bae1417c71ae40052aba207ccffb11e3fd74e7b7b463190029bcd2",
+        "status": "review_required"
+      },
+      {
+        "path": "artifacts/tmp/mxterm-render2.png",
+        "bytes": 18598,
+        "sha256": "7c07cac4cb890ce21fadbcc6e7b89a9105cfdce00841047e848e91a14bbb2955",
+        "status": "review_required"
+      },
+      {
+        "path": "artifacts/tmp/mxterm-ui-connected.png",
+        "bytes": 48747,
+        "sha256": "99a06f0ed4ce8c6aae8d3e76936c131d7e9278e716c0fae0e784195d84c367a1",
+        "status": "review_required"
+      },
+      {
+        "path": "artifacts/tmp/panel-after.png",
+        "bytes": 52559,
+        "sha256": "d78e9cfda148d42a6404ccb1597dd73ca0a20d23de639e3910fde9c76460d860",
+        "status": "review_required"
+      },
+      {
+        "path": "artifacts/tmp/panel-before.png",
+        "bytes": 52559,
+        "sha256": "d78e9cfda148d42a6404ccb1597dd73ca0a20d23de639e3910fde9c76460d860",
+        "status": "review_required"
+      },
+      {
+        "path": "artifacts/tmp/pc-gui-after-help.png",
+        "bytes": 10207,
+        "sha256": "36ef351193db6c0424de4b691539e2ae39ad63ffcd5c7f476ab9f3193258758c",
+        "status": "review_required"
+      },
+      {
+        "path": "artifacts/tmp/pc-gui-client.png",
+        "bytes": 10379,
+        "sha256": "f8ad69a9d3f186aa5abae2b44d388538da50f55ec9c2b106c0e679e376029ba5",
+        "status": "review_required"
+      },
+      {
+        "path": "artifacts/tmp/pc-gui-connected.png",
+        "bytes": 12547,
+        "sha256": "1753bac4c37a853d148724e2ef3786ae0b554641a3690067a401286aa3c9d7fd",
+        "status": "review_required"
+      },
+      {
+        "path": "artifacts/tmp/pc-gui-connected2.png",
+        "bytes": 16429,
+        "sha256": "0a76678f0538f72dc10a3174f0741505c61d07bd02e394a181a42a7dbc9d8bab",
+        "status": "review_required"
+      },
+      {
+        "path": "artifacts/tmp/pc-gui-dialog-screen.png",
+        "bytes": 1204756,
+        "sha256": "479a9271a7a8de63ecdb255ff52c837791115889ef1de917cbab066e086d3b72",
+        "status": "review_required"
+      },
+      {
+        "path": "artifacts/tmp/pc-gui-dialog.png",
+        "bytes": 12547,
+        "sha256": "1753bac4c37a853d148724e2ef3786ae0b554641a3690067a401286aa3c9d7fd",
+        "status": "review_required"
+      },
+      {
+        "path": "artifacts/tmp/pc-gui-screen.png",
+        "bytes": 79218,
+        "sha256": "51455e2566b1dc849b0142b8e2d4165b5f9e7ccd0ff3453766ee0dbccb922223",
+        "status": "review_required"
+      },
+      {
+        "path": "artifacts/tmp/pc-gui-screenshot.png",
+        "bytes": 9581,
+        "sha256": "ff1f2bbbc10d9416eaa43c1859db1c12dcdff8003268ed71d21746a755f11434",
+        "status": "review_required"
+      },
+      {
+        "path": "artifacts/tmp/pc-gui-window.png",
+        "bytes": 12566,
+        "sha256": "f6d93b55566ee3a76ae87c15c4bf6f3529b1174234fb849bd1662531a47a452b",
+        "status": "review_required"
+      },
+      {
+        "path": "artifacts/tmp/rc-after.png",
+        "bytes": 52635,
+        "sha256": "98dfc7d3bc413d20024e9e73a7288d7d3857037f61e7464333d3053ff54f49ae",
+        "status": "review_required"
+      },
+      {
+        "path": "artifacts/tmp/rc-before.png",
+        "bytes": 52637,
+        "sha256": "f982efc2b2c612adab36a726f9d4f88b0bc8ee7d367fe4e35df27d274bde2073",
+        "status": "review_required"
+      },
+      {
+        "path": "artifacts/tmp/shot-check/chromium-desktop.svg",
+        "bytes": 3974,
+        "sha256": "ae6c754edade5acf99364d0e5470def6b0f3716812254451f9ae50230a68e90c",
+        "status": "review_required"
+      },
+      {
+        "path": "artifacts/tmp/shot-check/chromium-mobile.svg",
+        "bytes": 3969,
+        "sha256": "ba05ebac1b841ee97fe9b751858d607956d277af7afd0114e8ec51cd661196e2",
+        "status": "review_required"
+      },
+      {
+        "path": "artifacts/tmp/shot-check/firefox-desktop.svg",
+        "bytes": 3972,
+        "sha256": "0ee2cc5604198c1a85178f372c2c518b143d8a71d9834427dcbf5aac0fb7e797",
+        "status": "review_required"
+      },
+      {
+        "path": "artifacts/tmp/shot-check/safari-mobile.svg",
+        "bytes": 3965,
+        "sha256": "c3df3af90081c337e11f06ae401e270fd57aa8032a590d863ecef7d77e8158a3",
+        "status": "review_required"
+      },
+      {
+        "path": "artifacts/tmp/t016-window-final.png",
+        "bytes": 79218,
+        "sha256": "51455e2566b1dc849b0142b8e2d4165b5f9e7ccd0ff3453766ee0dbccb922223",
+        "status": "review_required"
+      },
+      {
+        "path": "artifacts/tmp/t016-window.png",
+        "bytes": 81126,
+        "sha256": "61f5724efde7d3bf32b23d0bacf77def1cfe7bce58938d3f58d29ecdfa4723cb",
+        "status": "review_required"
+      },
+      {
+        "path": "clients/windows/ui/dist/assets/codicon-ngg6Pgfi.ttf",
+        "bytes": 121972,
+        "sha256": "9d25513c861704be650eacef8c4588aceabdc8b668857747b5e42b299e926918",
+        "status": "review_required"
+      },
+      {
+        "path": "mxterm/docs/assets/readme/ai-assistant.png",
+        "bytes": 939297,
+        "sha256": "504b96bac635a75f019bef2a2ba3f8b968bcd0348c09e75485b0700dbb30761b",
+        "status": "review_required"
+      },
+      {
+        "path": "mxterm/docs/assets/readme/appearance-settings.png",
+        "bytes": 243417,
+        "sha256": "984b9d5474fc626310badd124be65a8e2b419676d38e1fc1995e48ce691413cd",
+        "status": "review_required"
+      },
+      {
+        "path": "mxterm/docs/assets/readme/home-connections.png",
+        "bytes": 156526,
+        "sha256": "316cfe8e99b3347213d112b8f61a70fe15f4b4863f7a60746eba567e9b9dc270",
+        "status": "review_required"
+      },
+      {
+        "path": "mxterm/docs/assets/readme/terminal-files.png",
+        "bytes": 235955,
+        "sha256": "e6c21b1526f491f68fd758c2a6045d5237cdb5b16de83200756a3d75e32942bb",
+        "status": "review_required"
+      },
+      {
+        "path": "mxterm/docs/assets/readme/terminal-monitor.png",
+        "bytes": 279904,
+        "sha256": "679f06a7aa09997058686de41879e0131313134396ec73fd9a2a8f614bca8334",
+        "status": "review_required"
+      },
+      {
+        "path": "mxterm/src-tauri/icons/128x128.png",
+        "bytes": 22674,
+        "sha256": "9c914f7225a0bcfd104380877d41cd36706da0ec785625d156ee7d5135f888eb",
+        "status": "review_required"
+      },
+      {
+        "path": "mxterm/src-tauri/icons/128x128@2x.png",
+        "bytes": 65118,
+        "sha256": "af1e3e83be1a22678e9f485a822db900349bc75f3588ba099a5eabfdfea68687",
+        "status": "review_required"
+      },
+      {
+        "path": "mxterm/src-tauri/icons/32x32.png",
+        "bytes": 2389,
+        "sha256": "ac14e6a4e35142ff6ffb93ae2dff4fa857956a03e7e807a885eedfd030aea902",
+        "status": "review_required"
+      },
+      {
+        "path": "mxterm/src-tauri/icons/icon.ico",
+        "bytes": 109148,
+        "sha256": "796addd659cfaf277e938bcde1ec587d8d3edbdac25b5139d1710e6eb9f3f9b1",
+        "status": "review_required"
+      },
+      {
+        "path": "mxterm/src-tauri/icons/icon.png",
+        "bytes": 171131,
+        "sha256": "45bfff872ff6b7901f511d131008d763b41fc75ca2e0eee0dc9b824b012cb165",
+        "status": "review_required"
+      },
+      {
+        "path": "mxterm/src-tauri/icons/Square107x107Logo.png",
+        "bytes": 18114,
+        "sha256": "5139bc8899dcd80219688b45364a8483bfc3ae816ce0a8592afd3a5b7d125f91",
+        "status": "review_required"
+      },
+      {
+        "path": "mxterm/src-tauri/icons/Square142x142Logo.png",
+        "bytes": 28779,
+        "sha256": "f2ebb2b05edd48bcd53a334c72785df912941c5b60e909264c50f10c371cc553",
+        "status": "review_required"
+      },
+      {
+        "path": "mxterm/src-tauri/icons/Square150x150Logo.png",
+        "bytes": 31304,
+        "sha256": "0c923ac349ef40ecfcb510d86387e69112ab2354b27df44f8497f4ce95d9d296",
+        "status": "review_required"
+      },
+      {
+        "path": "mxterm/src-tauri/icons/Square284x284Logo.png",
+        "bytes": 77739,
+        "sha256": "edd83d1b50c2ace58f89bcb0e2ea401801bb9dac77357d1f7fc0cade04dbca32",
+        "status": "review_required"
+      },
+      {
+        "path": "mxterm/src-tauri/icons/Square30x30Logo.png",
+        "bytes": 2137,
+        "sha256": "56dc312f9aa959b48d213636dda481de61cf6daea2055e78bcb1e77ccfcfe8c2",
+        "status": "review_required"
+      },
+      {
+        "path": "mxterm/src-tauri/icons/Square310x310Logo.png",
+        "bytes": 87840,
+        "sha256": "d3b522ed0ba9ae02b83d0da5a074b6e6944cd864fcb6972360c8137b96704aa7",
+        "status": "review_required"
+      },
+      {
+        "path": "mxterm/src-tauri/icons/Square44x44Logo.png",
+        "bytes": 3992,
+        "sha256": "dba79ea562c4e6fcaebbf8750b91b0c3ee6b9883f93c8efa27ad3449374638c5",
+        "status": "review_required"
+      },
+      {
+        "path": "mxterm/src-tauri/icons/Square71x71Logo.png",
+        "bytes": 9136,
+        "sha256": "d73f893a3714be3aec7aa31e04779d88f3b36b58f9967992985026c3b4048e52",
+        "status": "review_required"
+      },
+      {
+        "path": "mxterm/src-tauri/icons/Square89x89Logo.png",
+        "bytes": 13267,
+        "sha256": "9fe136200b09290d47cc1aebd16bc7c48cbff76982354a6ad6a45615660bf59c",
+        "status": "review_required"
+      },
+      {
+        "path": "mxterm/src-tauri/icons/StoreLogo.png",
+        "bytes": 5053,
+        "sha256": "f3af711936dd504cfb69fb8230b35e50eaaa0c376f9669709a1b2fe2d1af9d37",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/agent_hub.png",
+        "bytes": 353181,
+        "sha256": "4951d5aab6bacdfa53cf2ffbfa24a7e81aef12d7a68e4186bafc18845c052ad3",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/app.png",
+        "bytes": 297240,
+        "sha256": "28b54a078a51a0286a02e748db5e50257dbac740b2d8dfb424df31e25d2eff20",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/app1.png",
+        "bytes": 422106,
+        "sha256": "b391277c8b16e3a526503d1e896dc3d09db7913c35edd258d2a875effbc7e845",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/chatdb.png",
+        "bytes": 340136,
+        "sha256": "b42c4f46c5eb78f97aaaf8958efd26b0a2c3bfde77dc3509e4426dee28eb886f",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/a-large-small.svg",
+        "bytes": 340,
+        "sha256": "7b72af1c661f870451b39bf705f3eafaad6ee43d91caf5d9335b177b02b03638",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/ai.svg",
+        "bytes": 1139,
+        "sha256": "11b1b5c32a4e457bcc8151825813bb657e1e89f88854c4de97c80401ae717b17",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/ai_line.svg",
+        "bytes": 506,
+        "sha256": "ed758584bbdd5a52279a3889fff01c8471e28c339c26770fd0143ebf68de1684",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/align-center.svg",
+        "bytes": 297,
+        "sha256": "e8f125ee41bd358d554f160628611398f2a479946109172e6d7144736ad6d7b3",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/align-left.svg",
+        "bytes": 295,
+        "sha256": "6abdd1f087a5fb5ecb05fecb98551c2b7acb193d997b286500a0bc9715b7fc30",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/align-right.svg",
+        "bytes": 296,
+        "sha256": "da36f7ed593f78fa129fe3281d29291688b025b20aa8b6c259cbc3541e5c5235",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/all.svg",
+        "bytes": 1744,
+        "sha256": "8260b99d7844591ca805623840715f717484a66a1fbda3c3d507a8174b233bc0",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/almalinux_color.svg",
+        "bytes": 532,
+        "sha256": "f27b2f303a6028e06c82c4ffdff30db2bf0185f5863db7b8afcc421319949b4d",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/apps.svg",
+        "bytes": 1035,
+        "sha256": "837e7e57b29965f550739fcfb3d464d714366175ff1e8efbbba8cd2c96d314b9",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/apps_color.svg",
+        "bytes": 2255,
+        "sha256": "f4f3b6db38927b4d2d6a1335c660f39117446ae9d71fdbbb5a7dd65b2e136bee",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/arrow-down.svg",
+        "bytes": 268,
+        "sha256": "9787730a5f99f6507843d0d42e7cbf7af92c4232beef359b786eccc91a5a7e7f",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/arrow-left.svg",
+        "bytes": 276,
+        "sha256": "076808e934073464af12a471eaadb75345201c1b75d8b3d5d7b7ed49df6863d1",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/arrow-right.svg",
+        "bytes": 276,
+        "sha256": "05535b2a1f572910eddeaf1f3eb29f61f8b7764e8d31b18049524b3b9fb5347b",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/arrow-up.svg",
+        "bytes": 265,
+        "sha256": "041f9dd460eb66ccca7759feffbe75af54d629f30b4b710793cbcfc59cf489f2",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/asterisk.svg",
+        "bytes": 299,
+        "sha256": "446108e994041615b3cd536c2b95036508473384a14765dc7bf47b21af84d429",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/battery-charging.svg",
+        "bytes": 509,
+        "sha256": "3d41f5c7868ff5281f817569ce6e9999df3cdfb9669c8ed416dabc46692c56d9",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/battery-full.svg",
+        "bytes": 449,
+        "sha256": "f2eb7dddf8cccd8cf591b43a36d69e834cf01bb11e61953b18c2191c9270980a",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/battery-low.svg",
+        "bytes": 442,
+        "sha256": "45b2b17cad9a77306331d4f330d0895a3547cb448d6bc0bb46cfeef563e1c779",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/battery-medium.svg",
+        "bytes": 470,
+        "sha256": "7f6167e83bf217043b8b72ab1cd1c25b523f2fdbbe144a3b4601568c570739b2",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/battery-warning.svg",
+        "bytes": 505,
+        "sha256": "ec738563a907c5e64d79ea0f233efe032134d853d8ce0523962bae32c4b7758d",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/battery.svg",
+        "bytes": 419,
+        "sha256": "ec7e89631081bd7e0ec1cb621cbe87fffc623bbeb576f0bf503cdecf882fe7a5",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/bell.svg",
+        "bytes": 311,
+        "sha256": "c9053af052cb532c73179f85f877d7ec5005e321c0bec1ab99d9c6a83da75a82",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/book-open.svg",
+        "bytes": 451,
+        "sha256": "36c03476e62def525ae841bafd68e374200416d8f7c57125c625264926a5170d",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/bot.svg",
+        "bytes": 435,
+        "sha256": "6cb17b3342d199c823503445923248f41390c85dab954d52bf9c293a7e566c1f",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/building-2.svg",
+        "bytes": 566,
+        "sha256": "66043e7bab3f0422aaf93a07b44685654ac5076d65786833c001a0032185df8d",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/calendar.svg",
+        "bytes": 326,
+        "sha256": "e928977eec8d6dd5f1ffcfadbe62b329452552e5910c6ff02748c0f86b43756e",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/case-sensitive.svg",
+        "bytes": 388,
+        "sha256": "4356f81843c3dca2b247a72c1041c527754b194ed044d2821e7ca01b6439beae",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/centos_color.svg",
+        "bytes": 490,
+        "sha256": "f38c4e584ca2570a6f774b65a3b8c9c62d7acd452f82bd85b96b88dd8730c344",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/chart-pie.svg",
+        "bytes": 444,
+        "sha256": "007b7dcbb8e2c53fbf6d33de679ac06728511cc2531c0aff4e7bbeef7216a623",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/check-constraint.svg",
+        "bytes": 578,
+        "sha256": "b8bde0d8b5e22358c45bbf258c4efb7bd4f25fd39c64ec6d4703a4bec14c1e77",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/check.svg",
+        "bytes": 248,
+        "sha256": "d4d7b8439550c76623cfb4cb54a2a3f88f6319c990cc0d1dd5d11e3ff75adb2c",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/chevron-down.svg",
+        "bytes": 252,
+        "sha256": "350a4abf840fe9fac8f1aa4f60ff5d8ab68d84b6dfca20f5a545fa17bc0e9e96",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/chevron-left.svg",
+        "bytes": 254,
+        "sha256": "a059737ac495464c5c143b7bc17a8a831030c66ebf11c1ca790c7e86f92fd41d",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/chevron-right.svg",
+        "bytes": 254,
+        "sha256": "502f36eea957fbfe4483e8abe83e255b05f3f492e07d753cf733dfa9f5ee6163",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/chevron-up.svg",
+        "bytes": 248,
+        "sha256": "fbdfd4acd9d392f186f898a1866868f645392edb5d0832606acada63c78de276",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/chevrons-up-down.svg",
+        "bytes": 285,
+        "sha256": "5414881e13c19c1d867656d9f1dc5d25c8f99b27f6dec2721b5f576000380c74",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/circle-check.svg",
+        "bytes": 281,
+        "sha256": "2ad3739cbb3ce3c7809cd558dc457defe0a19f87db86cfb0bf727c95d319f12f",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/circle-user.svg",
+        "bytes": 415,
+        "sha256": "3ffd49c801a92c274baefeead4cf54b172855cf0061ebcfbe339a5c8d31cade7",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/circle-x.svg",
+        "bytes": 291,
+        "sha256": "32f5484da1d086d693b65ff999cdb23e69804711e54f4ad082567a792bbd943c",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/clickhouse_color.svg",
+        "bytes": 1017,
+        "sha256": "0136703f86c5c525d6fac5aecaf97e086b2ba861135144f2a872bd3935e3652e",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/clickhouse_line_color.svg",
+        "bytes": 1004,
+        "sha256": "d1583825b3e981a827f60641634b52ec2012b09929e78c3183ed09d22ac4abc9",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/close.svg",
+        "bytes": 257,
+        "sha256": "182424ba223e1c79c4e0b62d678f1099736f16d1d6f895a3c1f20d7f35cb7454",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/column.svg",
+        "bytes": 1057,
+        "sha256": "d4eaeaab89a4e03e491094cd35650bb2a0ed2fc7f4f6d07f91ec1414b5b3d2d9",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/copy.svg",
+        "bytes": 337,
+        "sha256": "9f9bb2f7f943b350f0455a0b599946bd2ef4dbfcc6bd9a6e4f44149d7d5e161c",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/cpu.svg",
+        "bytes": 715,
+        "sha256": "e7641a46337339ee0c6d721a941392c5aaa6bd5f098b3fad7b9e1d97962f7bf6",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/dash.svg",
+        "bytes": 243,
+        "sha256": "2af8e098fc1cdab6cdfca9ca36964b77b4a7b2b7e92d00eb8ac4b7ad04733546",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/data-model.svg",
+        "bytes": 885,
+        "sha256": "033d994fce0167689a57bf25dbbfd322b36c0bcc230fec9aaa58c358ddfd0c12",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/database.svg",
+        "bytes": 479,
+        "sha256": "e8fd5398c46e64c3c59bf5b5347bf21c94acbb5d1008e41125d95416e43eca07",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/database_line.svg",
+        "bytes": 275,
+        "sha256": "7068469c9a04d70f6de2cf1983fe00dc9c7d8d34fa58b6e2a71047d5a3e7eb63",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/db.svg",
+        "bytes": 1223,
+        "sha256": "7a08437d18c41032d0a3a2aa75d565a9cc455340e775bdc30dd30325cfaa05b5",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/debian_color.svg",
+        "bytes": 588,
+        "sha256": "93bac9196c63a1b2ed3d17ffd9432033a2078334dca8fd6a449b162d9ac3cd32",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/delete.svg",
+        "bytes": 354,
+        "sha256": "bb3eb902a3f69ab344908942088a8bc4db328dc9aeb6d0dd3476386029de258c",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/docker_color.svg",
+        "bytes": 882,
+        "sha256": "bfacc792e685a4dc512803485bda1b7eb41737455baa3fa2fa60093134074b07",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/duckdb.svg",
+        "bytes": 814,
+        "sha256": "5e6bf79aa5c6c63b9b968d77c5b7edd0c6b76a0cefedfb9fd18de4cfce20994e",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/edit.svg",
+        "bytes": 1036,
+        "sha256": "6c05ef207166b679f068f444ed56bfb44bf1f6fa9556cfddff2282c3312f854a",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/edit_border.svg",
+        "bytes": 781,
+        "sha256": "b5555a8fdd6fa62296d729cbc6a75eb44e76c5fbebdc071628d65c1ef0deacee",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/ellipsis-vertical.svg",
+        "bytes": 319,
+        "sha256": "70d6996edb7f56d55bdd70dc6eceb256b27cc179bb48748d2ae83a085f6bcec8",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/ellipsis.svg",
+        "bytes": 310,
+        "sha256": "4c074b23be59ac3f07794e373ba2639f5c14f0658656017fc63a1fb95ffbc212",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/export.svg",
+        "bytes": 842,
+        "sha256": "275954b9e526803aa4c8c2e5ff783465b6b894e98cc0b2314d6c0ff11cbfa4c0",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/extensions_color.svg",
+        "bytes": 499,
+        "sha256": "bba116ac69105f203de801ca4a91291f5f4d86b74a1f178dbcc414c50d6b4723",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/extensions_line.svg",
+        "bytes": 1033,
+        "sha256": "a2d418cadd794ca2963f55eb5bf93f8549d9a14ec6ce99670f4cc3ff705c1a2f",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/external-link.svg",
+        "bytes": 406,
+        "sha256": "eb8ae2be20d44ef3fd24007f2199d6d4be7acfd058a6d898b45388c16affb78d",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/eye-off.svg",
+        "bytes": 515,
+        "sha256": "6fe9515a2bd16fd4430d760e1df6c3d11dd14c548351ca92320484ffbb3270b1",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/eye.svg",
+        "bytes": 367,
+        "sha256": "aeaa8dc6f13c4d8f61d0c22b01bf6988650f725060979168fb33ae9b5394c85f",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/file.svg",
+        "bytes": 406,
+        "sha256": "0e98ed193a8fc0c85bc3a1a01c9f41c2d8d1a9f96d01d48785b94719077e0b8c",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/filter.svg",
+        "bytes": 1641,
+        "sha256": "00ba3d0e8810879e9673b4e0cfdfad894e7ca18f5b9874d464ebfbc5337257b6",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/folder-1.svg",
+        "bytes": 1294,
+        "sha256": "997e06454224db6f79e1b8d3612011ae0e199eff6364b5adbe194f63f2358dbf",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/folder-check-constraints.svg",
+        "bytes": 669,
+        "sha256": "272086c54ffad623b1c6b5ac8de2835f900aea67d1374d3111af457d876d27ba",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/folder-closed.svg",
+        "bytes": 469,
+        "sha256": "afc1082599952987ee52a6fa2a93000a39f31592361ce59579a09a45d37c1376",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/folder-columns.svg",
+        "bytes": 927,
+        "sha256": "7125c1760521db03d41b49c3995797af47f521c22cc5e9746f1860813a8b4dd5",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/folder-foreign-keys.svg",
+        "bytes": 694,
+        "sha256": "f465ec306f42043036c7b551377c696f926a6a1591bd5457bf04870cb494b23c",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/folder-functions.svg",
+        "bytes": 771,
+        "sha256": "abb06cf7697611de6e66252db8b58274350d3e739dfe5c954e676dd4944d139b",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/folder-indexes.svg",
+        "bytes": 725,
+        "sha256": "d061a88f414fafce0c8640fab960cb2d94d7f729e802ce8a4a994df657443611",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/folder-open-1.svg",
+        "bytes": 1432,
+        "sha256": "d737768115f94559553d4ffdd3afc8b34e3b1d3b66bbb6790ebb2bc7499b9b14",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/folder-open.svg",
+        "bytes": 503,
+        "sha256": "dd52d633c8163e4590337130f12ef2d182c4a089d328b31183e7b524b37e7e98",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/folder-procedures.svg",
+        "bytes": 571,
+        "sha256": "cc11276a3e6432f7f546d614358b9b43f029f97fd35ca40841f640bca216d32c",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/folder-queries.svg",
+        "bytes": 861,
+        "sha256": "a5ff67fe2c38c8fe597af74ad93e57d5a0477759db8831d2bf00282147856a46",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/folder-schema.svg",
+        "bytes": 1030,
+        "sha256": "6af86bee07e7a581c495227573eeceb6f08f9b4a14147a9ddd4fd2cc637744b5",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/folder-sequences.svg",
+        "bytes": 922,
+        "sha256": "a43bde773295f6219009abb73912ecf97d10ab344cc1e66d9f4cac6ba2e2906c",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/folder-tables.svg",
+        "bytes": 896,
+        "sha256": "b10ba577d2b4124bab8fc57c96f6a97d5ed01535dfb313ce6cc8f93111bb0303",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/folder-triggers.svg",
+        "bytes": 607,
+        "sha256": "6d93caadfc5db62bd2ab3f9c78b01d417233fc073577b7f3c6531448f0212ba6",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/folder-views.svg",
+        "bytes": 803,
+        "sha256": "71d6119eae542d4218186e8e629662892a38b9690b41c4f442bfa72891f0821b",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/folder.svg",
+        "bytes": 434,
+        "sha256": "6a831d33ff329ea02956211aa631f5ddee3d012de5e05d4176bb6b88bb3bc650",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/folder_open_color.svg",
+        "bytes": 486,
+        "sha256": "c84d7caed3e87625a2512a226c047caa7f5b0d4d8377f3654259c5fb916c3dc4",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/foreign-key.svg",
+        "bytes": 536,
+        "sha256": "4e49ae077a90e4c96d285a6589dbcdb75e279eff19592d898a9bdf740ba8798c",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/frame.svg",
+        "bytes": 503,
+        "sha256": "04f2db4f49fc7924d558b0c58bacc658745597108235a3481576c921313a5e4b",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/function.svg",
+        "bytes": 867,
+        "sha256": "7aa662a706b7d23a42b89a611456e7011b8b94f8193387effbde4f6153653234",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/gallery-vertical-end.svg",
+        "bytes": 425,
+        "sha256": "fc8d498eae294d9feffd66c7fa947001095fccc2e52fee755869e15274a3b2b8",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/github.svg",
+        "bytes": 790,
+        "sha256": "3ee59ca123810813bf7cfdcc69663a2a09dd10a4a791d610caeae57f0a7b5c81",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/globe.svg",
+        "bytes": 328,
+        "sha256": "cff43e47fd0871fb6abc8c2d2675a7db80a63a67fde266ab1c041d62c82b326a",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/gold_key.svg",
+        "bytes": 1312,
+        "sha256": "2f8b8d63f5803003fd7bce9e36a692ac852f06d88184c7bc510f0e8cb9ab6682",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/hard-drive.svg",
+        "bytes": 594,
+        "sha256": "8270414863f583c167d632a97bda5452826d9e1f5a53ffe7578d3cc85043bacb",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/heart-off.svg",
+        "bytes": 451,
+        "sha256": "9a9467828022c31e7e8c8203fdb85facafff0e173cdbb8c9574efbf7bc6f207f",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/heart.svg",
+        "bytes": 365,
+        "sha256": "93126fdb5147762ecaf6410f5e1e52edee02ef5ebde044b77e998ba84bb7b65a",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/home.svg",
+        "bytes": 582,
+        "sha256": "9e93be52eed2a2db4be024e7c15da2cbccfa7bd4669338dd53675609af90e852",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/inbox.svg",
+        "bytes": 389,
+        "sha256": "7ef7c9a1295f9eb25039ef9e90ffcacfccace5bf6a4ac5fc55a81611a7e5a6dd",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/index.svg",
+        "bytes": 760,
+        "sha256": "eb4cb5b621cb2d8bf9fa2c3f4d0a4347848ed0e88ad5b117b881f64e51dc2261",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/info.svg",
+        "bytes": 288,
+        "sha256": "5237b468f275adde82a4fdf98725435cfac89b9288de9cdd7b0e58ad25f3458d",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/inspector.svg",
+        "bytes": 728,
+        "sha256": "ae828d98e5147720fc84e81856764f299b602e40ec6dd2e21f0af77b31a147c4",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/key.svg",
+        "bytes": 374,
+        "sha256": "0956f2fd0255cf70a5639e753c4c6180f1163c13254595dce70c32b5ff823d35",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/layout-dashboard.svg",
+        "bytes": 576,
+        "sha256": "15e1b01446207a99894cd0a97a59741b7fe9699e74b2cf26796dc3c0fd811b63",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/linux_penguin_color.svg",
+        "bytes": 970,
+        "sha256": "a1a6c22d16a1e205221b830d83cacc1fa1df973209b945bd7ddfcedc05d446dd",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/list-checks.svg",
+        "bytes": 365,
+        "sha256": "17986a4fff101e5632f5a6d6d61012ecc4772928dee56aece697aca5a21ff628",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/loader-circle.svg",
+        "bytes": 268,
+        "sha256": "31117c080c614a734c4465bf2efa03fcc87d18f21d8f1e6a7c1410a9a1b118d3",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/loader.svg",
+        "bytes": 444,
+        "sha256": "c74fe678648e07e4f69408a463e307f82fadf0fb89f6f28c8bfe02707eaeaa13",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/locate-active-tab.svg",
+        "bytes": 420,
+        "sha256": "1d522621691cd1b5321799914b1c7deaed132bb599243db16221fab6b399732e",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/macos_color.svg",
+        "bytes": 538,
+        "sha256": "d86f6cdd7a3d223dd21ff3805ec05a75aff7d590d68720bb0f735204e0aaff41",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/map.svg",
+        "bytes": 580,
+        "sha256": "9b9709a9efc010f16e6eab2230df4187a1c6c30a9577c7c6d1054431010036f3",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/markdown_color.svg",
+        "bytes": 647,
+        "sha256": "ed7be017a58f24e4218e25365ce40def8d93a4dc75ec468f610103ce46ae9830",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/maximize.svg",
+        "bytes": 368,
+        "sha256": "8f2aa4eb5c9a48477d4b2e677cede91224949720ce8c50f07e9001a12eb74634",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/memory-stick.svg",
+        "bytes": 648,
+        "sha256": "c18d1ffdace08481a9a0775df40525772911009d289194bcfcf74a27a214acab",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/menu.svg",
+        "bytes": 328,
+        "sha256": "eb7dbe91dd546e407444737249025e22f4bd3d5e78bd7892c3f5ae3191353da7",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/minimize.svg",
+        "bytes": 390,
+        "sha256": "cefe06efdf20d9f4c10f2f1a4a666667621908478b898f48dabe5b415a8fc33f",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/minus.svg",
+        "bytes": 241,
+        "sha256": "ead64ea12da232a5b1e359f09ab6968bfac7213a266e326fd21c7653b9d67f96",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/mongodb.svg",
+        "bytes": 773,
+        "sha256": "8476a53e54c9e228f0facb0941b39d2573750bef62047ad8bab934dc138a770c",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/mongodb_color.svg",
+        "bytes": 513,
+        "sha256": "3c74824686c93e8d7c2bcb04d16939ca94ee7b8be689632c2cc2c71702e3f3f4",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/mongodb_line.svg",
+        "bytes": 318,
+        "sha256": "024ce5687e30f4e139a04b94da535b219d703710883a18e7155f9648ef4cd4fd",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/monitor.svg",
+        "bytes": 1116,
+        "sha256": "bdc2d5f3c44c5bb6f066d2c1794f54bc7d117449de0ff790e4f9531c868e8c28",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/moon.svg",
+        "bytes": 260,
+        "sha256": "3ac4ca214b483062e2751f0a0696ed43293c075cdd391d3bcdb5b0b50fa7ae89",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/mssql_color.svg",
+        "bytes": 4143,
+        "sha256": "8b557d047862578774f1aeec3be570e32345ff4848c238f963febd1cbe58da35",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/mssql_line_color.svg",
+        "bytes": 5195,
+        "sha256": "595dcc946c673151b87f8463f37f18c49ee7fb38f4bffa7d3b8c528a546a777d",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/mysql_color.svg",
+        "bytes": 3937,
+        "sha256": "04385f5b0e769984a732ca14ed8e76a28b5e4c1788f70e463f941db640eb93aa",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/mysql_line_color.svg",
+        "bytes": 3485,
+        "sha256": "c41439b3df9e9f59c2a7baf2dc1158b430ad0eef96bb52a635fcc4d663b31fd9",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/network.svg",
+        "bytes": 577,
+        "sha256": "780376014ab56c6f1138029032a4187f93ea2aeadd55c1e43efcf01117c080a9",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/new_folder.svg",
+        "bytes": 1483,
+        "sha256": "9acfd76145cc7d6d887cfe0d48161af116339ba5fcdeb22fa7173812459576b3",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/notes_color.svg",
+        "bytes": 675,
+        "sha256": "dc8ab2c83c6dda770150d4c0becaf12e14a83fadf249c129ae688f70e54e6969",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/notes_line.svg",
+        "bytes": 328,
+        "sha256": "e8eba5bdd926467ef345537c7c79b71e8790418bbfc69fe136ffb39ddadc157a",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/opensuse_color.svg",
+        "bytes": 450,
+        "sha256": "33069c1fd7bcb1dc19d0d1ca58422b0844bf1d307057cd468815b7bae67cb9e3",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/oracle_color.svg",
+        "bytes": 536,
+        "sha256": "f294738d94d422d6ff148f0096b83e4c76112099030271f6618524e8e31b650d",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/oracle_line_color.svg",
+        "bytes": 843,
+        "sha256": "934df1de5326b152698441a4840b710f205267f03f058c75614bbf6e6745f596",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/palette.svg",
+        "bytes": 667,
+        "sha256": "fe6b5a2093c78318c0a51b41ffa9df01acaedc8b5cad5dd62d08a6530fc8f941",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/panel-bottom-open.svg",
+        "bytes": 323,
+        "sha256": "d38d5be09ad6fa67df9d7ff13a9e74ae88d6784c407a6d01b5a26f01caf874c7",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/panel-bottom.svg",
+        "bytes": 293,
+        "sha256": "44cfb974b2a0d2e1ebdb54c77cd914c197a6489fc82119a08781b218f3e2b686",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/panel-left-close.svg",
+        "bytes": 391,
+        "sha256": "4ebbdaac467bb3d09b0aaaaca5273f70f2f4d05ececa8aa3bd6aeef680e8e6c4",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/panel-left-open.svg",
+        "bytes": 320,
+        "sha256": "5514126bf08d1331dc3fa749f4e4ed9056823c36a44119e7ed213b3730fb247d",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/panel-left.svg",
+        "bytes": 290,
+        "sha256": "18c8d0c2412681cec9a9e244d11775f86dc7906d4baf3655e8c4b5517f3b73bb",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/panel-right-close.svg",
+        "bytes": 391,
+        "sha256": "36cf9f65482d096b31db86f82763e7402df6f6831aa53ca549a18d36de1107a7",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/panel-right-open.svg",
+        "bytes": 323,
+        "sha256": "9471e6aa1d45c9f32bd510f074c7143c229b89b57bd4100166925bf0aae432c3",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/panel-right.svg",
+        "bytes": 292,
+        "sha256": "728621ecd5d2aa4718e6d0d56523ff328a04c5bdc1a272c85376277735ff5184",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/paste.svg",
+        "bytes": 1686,
+        "sha256": "482c8cb37d012a32bd4c2898abf7436d4fa48f1210f5b7d894f54953ba668a1e",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/pause.svg",
+        "bytes": 332,
+        "sha256": "027dada3eadcac8e34adcd2a69bff2e35d9c9cf1ea24f91cde66a4d4eb067d6e",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/pin.svg",
+        "bytes": 441,
+        "sha256": "4bec63626f94954e50f1dc59779b3fd6aef9bcec0c886e141ec7dd8428f9bb50",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/play.svg",
+        "bytes": 327,
+        "sha256": "dc5b0f1341ab4b8d4006111b8ab3960545c2bc6e90ee03cbadb8dbbb5e2d602a",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/plus.svg",
+        "bytes": 254,
+        "sha256": "4fc42c257823302f92b4738207a2f81bc5fa607ed4503dcb0c312aa343fa9c23",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/port_forwarding_color.svg",
+        "bytes": 833,
+        "sha256": "798cf4bf53d90fee55b9c2024db19e6e4a3c394e50e4afa833a166e550fc4ee5",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/port_forwarding_line.svg",
+        "bytes": 255,
+        "sha256": "4b9072f8495a0ae6250e594beea8dc08c860a67420b8ec89557c0b9a09de97e7",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/postgresql_color.svg",
+        "bytes": 5018,
+        "sha256": "7dc5ff5d3d285973412473e379cf10278de13b6792e365421236a2c0c8bed0ef",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/postgresql_line_color.svg",
+        "bytes": 13968,
+        "sha256": "5987c562990eefd73f102ddae35a75046a59fd4cedb99407d60ee91d3fa7a6fe",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/primary-key.svg",
+        "bytes": 1063,
+        "sha256": "8c7958cfc86c627dacce781e6f9fa7d7d6ef3609eb4fca7c480efa2868838f44",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/procedure.svg",
+        "bytes": 662,
+        "sha256": "1408ab6af81efc418db92895b4c3fc8d81f5a361300c99511c29902c430256f1",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/query.svg",
+        "bytes": 724,
+        "sha256": "248af482e8724afeedf46d61017b880c19319f72e3709fcfca072341c81ceca0",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/query_folder_color.svg",
+        "bytes": 505,
+        "sha256": "9840e4b023965a6115ac4914983888fa5adbfc5873e3cc58b8624e06bc62bd07",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/query_folder_open_color.svg",
+        "bytes": 700,
+        "sha256": "3611ade67fb8e3aebf6c2ef89b0974233a4cf438923817a83e4aca66f4dc1085",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/rdp.svg",
+        "bytes": 742,
+        "sha256": "596bb102e74c4920e6a90abc14ad18b6b09b2da884bae12266bc87d1dd1d4cc7",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/rdp_line.svg",
+        "bytes": 456,
+        "sha256": "d35c5bf9e2390617a1e988208c4bcc34894a142e221633cf61e3b2b5f3d9480e",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/redhat_color.svg",
+        "bytes": 412,
+        "sha256": "2054d89bdc9bf99418af5fd02d6c0996cbdba2b31dd760c4c6a6ff6332dd4252",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/redis.svg",
+        "bytes": 2223,
+        "sha256": "7244d5726b23cc40a69d4a42f3ffca1a532d27f9eda77d7af64df25c5157f694",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/redis_color.svg",
+        "bytes": 3373,
+        "sha256": "d8537ffd6ec9da7672d9e21a8d8cd810b40b6b54585b610188fbbe4e4a99fd27",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/redis_line.svg",
+        "bytes": 398,
+        "sha256": "a293a9be463c3010a22cd65f87726c039df79ed0f4b654c086effcf77e32dd89",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/redo-2.svg",
+        "bytes": 396,
+        "sha256": "de345d43652e8ff9e59fdb0c8327111d872dedec4203260ea2e385bf90a04710",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/redo.svg",
+        "bytes": 376,
+        "sha256": "00b92ee24be0838a9a2d88057f8d5143ce57aa4a9caed25b875746e84af1d2c7",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/refresh.svg",
+        "bytes": 1123,
+        "sha256": "769b7153575d011893adbc77067c1f6eeed11530d1091d190e393ef5d1f21147",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/remove.svg",
+        "bytes": 1001,
+        "sha256": "6b17265007c5ccf18061b735cafd56f5c0ce0d86358575438ec316a341ece73b",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/replace.svg",
+        "bytes": 558,
+        "sha256": "974e597bcc636a88156027c039098d640cf9fe62d5fa9a5dc5544dd8abf815a0",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/resize-corner.svg",
+        "bytes": 745,
+        "sha256": "6d6d03fc8273a9030b411c284b3a2866f74506c97483cdfc8adcb1ec46cd7176",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/rich_input_color.svg",
+        "bytes": 727,
+        "sha256": "e550f364801e6c537076698ab4c15db10e890356790bf1df35245269e811ce93",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/rich_text_color.svg",
+        "bytes": 532,
+        "sha256": "3e7c6180c9249c44f3a99df138e5cf544705331bb3d284e15c6ab22e8a1da47a",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/schema-compare.svg",
+        "bytes": 891,
+        "sha256": "d9673226dc21231e00bbbbcd4ad865bc36606df5ab973dc296abf2fc346ff267",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/schema.svg",
+        "bytes": 1276,
+        "sha256": "066438929f6fa889f8e802523c14e67a51e44c03932b0f6c4f30f1fb44d0ea61",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/search.svg",
+        "bytes": 283,
+        "sha256": "a14905db35e45a67fa97f1d0eb1ec0795da6a1f0758671ff3ae264e72629fc20",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/sequence.svg",
+        "bytes": 825,
+        "sha256": "0445f37f36907380fa1ae9a5f115a577ea806d6d2b900b807a2a847ce5dac415",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/serial_line.svg",
+        "bytes": 539,
+        "sha256": "95f1262be61e814de25d82f346a6e51f70ee23ad6034b7777108235e17a284b9",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/serial_port.svg",
+        "bytes": 655,
+        "sha256": "3f9543bff93e03d9311aa6fe433c621bc2565ae0bbdf1f3d990036d5c39f5771",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/server.svg",
+        "bytes": 1242,
+        "sha256": "a484ebc9e826696766fedfe50debd4a4dbdc9610b78426226460c247c23d62ed",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/server_line.svg",
+        "bytes": 355,
+        "sha256": "0bf7fcd83168e13466a3cb1478aec28b1ecf1c264846980106d1cc58d995969a",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/settings-2.svg",
+        "bytes": 410,
+        "sha256": "d5972c6ea8a2e634e1ffc88bea22dbe8ff55373097d578c1910b0073b408dd0c",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/settings.svg",
+        "bytes": 896,
+        "sha256": "7c34b7cbf8b8cd0a11bca9c8717d98dca84708cfaad50b475793b624b3304344",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/setting_color.svg",
+        "bytes": 2549,
+        "sha256": "08f5e028520890d11e53448b7f2479d234a4ffa544374a5d7d82c2dc61e78b51",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/sort-ascending.svg",
+        "bytes": 355,
+        "sha256": "a78598720a39d154cec88054c0a0d6a1696e79e1505343cc35329a997d95f2df",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/sort-descending.svg",
+        "bytes": 355,
+        "sha256": "b8abc0ddc156220f9ff2e79634e55b7c25f0b52ebf627d638322045ac0450fd9",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/sqlite_color.svg",
+        "bytes": 2625,
+        "sha256": "cadacfbc62cced416876b824727499e130ee9d2983f93e9e0a8b045b76c7794e",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/sqlite_line_color.svg",
+        "bytes": 1862,
+        "sha256": "f4321a50d54e5f30a3aeb12b1e2f078a6140faf05beca34d3036e1f649904513",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/square-terminal.svg",
+        "bytes": 442,
+        "sha256": "a928acf797898278fac74f512d64449d32c44e18c9fc7fa34fea39f8a2d5649d",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/square_terminal_color.svg",
+        "bytes": 414,
+        "sha256": "bc21ae87c9a20574408dd1e20ab52ea28b11aac22eb697a8e2c6bb4c0607fb42",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/star-fill.svg",
+        "bytes": 338,
+        "sha256": "d76dce85fbc5cf94aa488d674c9c3389dfd43bf73ef3225d220a0f3207fcfb7e",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/star-off.svg",
+        "bytes": 385,
+        "sha256": "3323da9db0a2156a4ed11a3893d233d1ea53ddd7f6dae517b2afc3748216e5f3",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/star.svg",
+        "bytes": 330,
+        "sha256": "388ac752e31c64312f3c19334392edc0077a61ad54b3b3e0a39f2b173b2be104",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/sun.svg",
+        "bytes": 454,
+        "sha256": "499b8dd9cbdd4ed9f2057a9b60584c76e5cce6d145331c53ab8db715038aee98",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/sync.svg",
+        "bytes": 1335,
+        "sha256": "3ff6e54b377b32366245c254476ed91fbf5eec6e729c591dbc48440b18793b91",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/table-data.svg",
+        "bytes": 972,
+        "sha256": "3814e19abe5b2c11907be0b5345aaeff00593573a35dcf77691155d53580cbb7",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/table-design-tool.svg",
+        "bytes": 495,
+        "sha256": "48f3f41058844a638a8f5857763e38d73e8fdb0943aced1dd8e4f91ecac6afd4",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/table-design.svg",
+        "bytes": 1202,
+        "sha256": "1d75389c0e6dd006ebcdc3671e0839a496b8a7db643f1eb9437c9d17d69424dc",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/table.svg",
+        "bytes": 929,
+        "sha256": "5fc9c0bb71d2f8a7536866ed58297a5f08cf7bd58c0f76dfc59a4c1adbd9d786",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/team_color.svg",
+        "bytes": 839,
+        "sha256": "4c384bd2a3f218b3090a04d8e5593b63af1ebfc22ca317ba2e78e46379ef15a6",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/team_line.svg",
+        "bytes": 323,
+        "sha256": "7fca043b998e51c4ff1d02f5a985553b6d09b452155642c97e87930875f2618a",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/terminal.svg",
+        "bytes": 811,
+        "sha256": "e1253e1c6f7ef2db35efa915bbdfcd3e28b7d29d325397a9f7aa220308654897",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/terminal_broadcast_color.svg",
+        "bytes": 846,
+        "sha256": "93745651a1bf19723685103cae86bb3d1d99a2d1c3874043331e75ac5e179de5",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/terminal_color.svg",
+        "bytes": 1837,
+        "sha256": "0f55cc403a53499357f26eaf9f6415502fd984c6a4a58a96a37546c0b90a77b4",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/terminal_file_manager_color.svg",
+        "bytes": 655,
+        "sha256": "f18f138905d85533853a99212185bd6fd6cf4bb3095424e0dc070338be4dc8a5",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/terminal_history_color.svg",
+        "bytes": 627,
+        "sha256": "8f1359ca9900fb1d799b86d2af9eca0f1521db3fa2072b05595954eb0b52f3d5",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/terminal_line.svg",
+        "bytes": 259,
+        "sha256": "f08ed49c5f14a5756f6e45306eb0b5ff01ee80522c60d7733a5c9eb05d37b17f",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/terminal_quick_command_color.svg",
+        "bytes": 621,
+        "sha256": "8c70e0d3b7746f783970b5d6dbfff20ac34387f1800fae8d64079f8b55f856f7",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/terminal_server_monitor_color.svg",
+        "bytes": 487,
+        "sha256": "2dbb68210d83730002c5936a20b23a1b89befc7c70b84030d1c93e66c3e538a2",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/thumbs-down.svg",
+        "bytes": 406,
+        "sha256": "1d27631af135fdb04c8772c962f3bd1d98722539bbe6cec4c4a953a09cecce47",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/thumbs-up.svg",
+        "bytes": 405,
+        "sha256": "e18f9aac000b33cccbc336bc2cd27f4fd51c160ff95d0590618072eccc18077e",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/triangle-alert.svg",
+        "bytes": 351,
+        "sha256": "ca891930c52aabcb43c64060d4f703d36075afccf8b2613ab7df6bdcae48de96",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/trigger.svg",
+        "bytes": 513,
+        "sha256": "56d0c7badf58c09dabc7aba9895a18fbbb77328ebc4c0d0a00669467617d558d",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/ubuntu_color.svg",
+        "bytes": 438,
+        "sha256": "8d824b6c8b3b92d2294b4614f35f862e441b114722853204b5025d9f122af875",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/unarchive.svg",
+        "bytes": 505,
+        "sha256": "edf788e99bd64afd0414148e139c35dd04a289512128eba54420c2950d0c4e95",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/undo-2.svg",
+        "bytes": 397,
+        "sha256": "b57412ba279331e42dcacc1857c453bcfd16c4338d17d997f9d3961c30c0206c",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/undo.svg",
+        "bytes": 374,
+        "sha256": "1558979499e87502bda4e16ef06e905a314b34e56f190537ed594b90d1e3f51a",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/upload.svg",
+        "bytes": 1411,
+        "sha256": "aea506407209bd10ba849b50982651c7209eb8eadf64e34096ecff630014e6f0",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/user.svg",
+        "bytes": 402,
+        "sha256": "ecb9960dd8e4fb8158447cc147650e53762474286e60bbac22db503aeabf42d2",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/user_color.svg",
+        "bytes": 1131,
+        "sha256": "d11fa3b1200540e175724f7836aa40fd1fb2800d71c865732289b9b23318bd42",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/view.svg",
+        "bytes": 797,
+        "sha256": "eb8f2ed28b1f9b4b5174d293aedde153e5e5b1c71a22f7f322c5c3943b91db90",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/vnc.svg",
+        "bytes": 763,
+        "sha256": "209e66bdf740221983f2d7f2a0e2c5e87e3452d6e8dc1875d8eaeecc6cd27eb5",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/vnc_line.svg",
+        "bytes": 601,
+        "sha256": "35e0e6ddaf863a2fe98876315a395699a6398f134a984037ba3c29c2e1600a82",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/window-close.svg",
+        "bytes": 1907,
+        "sha256": "0d356f66f7ef068358c917d8e83dd9d5c84b5fd253da6b3b38a9e84258bbd25d",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/window-maximize.svg",
+        "bytes": 2795,
+        "sha256": "1a4e42869cef7e178927a10f908f1f10d1455208e3b1251f3013ced869098a6d",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/window-minimize.svg",
+        "bytes": 1500,
+        "sha256": "942563eeedc4ebffa477e4a756e0ef7b97276852a8489d16e7a00c7651df9e3f",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/window-restore.svg",
+        "bytes": 3937,
+        "sha256": "988f49781d8865b491566a0ad037473e0dc7e1f64d555c455f131e044f1635c2",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/windows_color.svg",
+        "bytes": 453,
+        "sha256": "c290dbb66a86c586730a57ffddf9ea04be42f8e1a20f482398b985d91b071770",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/crates/assets/assets/icons/workspace.svg",
+        "bytes": 2367,
+        "sha256": "a7d26657f7f96eb83b4b162d487859dd9a75e8239dfcdbc83a7510fb807ea098",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/database.png",
+        "bytes": 543054,
+        "sha256": "e8581342e1ce2f3ffdcf5c34b298888f2e59ef6d01c50ad3b9a336a58dd7944e",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/docs-site/docs/public/navop-icon.png",
+        "bytes": 976894,
+        "sha256": "b56b1841c3f5f4b3f7ca9acbd6e38d575bf1557e5ab4a2230d55a86dbbca7333",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/er.png",
+        "bytes": 290459,
+        "sha256": "79e65d337a209975eaa2e91bb6b18d121aa51d0d978ac6cf886b5d425878cfac",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/extension.png",
+        "bytes": 276903,
+        "sha256": "3dbba31d248f29af4f30ba23cd21cd03bb8804924cfe37c224a99c0a45db1af0",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/git_branch.png",
+        "bytes": 384685,
+        "sha256": "9ec15916024e97dcbcb515dae8645c588b1647f0c8f894d42c4112ec3d13d11b",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/git_diff.png",
+        "bytes": 476748,
+        "sha256": "f70bb732e751fde3f8b1160bd0f970bf76d7011166df013a2f9bfd7332fc57e0",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/main/assets/encourage/alipay.png",
+        "bytes": 379611,
+        "sha256": "eff4da0f67809d28c2cc340359e41e6aa7bcb8c8881a580df7cb24d6588bcd69",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/main/assets/encourage/paypal.png",
+        "bytes": 18407,
+        "sha256": "2d8bbd980371ab3b465d536e55b6097bbdda92561edb45246cc484d143431788",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/main/assets/encourage/wechat.png",
+        "bytes": 437635,
+        "sha256": "4655d13e0043a48754af09d79c6ccff519ee7e416f6fff949b08bcfbc3fb0564",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/markdown.png",
+        "bytes": 775399,
+        "sha256": "38482830f0c1af9d2ef872e74f5fb17c676060f6dd8f6a1cdae753f0e8c06748",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/mongodb.png",
+        "bytes": 232783,
+        "sha256": "c26426d0cdc77d59c050fdcacc9abaa811d0acea4a47e4ad6fa0c4a37519e490",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/monitor.png",
+        "bytes": 472798,
+        "sha256": "5d2c896e1f2a7a9ab98f584965303589f9c6f6acbbf4c03e7de324abbac0ed0a",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/redis.png",
+        "bytes": 252638,
+        "sha256": "014e6cd2561358be316e3d257a9bb51a610b1401fd517b65d3418db6203c2214",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/remote_file_editor.png",
+        "bytes": 403775,
+        "sha256": "fb293debe050c1ab17794bcf6816312aabe54f30944f57153e7eefc9fbe71d70",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/resources/linux/navop-128.png",
+        "bytes": 23777,
+        "sha256": "fa5e433cd1e931ce0f666a091b7348b3a7a95e94b89434e4b571b740c2c81742",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/resources/linux/navop-256.png",
+        "bytes": 83320,
+        "sha256": "a46c13a08f0e5518a2bc16923edf8881de60bf4c8a46f1b6293a56ddec29cb1a",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/resources/linux/navop-512.png",
+        "bytes": 324526,
+        "sha256": "76cbf9c682e9fc70d9c177fe47968901043efa0ea417ab6d4a811af903e26aad",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/resources/navop-icon.png",
+        "bytes": 976894,
+        "sha256": "b56b1841c3f5f4b3f7ca9acbd6e38d575bf1557e5ab4a2230d55a86dbbca7333",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/resources/windows/navop.ico",
+        "bytes": 109715,
+        "sha256": "14fc7b648f9407570372c53b9fbafb6dfe571e86e939448a575796c97091edd3",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/richtext.png",
+        "bytes": 178033,
+        "sha256": "2d9d3e84398ef0de11ff4c5093393e6bf1c26477e584b4fe2be2f9d2259db785",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/sftp.png",
+        "bytes": 289702,
+        "sha256": "128c8ac347043a4a571c56748d338f1c4a7ca3788ab950ea075e6dbe846510ac",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/sftp_sidebar.png",
+        "bytes": 669908,
+        "sha256": "9bdcc8444ddce36aff1515355adaa25972b2c82b8ed90bad1799eec3867b0817",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/ssh.png",
+        "bytes": 805838,
+        "sha256": "8745d1ece2bc42d4f0107453acd44a042bc762009f9886e0551086639049e1d8",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/theme.png",
+        "bytes": 341157,
+        "sha256": "2bebf5711a219791c40497cac875ad8525a208318c1520bad2481256632c0120",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/vendor/llm-connector/examples/math.png",
+        "bytes": 95179,
+        "sha256": "e4706596ae735312a0600495a575c1cfeeb12a1cd06600ef251efe5b31516a51",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/vendor/llm-connector/www/public/docs/arch.jpg",
+        "bytes": 978544,
+        "sha256": "30361248cee1ce012b878d8e9a33fe33e169c0730689ffac9211af6dfa6750b8",
+        "status": "review_required"
+      },
+      {
+        "path": "navop/vendor/llm-connector/www/public/docs/protocolArch.jpg",
+        "bytes": 978544,
+        "sha256": "30361248cee1ce012b878d8e9a33fe33e169c0730689ffac9211af6dfa6750b8",
+        "status": "review_required"
+      },
+      {
+        "path": "web/app/screenshots/chromium-desktop.svg",
+        "bytes": 3980,
+        "sha256": "f4f37f566abb57b9a22c8d76c174b379a1c0b91399ec84128e29896a77fb3f3a",
+        "status": "review_required"
+      },
+      {
+        "path": "web/app/screenshots/chromium-mobile.svg",
+        "bytes": 3975,
+        "sha256": "a150ffc2a43cbfca22dcd69d4ad41df2e46c90ad746e2e1de2d1ed3c98879971",
+        "status": "review_required"
+      },
+      {
+        "path": "web/app/screenshots/firefox-desktop.svg",
+        "bytes": 3978,
+        "sha256": "c167b4d62e8dd683f629b0d858afe80bf3a53b1e6c10c202ae240fed64e3f603",
+        "status": "review_required"
+      },
+      {
+        "path": "web/app/screenshots/safari-mobile.svg",
+        "bytes": 3971,
+        "sha256": "f452b8d97ecb5816d2ba0b9f8b37b62f44341c633728da02cca1b0db788f9afd",
+        "status": "review_required"
+      }
+    ]
   },
   "distribution": {
     "project_license_file": {
       "path": "LICENSE",
       "exists": true,
-      "bytes": 10173,
-      "sha256": "a6cba85bc92e0cff7a450b1d873c0eaa2e9fc96bf472df0247a26bec77bf3ff9"
+      "bytes": 34523,
+      "sha256": "0d96a4ff68ad6d4b6f1f30f713b18d5184912ba8dd389f86aa7710db079abcb0"
     },
     "notice_file": {
       "path": "NOTICE",
       "exists": true,
-      "bytes": 625,
-      "sha256": "f9daebe39c9459c35da228f350a080727269833bb85f842a646b5d6a827c170d"
+      "bytes": 674,
+      "sha256": "3e0e0c9a9c89b5a5d739d7352dd00bdc59181fad54d1e0348bffde712bb221df"
     },
     "linkage_policy": {
       "static": "allowlisted SPDX expressions only; preserve license texts and NOTICE in every artifact",
       "dynamic": "record library version, load path, replacement/relink method, and platform packaging declaration",
       "wasm": "publish an accessible third-party notice page and retain bundle hash/source-map attribution"
     },
-    "fonts_icons": "not_present",
+    "fonts_icons": "review_required",
     "third_party_report": {
       "path": "artifacts/reports/THIRD_PARTY_LICENSES.md",
       "exists": true,
-      "bytes": 72152,
-      "sha256": "798a81fec3a5532934c61364a8d19277b3d8f4385069e218d008bacaa2e01542"
+      "bytes": 72144,
+      "sha256": "d7ba48e1721f65860062c6214c3b1835ef908edd18b332043de86067f7a9c354"
     }
   },
   "cryptography": {
@@ -11074,10 +12917,10 @@
       "reason": "license expression requires policy review: MIT/Apache-2.0"
     },
     {
-      "type": "allowlist_candidate",
+      "type": "restricted_copyleft",
       "dependency": "ssh-engine-spike-probe@0.1.0",
       "scope": "development_only",
-      "reason": "license expression requires policy review: Apache-2.0"
+      "reason": "license expression requires policy review: AGPL-3.0"
     },
     {
       "type": "allowlist_candidate",
@@ -11158,16 +13001,16 @@
       "reason": "license expression requires policy review: MIT"
     },
     {
-      "type": "allowlist_candidate",
+      "type": "restricted_copyleft",
       "dependency": "terminal-contract@0.1.0",
       "scope": "development_only",
-      "reason": "license expression requires policy review: Apache-2.0"
+      "reason": "license expression requires policy review: AGPL-3.0"
     },
     {
-      "type": "allowlist_candidate",
+      "type": "restricted_copyleft",
       "dependency": "terminal-engine-spike@0.1.0",
       "scope": "development_only",
-      "reason": "license expression requires policy review: Apache-2.0"
+      "reason": "license expression requires policy review: AGPL-3.0"
     },
     {
       "type": "restricted_copyleft",
@@ -11476,7 +13319,7 @@
     "release_dependency_count": 141,
     "development_restriction_count": 226,
     "release_blocker_count": 0,
-    "resource_count": 0
+    "resource_count": 307
   },
   "status": "pass_with_restrictions"
 }

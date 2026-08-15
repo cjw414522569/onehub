@@ -2,7 +2,7 @@ SSH client project
 
 Copyright 2026 SSH client project contributors.
 
-This repository's original source is licensed under Apache-2.0.
+This repository's original source is licensed under AGPL-3.0 (GNU Affero General Public License v3.0).
 Third-party dependencies are identified by SPDX expression in artifacts/reports/LICENSE_COMPLIANCE.json and artifacts/reports/THIRD_PARTY_LICENSES.md.
 The final commercial artifact must ship the applicable third-party license texts and notices for the exact dependency/linkage set selected by its packaging build.
 

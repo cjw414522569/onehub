@@ -180,7 +180,7 @@ function buildReport() {
       classification,
       link_mode: 'undetermined_until_packaging',
       evidence: isRoot ? 'cargo metadata workspace package' : 'cargo metadata resolved package',
-      notes: pkg.license ? '' : 'workspace package has no publish license; project policy is Apache-2.0 and package manifest must be updated before publish',
+      notes: pkg.license ? '' : 'workspace package has no publish license; project policy is AGPL-3.0 and package manifest must be updated before publish',
       license_evidence: packageLicenseEvidence(pkg),
     };
   }).sort((a, b) => `${a.scope}/${a.name}/${a.version}`.localeCompare(`${b.scope}/${b.name}/${b.version}`));
@@ -199,12 +199,12 @@ function buildReport() {
   const report = {
     schema_version: 1,
     generated_at_utc: new Date().toISOString(),
-    project_license: 'Apache-2.0',
+    project_license: 'AGPL-3.0',
     metadata_inputs: metadataInputs,
     scopes: ['release_candidate', 'development_only'],
     roots,
     policy: {
-      document: 'docs/LICENSE_POLICY.md',
+      document: 'architecture/LICENSE_POLICY.md',
       spdx: true,
       release_allowlist: ['Apache-2.0', 'MIT', 'BSD-2-Clause', 'BSD-3-Clause', 'ISC', 'Zlib', '0BSD', 'Unlicense', 'CC0-1.0', 'Unicode-3.0', 'Unicode-DFS-2016', 'NCSA'],
       forbidden_without_review: ['GPL', 'AGPL', 'LGPL', 'WTFPL', 'unknown', 'undeclared'],

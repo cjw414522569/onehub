@@ -202,7 +202,7 @@ export function validateWorkspace(rootDir) {
     }
   }
 
-  for (const requiredFile of ['tools/README.md', 'docs/WORKSPACE_LAYOUT.md']) {
+  for (const requiredFile of ['tools/README.md']) {
     if (!exists(root, requiredFile)) errors.push(`Missing T016 support file: ${requiredFile}`);
   }
 

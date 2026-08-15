@@ -1,7 +1,7 @@
 # Third-party license inventory
 
-Generated: 2026-08-14T13:11:55.906Z
-Project license: **Apache-2.0**
+Generated: 2026-08-15T20:02:09.969Z
+Project license: **AGPL-3.0**
 Dependencies: **367**
 
 Each row records the Cargo SPDX/license expression, dependency scope, source metadata, release eligibility, and whether a local license text/file could be located. `review_required=yes` is never a release approval.
@@ -168,7 +168,7 @@ Each row records the Cargo SPDX/license expression, dependency scope, source met
 | simd_helpers | 0.1.0 | MIT | development_only | registry+https://github.com/rust-lang/crates.io-index | https://github.com/lu-zero/simd_helpers | no | not located | yes |
 | simd-adler32 | 0.3.10 | MIT | development_only | registry+https://github.com/rust-lang/crates.io-index | https://github.com/mcountryman/simd-adler32 | no | LICENSE.md | no |
 | siphasher | 1.0.3 | MIT/Apache-2.0 | development_only | registry+https://github.com/rust-lang/crates.io-index | https://github.com/jedisct1/rust-siphash | no | COPYING | no |
-| ssh-engine-spike-probe | 0.1.0 | Apache-2.0 | development_only | workspace | not declared | no | not located | yes |
+| ssh-engine-spike-probe | 0.1.0 | AGPL-3.0 | development_only | workspace | not declared | no | not located | yes |
 | stable_deref_trait | 1.2.1 | MIT OR Apache-2.0 | development_only | registry+https://github.com/rust-lang/crates.io-index | https://github.com/storyyeller/stable_deref_trait | no | LICENSE-APACHE; LICENSE-MIT | no |
 | strsim | 0.11.1 | MIT | development_only | registry+https://github.com/rust-lang/crates.io-index | https://github.com/rapidfuzz/strsim-rs | no | LICENSE | no |
 | syn | 1.0.109 | MIT OR Apache-2.0 | development_only | registry+https://github.com/rust-lang/crates.io-index | https://github.com/dtolnay/syn | no | LICENSE-APACHE; LICENSE-MIT | no |
@@ -182,8 +182,8 @@ Each row records the Cargo SPDX/license expression, dependency scope, source met
 | tattoy-wezterm-input-types | 0.1.0 | MIT | development_only | registry+https://github.com/rust-lang/crates.io-index | https://github.com/wezterm/wezterm | no | LICENSE.md | no |
 | tattoy-wezterm-surface | 0.1.0-fork.2 | MIT | development_only | registry+https://github.com/rust-lang/crates.io-index | https://github.com/wezterm/wezterm | no | not located | yes |
 | tattoy-wezterm-term | 0.1.0-fork.5 | MIT | development_only | registry+https://github.com/rust-lang/crates.io-index | https://github.com/tattoy-org/wezterm | no | LICENSE.md | no |
-| terminal-contract | 0.1.0 | Apache-2.0 | development_only | workspace | not declared | no | not located | yes |
-| terminal-engine-spike | 0.1.0 | Apache-2.0 | development_only | workspace | not declared | no | not located | yes |
+| terminal-contract | 0.1.0 | AGPL-3.0 | development_only | workspace | not declared | no | not located | yes |
+| terminal-engine-spike | 0.1.0 | AGPL-3.0 | development_only | workspace | not declared | no | not located | yes |
 | terminfo | 0.9.0 | WTFPL | development_only | registry+https://github.com/rust-lang/crates.io-index | https://github.com/meh/rust-terminfo | no | LICENSE | no |
 | termios | 0.3.3 | MIT | development_only | registry+https://github.com/rust-lang/crates.io-index | https://github.com/dcuddeback/termios-rs | no | LICENSE | no |
 | thiserror-impl | 1.0.69 | MIT OR Apache-2.0 | development_only | registry+https://github.com/rust-lang/crates.io-index | https://github.com/dtolnay/thiserror | no | LICENSE-APACHE; LICENSE-MIT | no |

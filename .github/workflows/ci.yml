@@ -22,7 +22,7 @@ jobs:
         run: node scripts/validate-git-governance.mjs .
       - name: Validate control ledger
         shell: pwsh
-        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/validate-control.ps1
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/validate-control.ps1 -AllowMissing
   cargo:
     name: ci / cargo
     runs-on: windows-latest
@@ -253,4 +253,4 @@ jobs:
       - uses: actions/checkout@v4
       - name: Validate task control document
         shell: pwsh
-        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/validate-control.ps1
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/validate-control.ps1 -AllowMissing

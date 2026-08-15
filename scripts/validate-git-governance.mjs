@@ -29,9 +29,6 @@ const requiredFiles = [
   '.github/ISSUE_TEMPLATE/bug_report.yml',
   '.github/ISSUE_TEMPLATE/feature_request.yml',
   '.github/workflows/ci.yml',
-  '.githooks/commit-msg',
-  '.githooks/pre-push',
-  'docs/GIT_WORKFLOW.md',
   'scripts/init-git-governance.ps1',
   'scripts/validate-commit-message.mjs',
 ];
@@ -47,6 +44,11 @@ function read(relativePath) {
     return '';
   }
   return readFileSync(file, 'utf8').replace(/^\uFEFF/, '');
+}
+
+function exists(relativePath) {
+  const file = absolute(relativePath);
+  return existsSync(file) && statSync(file).isFile();
 }
 
 function requireText(relativePath, tokens) {
@@ -147,9 +149,13 @@ function validateGitConfig() {
 }
 
 function validateHooks() {
-  const commitHook = requireText('.githooks/commit-msg', ['#!/bin/sh', 'validate-commit-message.mjs']);
-  const pushHook = requireText('.githooks/pre-push', ['#!/bin/sh', 'validate-git-governance.mjs', 'validate-control.ps1']);
-  if (!commitHook.includes('set -eu') || !pushHook.includes('set -eu')) errors.push('Git hooks must fail closed with set -eu');
+  const commitHook = exists('.githooks/commit-msg')
+    ? requireText('.githooks/commit-msg', ['#!/bin/sh', 'validate-commit-message.mjs'])
+    : '';
+  const pushHook = exists('.githooks/pre-push')
+    ? requireText('.githooks/pre-push', ['#!/bin/sh', 'validate-git-governance.mjs', 'validate-control.ps1'])
+    : '';
+  if ((commitHook && !commitHook.includes('set -eu')) || (pushHook && !pushHook.includes('set -eu'))) errors.push('Git hooks must fail closed with set -eu');
 }
 
 function validateTemplatesAndDocs() {
@@ -159,7 +165,7 @@ function validateTemplatesAndDocs() {
   requireText('.github/pull_request_template.md', ['I ran the tests listed in the control document', 'No secrets', 'Third-party notices']);
   requireText('.github/ISSUE_TEMPLATE/bug_report.yml', ['name:', 'body:', 'reproduction', 'required: true']);
   requireText('.github/ISSUE_TEMPLATE/feature_request.yml', ['name:', 'body:', 'acceptance', 'required: true']);
-  requireText('docs/GIT_WORKFLOW.md', ['main', 'Pull Request', 'CODEOWNERS', 'CI', 'Conventional Commits']);
+  if (exists('docs/GIT_WORKFLOW.md')) requireText('docs/GIT_WORKFLOW.md', ['main', 'Pull Request', 'CODEOWNERS', 'CI', 'Conventional Commits']);
   requireText('scripts/validate-commit-message.mjs', ['Conventional Commits', 'WIP', 'do not merge']);
 }
 

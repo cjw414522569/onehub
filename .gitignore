@@ -46,3 +46,9 @@ mxterm/
 # mXterm UI build artifacts (clients/windows/ui)
 clients/windows/ui/node_modules/
 clients/windows/ui/dist/
+
+# Local-only directories excluded from the public repo (kept on disk).
+navop/
+.claude/
+docs/
+.githooks/

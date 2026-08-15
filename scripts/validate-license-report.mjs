@@ -70,7 +70,7 @@ function validateDependencies(report) {
 
 function validateReport(report) {
   if (!report || report.schema_version !== 1) fail('schema_version must be 1');
-  if (report.project_license !== 'Apache-2.0') fail('project_license must be Apache-2.0');
+  if (report.project_license !== 'AGPL-3.0') fail('project_license must be AGPL-3.0');
   validateMetadataInputs(report);
   validateDependencies(report);
   if (!Array.isArray(report.release_blockers)) fail('release_blockers must be an array');

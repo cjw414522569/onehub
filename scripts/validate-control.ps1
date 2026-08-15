@@ -1,7 +1,8 @@
 [CmdletBinding()]
 param(
     [string]$ControlFile,
-    [switch]$RequireAllCompleted
+    [switch]$RequireAllCompleted,
+    [switch]$AllowMissing
 )
 
 $ErrorActionPreference = 'Stop'
@@ -27,6 +28,18 @@ $blockedStatus = ConvertFrom-CodePoints @(0x963B, 0x585E)
 $emptyEvidence = [char]0x2014
 $labelSeparator = '(?:' + [regex]::Escape([string][char]0xFF1A) + '|:)'
 
+if (-not (Test-Path -LiteralPath $ControlFile)) {
+    if ($RequireAllCompleted) {
+        Write-Error "Control document not found: $ControlFile"
+        exit 1
+    }
+    if ($AllowMissing) {
+        Write-Host "Control document not found ($ControlFile); -AllowMissing set, skipping ledger validation."
+        exit 0
+    }
+    Write-Error "Control document not found: $ControlFile"
+    exit 1
+}
 $resolvedControlFile = (Resolve-Path -LiteralPath $ControlFile).Path
 $lines = @(Get-Content -LiteralPath $resolvedControlFile -Encoding UTF8)
 $allowedStatuses = @($notStartedStatus, $inProgressStatus, $completedStatus, $blockedStatus) |

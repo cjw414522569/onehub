@@ -1,14 +1,14 @@
 # License compliance report
 
-Generated: 2026-08-14T13:11:55.906Z
+Generated: 2026-08-15T20:02:09.969Z
 Status: **pass_with_restrictions**
-Project license: **Apache-2.0**
+Project license: **AGPL-3.0**
 
 ## Summary
 
 - Dependencies: 367; release-candidate: 141; development/transitive restrictions: 226.
 - Release blockers: 0.
-- Fonts/icons/resources: not_present; files=0.
+- Fonts/icons/resources: review_required; files=307.
 - Cryptography/export review: review_required; packages=4.
 
 ## Restrictions
@@ -175,7 +175,7 @@ Project license: **Apache-2.0**
 | simd_helpers@0.1.0 | development_only | — | allowlist_candidate | license expression requires policy review: MIT |
 | simd-adler32@0.3.10 | development_only | — | allowlist_candidate | license expression requires policy review: MIT |
 | siphasher@1.0.3 | development_only | — | allowlist_candidate | license expression requires policy review: MIT/Apache-2.0 |
-| ssh-engine-spike-probe@0.1.0 | development_only | — | allowlist_candidate | license expression requires policy review: Apache-2.0 |
+| ssh-engine-spike-probe@0.1.0 | development_only | — | restricted_copyleft | license expression requires policy review: AGPL-3.0 |
 | stable_deref_trait@1.2.1 | development_only | — | allowlist_candidate | license expression requires policy review: MIT OR Apache-2.0 |
 | strsim@0.11.1 | development_only | — | allowlist_candidate | license expression requires policy review: MIT |
 | syn@1.0.109 | development_only | — | allowlist_candidate | license expression requires policy review: MIT OR Apache-2.0 |
@@ -189,8 +189,8 @@ Project license: **Apache-2.0**
 | tattoy-wezterm-input-types@0.1.0 | development_only | — | allowlist_candidate | license expression requires policy review: MIT |
 | tattoy-wezterm-surface@0.1.0-fork.2 | development_only | — | allowlist_candidate | license expression requires policy review: MIT |
 | tattoy-wezterm-term@0.1.0-fork.5 | development_only | — | allowlist_candidate | license expression requires policy review: MIT |
-| terminal-contract@0.1.0 | development_only | — | allowlist_candidate | license expression requires policy review: Apache-2.0 |
-| terminal-engine-spike@0.1.0 | development_only | — | allowlist_candidate | license expression requires policy review: Apache-2.0 |
+| terminal-contract@0.1.0 | development_only | — | restricted_copyleft | license expression requires policy review: AGPL-3.0 |
+| terminal-engine-spike@0.1.0 | development_only | — | restricted_copyleft | license expression requires policy review: AGPL-3.0 |
 | terminfo@0.9.0 | development_only | — | restricted_copyleft | license expression requires policy review: WTFPL |
 | termios@0.3.3 | development_only | — | allowlist_candidate | license expression requires policy review: MIT |
 | thiserror-impl@1.0.69 | development_only | — | allowlist_candidate | license expression requires policy review: MIT OR Apache-2.0 |
