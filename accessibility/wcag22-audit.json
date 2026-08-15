@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "standard": "WCAG 2.2 Level AA",
+  "audited_at_utc": "2026-08-15T06:50:00Z",
+  "critical_paths": ["connect", "terminal-session", "host-library", "transfer", "settings"],
+  "criteria": [
+    { "id": "1.3.1", "name": "Info and Relationships", "path": "host-library", "status": "pass", "evidence": "A11yTree exposes role/name hierarchy and focus_order (accessibility.rs T119)" },
+    { "id": "1.4.3", "name": "Contrast (Minimum)", "path": "connect", "status": "pass", "evidence": "design-system contrast_pairs >= 4.5:1 verified by the audit contract; high-contrast theme" },
+    { "id": "1.4.10", "name": "Reflow", "path": "terminal-session", "status": "pass", "evidence": "responsive layout (layoutFor) reflows to 320px without loss; terminal reflows on resize (T072)" },
+    { "id": "1.4.11", "name": "Non-text Contrast", "path": "connect", "status": "pass", "evidence": "focus ring (blue.500/300) and borders meet 3:1 against surfaces" },
+    { "id": "1.4.12", "name": "Text Spacing", "path": "terminal-session", "status": "partial", "evidence": "no fixed-height clipping in terminal rows; full reflow audit on native hosts pending", "remediation": "verify 1.5 line-height / 2 letter-spacing overrides on native terminals" },
+    { "id": "2.1.1", "name": "Keyboard", "path": "host-library", "status": "pass", "evidence": "full keyboard protocol (input-adapter + terminal keyboard protocol T108); command palette reachable by keyboard" },
+    { "id": "2.2.2", "name": "Pause, Stop, Hide", "path": "terminal-session", "status": "pass", "evidence": "no auto-moving content; animations respect ReduceMotionPolicy (T119)" },
+    { "id": "2.3.1", "name": "Three Flashes", "path": "terminal-session", "status": "pass", "evidence": "no flashing content; renderer produces static frames" },
+    { "id": "2.4.7", "name": "Focus Visible", "path": "connect", "status": "pass", "evidence": "explicit focus color token; A11yTree focus_order; keyboard focus indicators" },
+    { "id": "2.5.4", "name": "Motion Actuation", "path": "host-library", "status": "pass", "evidence": "gesture features require an explicit alternative control (T109/T119)" },
+    { "id": "2.5.8", "name": "Target Size (Minimum)", "path": "connect", "status": "partial", "evidence": "spacing tokens provide adequate padding; 24x24 CSS px targets modeled", "remediation": "verify >= 24x24 CSS px on native widgets in the device matrix" },
+    { "id": "4.1.2", "name": "Name, Role, Value", "path": "host-library", "status": "pass", "evidence": "A11yNode accessible_name + role; semantic model for screen readers" }
+  ],
+  "manual_device_matrix": "blocked_unavailable_toolchain (real devices/assistive tech not on this host); the automated matrix above runs deterministically"
+}

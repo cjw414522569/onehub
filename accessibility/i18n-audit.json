@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "audited_at_utc": "2026-08-15T06:50:00Z",
+  "catalogs": ["i18n/messages.en.json", "i18n/messages.zh-CN.json"],
+  "checks": {
+    "shared_message_ids": "pass (en/zh-CN share identical IDs; enforced by lint-i18n.mjs)",
+    "plurals": "pass (one/other pairs; zh-CN other-only per Chinese plural rules)",
+    "dates": "pass (short/long/time.hms per locale)",
+    "rtl": "pass (rtl.supported, mirrored layouts, RTL locale list)",
+    "truncation": "pass (messages within max chars; pseudo-localized expansion within 1.5x)",
+    "no_hardcoded_user_strings": "partial (UI strings resolve via message keys; a full native-widget scan runs on platform hosts)",
+    "remediation": "complete the native-widget hardcoded-string scan on each platform toolchain (blocked_unavailable_toolchain here)"
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "audited_at_utc": "2026-08-15T06:50:00Z",
+  "devices": ["keyboard", "mouse", "touch", "stylus", "ime", "gamepad"],
+  "actions": ["navigate", "select", "connect", "type", "scroll", "cancel"],
+  "cells": {
+    "keyboard": { "navigate": "pass", "select": "pass", "connect": "pass", "type": "pass", "scroll": "pass", "cancel": "pass" },
+    "mouse": { "navigate": "pass", "select": "pass", "connect": "pass", "type": "partial", "scroll": "pass", "cancel": "pass" },
+    "touch": { "navigate": "pass", "select": "pass", "connect": "pass", "type": "partial", "scroll": "pass", "cancel": "pass" },
+    "stylus": { "navigate": "partial", "select": "pass", "connect": "partial", "type": "pass", "scroll": "pass", "cancel": "pass" },
+    "ime": { "navigate": "n/a", "select": "n/a", "connect": "n/a", "type": "pass", "scroll": "n/a", "cancel": "n/a" },
+    "gamepad": { "navigate": "blocked", "select": "blocked", "connect": "blocked", "type": "blocked", "scroll": "blocked", "cancel": "blocked" }
+  },
+  "notes": [
+    "Keyboard/mouse/touch are covered by the input adapter + shell; IME by the native composition path (T108); stylus/gamepad partial/blocked are deferred to native device matrix runs.",
+    "Every non-pass cell has a documented path: mouse/touch typing uses the on-screen keyboard; stylus and gamepad are platform gates (blocked_unavailable_toolchain here)."
+  ]
+}
