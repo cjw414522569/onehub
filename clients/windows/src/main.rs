@@ -3462,13 +3462,20 @@ fn handle_persisted_commands(
             serde_json::Value::Null
         }
         "connection_set_favorite" => {
-            let id = payload
-                .get("id")
+            let request = payload.get("request").cloned().unwrap_or(payload.clone());
+            let id = request
+                .get("connection_id")
                 .and_then(serde_json::Value::as_str)
+                .or_else(|| payload.get("id").and_then(serde_json::Value::as_str))
                 .unwrap_or("");
-            let favorite = payload
+            let favorite = request
                 .get("is_favorite")
                 .and_then(serde_json::Value::as_bool)
+                .or_else(|| {
+                    payload
+                        .get("is_favorite")
+                        .and_then(serde_json::Value::as_bool)
+                })
                 .unwrap_or(false);
             store
                 .set_connection_favorite(id, favorite)
@@ -3477,9 +3484,11 @@ fn handle_persisted_commands(
                 .unwrap_or(serde_json::Value::Null)
         }
         "connection_mark_connected" => {
-            let id = payload
-                .get("id")
+            let request = payload.get("request").cloned().unwrap_or(payload.clone());
+            let id = request
+                .get("connection_id")
                 .and_then(serde_json::Value::as_str)
+                .or_else(|| payload.get("id").and_then(serde_json::Value::as_str))
                 .unwrap_or("");
             store
                 .mark_connection_connected(id)

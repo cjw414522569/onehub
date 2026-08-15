@@ -128,7 +128,11 @@ pub(crate) const SHIM_JS: &str = r#"(function () {
       if (!d) { return; }
       if (d.kind === 'invoke-reply' && _pending[d.requestId]) {
         var p = _pending[d.requestId]; delete _pending[d.requestId];
-        if (d.error) { p.reject(new Error(d.error)); } else { p.resolve(d.payload); }
+        var err = d.error || (d.payload && d.payload.error);
+        if (err) {
+          var msg = (typeof err === 'object' && err.message) ? err.message : String(err);
+          p.reject(new Error(msg));
+        } else { p.resolve(d.payload); }
       } else if (d.kind === 'event' && typeof d.handlerId === 'number') {
         window.__TAURI_INTERNALS__.runCallback(d.handlerId, d.payload);
       }
