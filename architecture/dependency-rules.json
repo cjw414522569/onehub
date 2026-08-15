@@ -394,6 +394,7 @@
       "dependencies": [
         "core-protocol",
         "terminal-state",
+        "terminal-parser",
         "wgpu-renderer"
       ],
       "external_imports": [

@@ -7,9 +7,11 @@ publish.workspace = true
 
 [lib]
 path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 core-protocol = { path = "../core-protocol" }
+terminal-parser = { path = "../terminal-parser" }
 terminal-state = { path = "../terminal-state" }
 wgpu-renderer = { path = "../wgpu-renderer" }
-
+wasm-bindgen = "0.2"
