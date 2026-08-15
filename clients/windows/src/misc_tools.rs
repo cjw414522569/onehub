@@ -113,6 +113,21 @@ pub fn supported_window_materials() -> Value {
     json!(materials)
 }
 
+/// True when the OS supports the DWM system-backdrop attribute
+/// (mica/acrylic/tabbed, Windows 11 build 22523+).
+pub fn dwm_backdrop_supported() -> bool {
+    #[cfg(windows)]
+    {
+        windows_build_number()
+            .map(|build| build >= 22523)
+            .unwrap_or(false)
+    }
+    #[cfg(not(windows))]
+    {
+        false
+    }
+}
+
 pub fn window_material_info(material: i32) -> Value {
     let name = match material {
         0 => "auto",

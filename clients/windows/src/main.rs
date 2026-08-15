@@ -3580,6 +3580,16 @@ fn handle_persisted_commands(
 /// lives in the shell rather than the forbid(unsafe_code) library.
 fn apply_window_material(hwnd: HWND, material: i32) -> Result<serde_json::Value, String> {
     let normalized = misc_tools::normalize_material(material)?;
+    // "auto" (0) is the OS default; there is no backdrop attribute to set.
+    // Mica/acrylic/tabbed (2/3/4) need the DWM system-backdrop API (Win11
+    // build 22523+); on older builds report a clear error instead of letting
+    // DwmSetWindowAttribute fail with E_INVALIDARG.
+    if normalized == 0 {
+        return Ok(misc_tools::window_material_info(normalized));
+    }
+    if !misc_tools::dwm_backdrop_supported() {
+        return Err("当前系统版本不支持 DWM 窗口材质。".to_string());
+    }
     unsafe {
         let result = DwmSetWindowAttribute(
             hwnd,
