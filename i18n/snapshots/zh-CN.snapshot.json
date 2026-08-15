@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "locale": "zh-CN",
+  "messages": {
+    "app.name": "SSH 桌面",
+    "common.cancel": "取消",
+    "common.ok": "确定",
+    "connection.latency": "延迟 {ms} 毫秒",
+    "host.connect": "连接",
+    "host.disconnect": "断开",
+    "host.fingerprint.risk.high": "高风险",
+    "host.fingerprint.risk.low": "低风险",
+    "host.fingerprint.risk.medium": "中风险",
+    "menu.edit": "编辑",
+    "menu.file": "文件",
+    "menu.view": "查看",
+    "notification.transfer.done": "传输完成：{label}",
+    "paste.confirm": "粘贴 {lines} 行？",
+    "search.placeholder": "搜索主机…",
+    "session.reconnecting": "正在重连（第 {attempt} 次）…",
+    "settings.font": "字体",
+    "settings.theme": "主题",
+    "transfer.complete": "传输完成",
+    "transfer.progress.one": "{done} 个文件中的 {total} 已传输",
+    "transfer.progress.other": "{done} 个文件中的 {total} 已传输"
+  },
+  "plural_categories": [
+    "other"
+  ],
+  "date_formats": {
+    "format.short": "yyyy-MM-dd",
+    "format.long": "yyyy 年 M 月 d 日",
+    "time.hms": "HH:mm:ss"
+  },
+  "rtl": {
+    "supported": true,
+    "mirrored_layouts": [
+      "navigation",
+      "action-bar"
+    ],
+    "locale_rtl": [
+      "ar",
+      "he",
+      "fa",
+      "ur"
+    ]
+  }
+}

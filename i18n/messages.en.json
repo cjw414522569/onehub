@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "locale": "en",
+  "max_message_chars": 120,
+  "messages": {
+    "app.name": "SSH Desktop",
+    "common.ok": "OK",
+    "common.cancel": "Cancel",
+    "menu.file": "File",
+    "menu.edit": "Edit",
+    "menu.view": "View",
+    "host.connect": "Connect",
+    "host.disconnect": "Disconnect",
+    "host.fingerprint.risk.high": "High risk",
+    "host.fingerprint.risk.medium": "Medium risk",
+    "host.fingerprint.risk.low": "Low risk",
+    "transfer.complete": "Transfer complete",
+    "transfer.progress.one": "{done} of {total} file transferred",
+    "transfer.progress.other": "{done} of {total} files transferred",
+    "session.reconnecting": "Reconnecting (attempt {attempt})…",
+    "connection.latency": "Latency {ms} ms",
+    "paste.confirm": "Paste {lines} line(s)?",
+    "notification.transfer.done": "Transfer finished: {label}",
+    "settings.theme": "Theme",
+    "settings.font": "Font",
+    "search.placeholder": "Search hosts…"
+  },
+  "plurals": {
+    "category": ["one", "other"]
+  },
+  "dates": {
+    "format.short": "yyyy-MM-dd",
+    "format.long": "MMMM d, yyyy",
+    "time.hms": "HH:mm:ss"
+  },
+  "rtl": {
+    "supported": true,
+    "mirrored_layouts": ["navigation", "action-bar"],
+    "locale_rtl": ["ar", "he", "fa", "ur"]
+  }
+}
