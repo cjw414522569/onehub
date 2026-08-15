@@ -409,6 +409,10 @@
         "abi-c"
       ],
       "external_imports": [
+        "aes-gcm",
+        "argon2",
+        "base64",
+        "getrandom",
         "rusqlite",
         "serde-json",
         "tiny-http",

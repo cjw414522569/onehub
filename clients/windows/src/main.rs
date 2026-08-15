@@ -57,6 +57,7 @@ use windows::Win32::System::Com::{CoInitializeEx, COINIT_APARTMENTTHREADED};
 mod bridge;
 mod httpserver;
 mod store;
+mod vault;
 mod webview2;
 
 /// Timer id used for the periodic re-render / command drain.
@@ -111,6 +112,7 @@ struct AppState {
     webview: Option<ICoreWebView2>,
     events: bridge::EventRegistry,
     store: Option<store::Store>,
+    vault: vault::Vault,
 }
 
 fn main() {
@@ -122,7 +124,41 @@ fn main() {
         store_check();
         return;
     }
+    if std::env::args().any(|argument| argument == "--vault-check") {
+        vault_check();
+        return;
+    }
     run_gui();
+}
+
+/// End-to-end vault check (--vault-check): enables a master password,
+/// verifies unlock with the right password and rejection with a wrong one,
+/// locks, and prints the resulting status JSON (mxterm parity T002 evidence).
+fn vault_check() {
+    let dir = std::env::temp_dir().join(format!("ssh-vault-e2e-{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&dir);
+    let mut v = vault::Vault::open(&dir);
+    let enabled = v
+        .enable_master_password("test-master-pass")
+        .expect("enable");
+    let mut v2 = vault::Vault::open(&dir);
+    let wrong = v2.unlock("wrong-pass").is_err();
+    let unlocked = v2.unlock("test-master-pass").expect("unlock");
+    let locked = v2.lock();
+    let local_dir = dir.join("local");
+    let _ = std::fs::create_dir_all(&local_dir);
+    let mut v3 = vault::Vault::open(&local_dir);
+    let local = v3.unlock_local().expect("local unlock");
+    let result = serde_json::json!({
+        "enabled": { "initialized": enabled.initialized, "unlocked": enabled.unlocked },
+        "wrong_password_rejected": wrong,
+        "unlocked_with_correct": { "initialized": unlocked.initialized, "unlocked": unlocked.unlocked },
+        "locked": { "initialized": locked.initialized, "unlocked": locked.unlocked },
+        "local_mode": { "initialized": local.initialized, "unlocked": local.unlocked },
+        "vault_file": vault::Vault::path_for(&dir).display().to_string(),
+    });
+    println!("{}", serde_json::to_string(&result).expect("json"));
+    let _ = std::fs::remove_dir_all(&dir);
 }
 
 /// End-to-end store persistence check (--store-check): writes one row per
@@ -518,6 +554,13 @@ unsafe fn wm_create(hwnd: HWND) -> LRESULT {
     let store = store_path
         .as_deref()
         .and_then(|path| store::Store::open(path).ok());
+    let vault_dir = store_path
+        .as_deref()
+        .and_then(|path| path.parent().map(|dir| dir.to_path_buf()));
+    let vault = vault_dir
+        .as_deref()
+        .map(vault::Vault::open)
+        .unwrap_or_else(|| vault::Vault::open(std::path::Path::new(".")));
     let state = Box::new(AppState {
         model: GuiModel::new(),
         term_font,
@@ -529,6 +572,7 @@ unsafe fn wm_create(hwnd: HWND) -> LRESULT {
         webview: None,
         events: bridge::EventRegistry::default(),
         store,
+        vault,
     });
     SetWindowLongPtrW(hwnd, GWLP_USERDATA, Box::into_raw(state) as isize);
     SetTimer(hwnd, TIMER_ID, 250, None);
@@ -583,6 +627,57 @@ unsafe fn handle_key(state: &mut AppState, hwnd: HWND, wparam: WPARAM) {
         state.model.delete_forward();
     }
     InvalidateRect(hwnd, std::ptr::null(), 1);
+}
+
+/// Handles secret-vault commands (mxterm parity T002): status/unlock/lock/
+/// enable/disable master password. Returns the reply JSON when the command is
+/// vault-backed, or None so the caller falls through to the pure bridge.
+fn handle_vault_commands(
+    state: &mut AppState,
+    cmd: &str,
+    parsed: &serde_json::Value,
+) -> Option<String> {
+    let request_id = parsed
+        .get("requestId")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+    let payload = parsed
+        .get("payload")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+    let status: Result<vault::VaultStatus, String> = match cmd {
+        "secret_vault_status" => Ok(state.vault.status()),
+        "secret_vault_unlock" => {
+            let password = payload
+                .get("request")
+                .and_then(|r| r.get("master_password"))
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            state.vault.unlock(password)
+        }
+        "secret_vault_unlock_local" => state.vault.unlock_local(),
+        "secret_vault_lock" => Ok(state.vault.lock()),
+        "secret_vault_enable_master_password" => {
+            let password = payload
+                .get("request")
+                .and_then(|r| r.get("master_password"))
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            state.vault.enable_master_password(password)
+        }
+        "secret_vault_disable_master_password" => state.vault.disable_master_password(),
+        _ => return None,
+    };
+    let reply_payload = match status {
+        Ok(s) => serde_json::json!({ "initialized": s.initialized, "unlocked": s.unlocked }),
+        Err(message) => serde_json::json!({
+            "error": { "code": "vault_error", "message": message, "recoverable": true }
+        }),
+    };
+    Some(
+        serde_json::json!({ "kind": "invoke-reply", "requestId": request_id, "payload": reply_payload })
+            .to_string(),
+    )
 }
 
 /// Handles commands that persist to the local SQLite store (mxterm parity
@@ -815,6 +910,10 @@ fn on_web_message(hwnd: HWND, message: &str) -> Option<String> {
             "payload": unsafe { IsZoomed(hwnd) != 0 },
         });
         return Some(reply.to_string());
+    }
+
+    if let Some(reply) = handle_vault_commands(state, cmd, &parsed) {
+        return Some(reply);
     }
 
     if let Some(reply) = handle_persisted_commands(state, cmd, &parsed) {
