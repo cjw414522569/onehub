@@ -4,6 +4,7 @@ import type {
   DbConnectionInput,
   DbConnectionProfile,
   DbConnectResult,
+  DbErMetadata,
   DbEngineInfo,
   DbObjectInfo,
   DbQueryRequest,
@@ -1298,6 +1299,10 @@ export function dbCompare(sourceSessionId: string, targetSessionId: string, mode
   return invoke<DbCompareResult>("db_compare", {
     request: { source_session_id: sourceSessionId, target_session_id: targetSessionId, mode },
   });
+}
+
+export function dbErMetadata(sessionId: string) {
+  return invoke<DbErMetadata>("db_er_metadata", { request: { session_id: sessionId } });
 }
 
 export function dbObjectList(sessionId: string, kind?: string) {

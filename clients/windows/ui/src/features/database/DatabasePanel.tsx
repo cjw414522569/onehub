@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useState } from "react";
+﻿import { useCallback, useEffect, useRef, useState } from "react";
 import { SqlEditor } from "./SqlEditor";
 import {
   dbConnectionConnect,
@@ -10,6 +10,7 @@ import {
   dbCompare,
   dbEngineList,
   dbExplain,
+  dbErMetadata,
   dbExport,
   dbImport,
   dbObjectList,
@@ -20,6 +21,8 @@ import type {
   DbCompareResult,
   DbConnectionProfile,
   DbEngineInfo,
+  DbErMetadata,
+  DbErTable,
   DbObjectInfo,
   DbQueryResult,
   DbTestResult,
@@ -77,6 +80,13 @@ function isFileEngine(engine: string): boolean {
   return engine === "sqlite" || engine === "duckdb";
 }
 
+const ER_NODE_W = 180;
+const ER_NODE_GAP = 70;
+
+function erTableHeight(table: DbErTable): number {
+  return 30 + table.columns.length * 22;
+}
+
 export function DatabasePanel({ open, onClose }: DatabasePanelProps) {
   const [connections, setConnections] = useState<DbConnectionProfile[]>([]);
   const [engines, setEngines] = useState<DbEngineInfo[]>([]);
@@ -100,6 +110,12 @@ export function DatabasePanel({ open, onClose }: DatabasePanelProps) {
   const [exportContent, setExportContent] = useState("");
   const [compareTargetId, setCompareTargetId] = useState("");
   const [compareResult, setCompareResult] = useState<DbCompareResult | null>(null);
+
+  const [erMeta, setErMeta] = useState<DbErMetadata | null>(null);
+  const [erZoom, setErZoom] = useState(1);
+  const [erOffset, setErOffset] = useState({ x: 0, y: 0 });
+  const [erDragging, setErDragging] = useState(false);
+  const erDragRef = useRef<{ startX: number; startY: number; offsetX: number; offsetY: number } | null>(null);
   const [objects, setObjects] = useState<DbObjectInfo[]>([]);
   const [objectsLoaded, setObjectsLoaded] = useState(false);
 
@@ -311,6 +327,26 @@ export function DatabasePanel({ open, onClose }: DatabasePanelProps) {
       if (targetSessionId) {
         await dbConnectionDisconnect(targetSessionId).catch(() => {});
       }
+      setBusy(false);
+    }
+  };
+
+  const runErDiagram = async () => {
+    if (!sessionId) {
+      setMessage("请先连接数据库。");
+      return;
+    }
+    setBusy(true);
+    setMessage(null);
+    try {
+      const result = await dbErMetadata(sessionId);
+      setErMeta(result);
+      setErZoom(1);
+      setErOffset({ x: 0, y: 0 });
+      setMessage(`ER 图已生成：${result.tables.length} 表、${result.relationships.length} 关系。`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error));
+    } finally {
       setBusy(false);
     }
   };
@@ -715,6 +751,164 @@ export function DatabasePanel({ open, onClose }: DatabasePanelProps) {
           </button>
         </section>
 
+        <section style={{ marginTop: 14 }}>
+          <h3 style={{ margin: "0 0 8px", fontSize: 13 }}>ER 图{sessionId ? "（已连接）" : ""}</h3>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
+            <button type="button" onClick={() => void runErDiagram()} disabled={busy || !sessionId}>
+              生成 ER 图
+            </button>
+            {erMeta ? (
+              <>
+                <span style={{ fontSize: 12, color: "#6b7280" }}>
+                  {erMeta.tables.length} 表 / {erMeta.relationships.length} 关系（{erMeta.engine}）
+                </span>
+                <button type="button" onClick={() => setErZoom((zoom) => Math.max(0.5, zoom - 0.2))}>
+                  缩小
+                </button>
+                <button type="button" onClick={() => setErZoom((zoom) => Math.min(2, zoom + 0.2))}>
+                  放大
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setErZoom(1);
+                    setErOffset({ x: 0, y: 0 });
+                  }}
+                >
+                  复位
+                </button>
+                <span style={{ fontSize: 12, color: "#6b7280" }}>滚轮缩放，拖拽平移</span>
+              </>
+            ) : null}
+          </div>
+          {erMeta ? (
+            <div
+              style={{
+                position: "relative",
+                border: "1px solid #d1d5db",
+                borderRadius: 4,
+                height: 340,
+                overflow: "hidden",
+                background: "#ffffff",
+                cursor: erDragging ? "grabbing" : "grab",
+                touchAction: "none",
+              }}
+              onMouseDown={(event) => {
+                erDragRef.current = {
+                  startX: event.clientX,
+                  startY: event.clientY,
+                  offsetX: erOffset.x,
+                  offsetY: erOffset.y,
+                };
+                setErDragging(true);
+              }}
+              onMouseMove={(event) => {
+                if (erDragging && erDragRef.current) {
+                  setErOffset({
+                    x: erDragRef.current.offsetX + event.clientX - erDragRef.current.startX,
+                    y: erDragRef.current.offsetY + event.clientY - erDragRef.current.startY,
+                  });
+                }
+              }}
+              onMouseUp={() => setErDragging(false)}
+              onMouseLeave={() => setErDragging(false)}
+              onWheel={(event) => {
+                setErZoom((zoom) => Math.max(0.5, Math.min(2, zoom - event.deltaY * 0.001)));
+              }}
+            >
+              <div
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  width: 16 + erMeta.tables.length * (ER_NODE_W + ER_NODE_GAP),
+                  height: 340,
+                  transform: `translate(${erOffset.x}px, ${erOffset.y}px) scale(${erZoom})`,
+                  transformOrigin: "0 0",
+                }}
+              >
+                <svg
+                  width={16 + erMeta.tables.length * (ER_NODE_W + ER_NODE_GAP)}
+                  height={340}
+                  style={{ position: "absolute", top: 0, left: 0, pointerEvents: "none" }}
+                >
+                  <defs>
+                    <marker id="er-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+                      <path d="M 0 0 L 8 4 L 0 8 z" fill="#2374c6" />
+                    </marker>
+                  </defs>
+                  {erMeta.relationships.map((rel, index) => {
+                    const srcIndex = erMeta.tables.findIndex((table) => table.name === rel.table);
+                    const dstIndex = erMeta.tables.findIndex((table) => table.name === rel.ref_table);
+                    if (srcIndex < 0 || dstIndex < 0) {
+                      return null;
+                    }
+                    const srcX = 16 + srcIndex * (ER_NODE_W + ER_NODE_GAP) + ER_NODE_W;
+                    const dstX = 16 + dstIndex * (ER_NODE_W + ER_NODE_GAP);
+                    const srcY = 24 + erTableHeight(erMeta.tables[srcIndex]) / 2;
+                    const dstY = 24 + erTableHeight(erMeta.tables[dstIndex]) / 2;
+                    const midX = (srcX + dstX) / 2;
+                    return (
+                      <path
+                        key={index}
+                        d={`M ${srcX} ${srcY} C ${midX} ${srcY}, ${midX} ${dstY}, ${dstX} ${dstY}`}
+                        fill="none"
+                        stroke="#2374c6"
+                        strokeWidth={1.5}
+                        markerEnd="url(#er-arrow)"
+                      />
+                    );
+                  })}
+                </svg>
+                {erMeta.tables.map((table, index) => (
+                  <div
+                    key={table.name}
+                    style={{
+                      position: "absolute",
+                      top: 24,
+                      left: 16 + index * (ER_NODE_W + ER_NODE_GAP),
+                      width: ER_NODE_W,
+                      border: "1px solid #2374c6",
+                      borderRadius: 4,
+                      background: "#f8fafc",
+                      fontSize: 12,
+                      boxShadow: "0 2px 6px rgba(0,0,0,0.08)",
+                    }}
+                  >
+                    <div
+                      style={{
+                        background: "#2374c6",
+                        color: "#ffffff",
+                        padding: "4px 8px",
+                        fontWeight: 600,
+                        borderTopLeftRadius: 3,
+                        borderTopRightRadius: 3,
+                      }}
+                    >
+                      {table.name}
+                    </div>
+                    <ul style={{ listStyle: "none", margin: 0, padding: "2px 8px 6px" }}>
+                      {table.columns.map((column) => (
+                        <li
+                          key={column}
+                          style={{
+                            padding: "1px 0",
+                            whiteSpace: "nowrap",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                          }}
+                        >
+                          {table.primary_key.includes(column) ? "🔑 " : ""}
+                          {column}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </section>
         {message ? (
           <p role="status" style={{ marginTop: 12, padding: 8, background: "#eef2ff", borderRadius: 4 }}>
             {message}

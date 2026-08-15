@@ -2002,6 +2002,141 @@ pub fn compare_data(source_session: &str, target_session: &str) -> Result<Value,
     Ok(json!({ "diffs": diffs }))
 }
 
+/// Returns the per-engine SQL that lists a table's primary key columns.
+fn primary_key_sql(engine: &str, table: &str) -> Option<String> {
+    let quoted = table.replace('\'', "''");
+    match engine {
+        "sqlite" => Some(format!(
+            "SELECT name FROM pragma_table_info('{quoted}') WHERE pk > 0"
+        )),
+        "mysql" | "oceanbase" => Some(format!(
+            "SELECT column_name FROM information_schema.key_column_usage WHERE table_schema = DATABASE() AND table_name = '{quoted}' AND constraint_name = 'PRIMARY'"
+        )),
+        "postgresql" | "kingbase" | "opengauss" | "duckdb" => Some(format!(
+            "SELECT kcu.column_name FROM information_schema.table_constraints tc JOIN information_schema.key_column_usage kcu ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema WHERE tc.constraint_type = 'PRIMARY KEY' AND tc.table_name = '{quoted}'"
+        )),
+        "sqlserver" => Some(format!(
+            "SELECT COL_NAME(ic.object_id, ic.column_id) FROM sys.indexes i JOIN sys.index_columns ic ON i.object_id = ic.object_id AND i.index_id = ic.index_id WHERE i.is_primary_key = 1 AND OBJECT_NAME(ic.object_id) = '{quoted}'"
+        )),
+        _ => None,
+    }
+}
+
+/// Returns the per-engine SQL that lists foreign keys (table, column, ref_table,
+/// ref_column).
+fn foreign_key_sql(engine: &str) -> Option<&'static str> {
+    match engine {
+        "mysql" | "oceanbase" => Some(
+            "SELECT table_name, column_name, referenced_table_name, referenced_column_name FROM information_schema.key_column_usage WHERE referenced_table_name IS NOT NULL AND table_schema = DATABASE()",
+        ),
+        "postgresql" | "kingbase" | "opengauss" | "duckdb" => Some(
+            "SELECT tc.table_name, kcu.column_name, ccu.table_name AS referenced_table, ccu.column_name AS referenced_column FROM information_schema.table_constraints tc JOIN information_schema.key_column_usage kcu ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema JOIN information_schema.constraint_column_usage ccu ON ccu.constraint_name = tc.constraint_name AND ccu.table_schema = tc.table_schema WHERE tc.constraint_type = 'FOREIGN KEY'",
+        ),
+        "sqlserver" => Some(
+            "SELECT OBJECT_NAME(fkc.parent_object_id) AS table_name, COL_NAME(fkc.parent_object_id, fkc.parent_column_id) AS column_name, OBJECT_NAME(fkc.referenced_object_id) AS referenced_table, COL_NAME(fkc.referenced_object_id, fkc.referenced_column_id) AS referenced_column FROM sys.foreign_key_columns fkc",
+        ),
+        _ => None,
+    }
+}
+
+/// Collects ER metadata (tables with columns + primary keys, and foreign-key
+/// relationships) for a session, used by the ER diagram renderer.
+pub fn er_metadata(session_id: &str) -> Result<Value, String> {
+    let engine = {
+        let guard = sessions_map().lock().expect("db sessions lock");
+        guard
+            .as_ref()
+            .and_then(|m| m.get(session_id))
+            .map(|s| s.engine.clone())
+            .ok_or_else(|| "数据库会话不存在。".to_string())?
+    };
+    let tables = session_tables(session_id)?;
+    let mut table_nodes = Vec::new();
+    for table in &tables {
+        let columns = session_columns(session_id, table)?;
+        let primary_key = primary_key_sql(&engine, table)
+            .map(|sql| {
+                query_session(session_id, &sql)
+                    .ok()
+                    .map(|outcome| {
+                        outcome
+                            .rows
+                            .iter()
+                            .filter_map(|row| {
+                                row.first().and_then(Value::as_str).map(str::to_string)
+                            })
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_default()
+            })
+            .unwrap_or_default();
+        table_nodes.push(json!({
+            "name": table,
+            "columns": columns,
+            "primary_key": primary_key,
+        }));
+    }
+    let relationships = if engine == "sqlite" {
+        // SQLite exposes foreign keys per table via PRAGMA foreign_key_list.
+        let mut rels = Vec::new();
+        for table in &tables {
+            let quoted = table.replace('\'', "''");
+            if let Ok(outcome) =
+                query_session(session_id, &format!("PRAGMA foreign_key_list('{quoted}')"))
+            {
+                for row in outcome.rows {
+                    let column = row.get(3).and_then(Value::as_str).unwrap_or("");
+                    let ref_table = row.get(2).and_then(Value::as_str).unwrap_or("");
+                    let ref_column = row.get(4).and_then(Value::as_str).unwrap_or("");
+                    if !column.is_empty() && !ref_table.is_empty() {
+                        rels.push(json!({
+                            "table": table,
+                            "column": column,
+                            "ref_table": ref_table,
+                            "ref_column": ref_column,
+                        }));
+                    }
+                }
+            }
+        }
+        rels
+    } else {
+        match foreign_key_sql(&engine) {
+            Some(sql) => query_session(session_id, sql)
+                .ok()
+                .map(|outcome| {
+                    outcome
+                        .rows
+                        .iter()
+                        .filter_map(|row| {
+                            let table = row.first().and_then(Value::as_str).unwrap_or("");
+                            let column = row.get(1).and_then(Value::as_str).unwrap_or("");
+                            let ref_table = row.get(2).and_then(Value::as_str).unwrap_or("");
+                            let ref_column = row.get(3).and_then(Value::as_str).unwrap_or("");
+                            if table.is_empty() || ref_table.is_empty() {
+                                None
+                            } else {
+                                Some(json!({
+                                    "table": table,
+                                    "column": column,
+                                    "ref_table": ref_table,
+                                    "ref_column": ref_column,
+                                }))
+                            }
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default(),
+            None => Vec::new(),
+        }
+    };
+    Ok(json!({
+        "engine": engine,
+        "tables": table_nodes,
+        "relationships": relationships,
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2557,6 +2692,54 @@ mod tests {
         let err = compare_schema("db-missing", "db-missing").expect_err("no session");
         assert!(err.contains("会话不存在"));
     }
+    #[test]
+    fn er_metadata_works_on_sqlite() {
+        let dir =
+            std::env::temp_dir().join(format!("onehub-er-test-{}.sqlite", std::process::id()));
+        let _ = std::fs::remove_file(&dir);
+        let profile = json!({ "engine": "sqlite", "database": dir.to_string_lossy() });
+        let session = connect(&profile).expect("connect");
+        for sql in [
+            "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)",
+            "CREATE TABLE orders (id INTEGER PRIMARY KEY, user_id INTEGER, note TEXT, FOREIGN KEY (user_id) REFERENCES users(id))",
+        ] {
+            query_session(&session, sql).expect("setup sql");
+        }
+        let meta = er_metadata(&session).expect("er metadata");
+        assert_eq!(meta["engine"], "sqlite");
+        let tables = meta["tables"].as_array().expect("tables array");
+        assert!(tables.len() >= 2, "expected users+orders, got {tables:?}");
+        let users = tables
+            .iter()
+            .find(|t| t["name"] == "users")
+            .expect("users node");
+        assert_eq!(users["primary_key"][0], "id", "users pk: {users:?}");
+        let orders = tables
+            .iter()
+            .find(|t| t["name"] == "orders")
+            .expect("orders node");
+        let order_columns = orders["columns"].as_array().expect("orders columns");
+        assert!(order_columns.iter().any(|c| c == "user_id"));
+        let rels = meta["relationships"].as_array().expect("relationships");
+        assert!(
+            rels.iter().any(|r| {
+                r["table"] == "orders"
+                    && r["column"] == "user_id"
+                    && r["ref_table"] == "users"
+                    && r["ref_column"] == "id"
+            }),
+            "orders->users FK not found: {rels:?}"
+        );
+        assert!(close_session(&session));
+        let _ = std::fs::remove_file(&dir);
+    }
+
+    #[test]
+    fn er_metadata_missing_session_is_graceful() {
+        let err = er_metadata("no-such-session").expect_err("missing session");
+        assert!(err.contains("会话不存在"), "got {err:?}");
+    }
+
     #[test]
     fn unwired_engine_connect_is_honest() {
         let err = connect(

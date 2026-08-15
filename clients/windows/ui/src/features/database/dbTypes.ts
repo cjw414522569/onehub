@@ -89,3 +89,21 @@ export interface DbQueryResult {
   rows: unknown[][];
   affected_rows: number;
 }
+export interface DbErTable {
+  name: string;
+  columns: string[];
+  primary_key: string[];
+}
+
+export interface DbErRelationship {
+  table: string;
+  column: string;
+  ref_table: string;
+  ref_column: string;
+}
+
+export interface DbErMetadata {
+  engine: string;
+  tables: DbErTable[];
+  relationships: DbErRelationship[];
+}

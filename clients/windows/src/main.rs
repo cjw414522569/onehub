@@ -2735,6 +2735,14 @@ fn handle_db_commands(
                 data_result.map(|data| serde_json::json!({ "schema": schema, "data": data }))
             })
         }
+        "db_er_metadata" => {
+            let request = payload.get("request").cloned().unwrap_or(payload.clone());
+            let session_id = request
+                .get("session_id")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            db::er_metadata(session_id)
+        }
         "db_export" => {
             let request = payload.get("request").cloned().unwrap_or(payload.clone());
             let session_id = request
