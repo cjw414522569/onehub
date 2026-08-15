@@ -14,6 +14,7 @@ import {
   dbExport,
   dbImport,
   dbObjectList,
+  dbProxyRoute,
   dbQuery,
 } from "../../shared/tauri/commands";
 import type {
@@ -24,6 +25,7 @@ import type {
   DbErMetadata,
   DbErTable,
   DbObjectInfo,
+  DbProxyRoute,
   DbQueryResult,
   DbTestResult,
 } from "./dbTypes";
@@ -73,6 +75,12 @@ function emptyForm(): DbConnectionInput {
     password: "",
     database: "",
     ssl: false,
+    proxy_type: "none",
+    proxy_host: "",
+    proxy_port: 0,
+    proxy_username: "",
+    proxy_password: "",
+    tunnel_rule_id: "",
   };
 }
 
@@ -110,6 +118,7 @@ export function DatabasePanel({ open, onClose }: DatabasePanelProps) {
   const [exportContent, setExportContent] = useState("");
   const [compareTargetId, setCompareTargetId] = useState("");
   const [compareResult, setCompareResult] = useState<DbCompareResult | null>(null);
+  const [routeInfo, setRouteInfo] = useState<DbProxyRoute | null>(null);
 
   const [erMeta, setErMeta] = useState<DbErMetadata | null>(null);
   const [erZoom, setErZoom] = useState(1);
@@ -172,7 +181,8 @@ export function DatabasePanel({ open, onClose }: DatabasePanelProps) {
     setMessage(null);
     try {
       const result: DbTestResult = await dbConnectionTest(form);
-      setMessage(`${result.message}（引擎已接入：${result.engine_available ? "是" : "否"}）`);
+      const routeNote = result.route?.note ? `；路由：${result.route.note}` : "";
+      setMessage(`${result.message}${routeNote}（引擎已接入：${result.engine_available ? "是" : "否"}）`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error));
     } finally {
@@ -351,6 +361,20 @@ export function DatabasePanel({ open, onClose }: DatabasePanelProps) {
     }
   };
 
+  const resolveRoute = async () => {
+    setBusy(true);
+    setMessage(null);
+    try {
+      const route = await dbProxyRoute(form);
+      setRouteInfo(route);
+      setMessage(`路由解析完成：${route.note || route.via || route.proxy_type}`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const addSqlTab = () => {
     const id = `sql-${sqlTabs.length + 1}-${Date.now()}`;
     setSqlTabs((tabs) => [...tabs, { id, title: `SQL ${tabs.length + 1}`, sql: "" }]);
@@ -423,6 +447,12 @@ export function DatabasePanel({ open, onClose }: DatabasePanelProps) {
       password: conn.password || "",
       database: conn.database || "",
       ssl: Boolean(conn.ssl),
+      proxy_type: conn.proxy_type || "none",
+      proxy_host: conn.proxy_host || "",
+      proxy_port: conn.proxy_port || 0,
+      proxy_username: conn.proxy_username || "",
+      proxy_password: conn.proxy_password || "",
+      tunnel_rule_id: conn.tunnel_rule_id || "",
     });
   };
 
@@ -564,6 +594,43 @@ export function DatabasePanel({ open, onClose }: DatabasePanelProps) {
                 />
               </label>
             </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, gridColumn: "1 / -1", borderTop: "1px solid #e5e7eb", paddingTop: 8 }}>
+              <label style={{ display: "grid", gap: 2, gridColumn: "1 / -1" }}>
+                代理路由
+                <select value={form.proxy_type || "none"} onChange={(event) => setForm({ ...form, proxy_type: event.target.value })}>
+                  <option value="none">无（直连）</option>
+                  <option value="socks5">SOCKS5</option>
+                  <option value="http">HTTP CONNECT</option>
+                  <option value="ssh">SSH 隧道</option>
+                </select>
+              </label>
+              {form.proxy_type === "socks5" || form.proxy_type === "http" ? (
+                <>
+                  <label style={{ display: "grid", gap: 2 }}>
+                    代理主机
+                    <input value={form.proxy_host || ""} onChange={(event) => setForm({ ...form, proxy_host: event.target.value })} placeholder="127.0.0.1" />
+                  </label>
+                  <label style={{ display: "grid", gap: 2 }}>
+                    代理端口
+                    <input type="number" value={form.proxy_port ?? 0} onChange={(event) => setForm({ ...form, proxy_port: Number(event.target.value) })} placeholder="1080" />
+                  </label>
+                  <label style={{ display: "grid", gap: 2 }}>
+                    代理用户名（可选）
+                    <input value={form.proxy_username || ""} onChange={(event) => setForm({ ...form, proxy_username: event.target.value })} />
+                  </label>
+                  <label style={{ display: "grid", gap: 2 }}>
+                    代理密码（可选）
+                    <input type="password" value={form.proxy_password || ""} onChange={(event) => setForm({ ...form, proxy_password: event.target.value })} />
+                  </label>
+                </>
+              ) : null}
+              {form.proxy_type === "ssh" ? (
+                <label style={{ display: "grid", gap: 2, gridColumn: "1 / -1" }}>
+                  SSH 隧道规则 ID
+                  <input value={form.tunnel_rule_id || ""} onChange={(event) => setForm({ ...form, tunnel_rule_id: event.target.value })} placeholder="tunnel-xxx（需先启动隧道）" />
+                </label>
+              ) : null}
+            </div>
             <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
               <button type="button" onClick={() => void testNow()} disabled={busy}>
                 测试连接
@@ -574,7 +641,15 @@ export function DatabasePanel({ open, onClose }: DatabasePanelProps) {
               <button type="button" onClick={() => void save()} disabled={busy}>
                 {editingId ? "保存修改" : "保存"}
               </button>
+              <button type="button" onClick={() => void resolveRoute()} disabled={busy}>
+                解析路由
+              </button>
             </div>
+          {routeInfo ? (
+            <pre style={{ marginTop: 8, fontSize: 11, background: "#f0f2f5", padding: 6, borderRadius: 4, overflow: "auto" }}>
+              {JSON.stringify(routeInfo, null, 2)}
+            </pre>
+          ) : null}
           </section>
         </div>
 

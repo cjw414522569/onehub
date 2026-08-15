@@ -2743,6 +2743,10 @@ fn handle_db_commands(
                 .unwrap_or("");
             db::er_metadata(session_id)
         }
+        "db_proxy_route" => {
+            let request = payload.get("request").cloned().unwrap_or(payload.clone());
+            db::DbProfile::parse(&request).and_then(|parsed| db::db_proxy_route(&parsed))
+        }
         "db_export" => {
             let request = payload.get("request").cloned().unwrap_or(payload.clone());
             let session_id = request

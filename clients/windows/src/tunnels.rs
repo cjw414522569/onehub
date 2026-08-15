@@ -32,6 +32,35 @@ fn runtime_map() -> &'static Mutex<Option<HashMap<String, TunnelRuntime>>> {
     &RUNTIME
 }
 
+/// Returns the bound local endpoint of a running tunnel rule, if any.
+pub(crate) fn tunnel_endpoint(rule_id: &str) -> Option<(String, u16)> {
+    let guard = runtime_map().lock().expect("runtime lock");
+    let state = guard.as_ref().and_then(|m| m.get(rule_id))?;
+    let host = state.bound_host.clone()?;
+    let port = state.bound_port?;
+    Some((host, port as u16))
+}
+
+/// Seeds runtime tunnel state (route resolution tests / DB proxy routing).
+#[cfg(test)]
+pub(crate) fn seed_runtime_state(rule_id: &str, host: &str, port: u32) {
+    runtime_map()
+        .lock()
+        .expect("runtime lock")
+        .get_or_insert_with(HashMap::new)
+        .insert(
+            rule_id.to_string(),
+            TunnelRuntime {
+                rule_id: rule_id.to_string(),
+                status: "running".to_string(),
+                bound_host: Some(host.to_string()),
+                bound_port: Some(port),
+                active_connections: 0,
+                last_error: None,
+            },
+        );
+}
+
 fn now_str() -> String {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)

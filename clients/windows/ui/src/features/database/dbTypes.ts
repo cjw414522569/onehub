@@ -31,6 +31,12 @@ export interface DbConnectionInput {
   database?: string;
   ssl?: boolean;
   connect_timeout_ms?: number;
+  proxy_type?: string;
+  proxy_host?: string;
+  proxy_port?: number;
+  proxy_username?: string;
+  proxy_password?: string;
+  tunnel_rule_id?: string;
 }
 
 export interface DbConnectionProfile extends DbConnectionInput {
@@ -47,6 +53,7 @@ export interface DbTestResult {
   engine: string;
   engine_available: boolean;
   message: string;
+  route?: DbProxyRoute | null;
 }
 
 export interface DbConnectResult {
@@ -106,4 +113,13 @@ export interface DbErMetadata {
   engine: string;
   tables: DbErTable[];
   relationships: DbErRelationship[];
+}
+
+export interface DbProxyRoute {
+  proxy_type: string;
+  direct?: { host: string; port: number } | null;
+  endpoint?: { host: string; port: number } | null;
+  via?: string;
+  tunnel_rule_id?: string;
+  note?: string;
 }

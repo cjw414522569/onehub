@@ -408,7 +408,8 @@
       "layer": "L5",
       "path": "clients/windows",
       "dependencies": [
-        "abi-c"
+        "abi-c",
+        "proxy"
       ],
       "external_imports": [
         "aes-gcm",

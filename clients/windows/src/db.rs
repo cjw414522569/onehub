@@ -6,6 +6,7 @@
 //! real connections -> query -> result sets; other engines are wired in later
 //! rows. Nothing is faked: unwired engines return a clear recoverable error.
 
+use base64::Engine;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -145,6 +146,12 @@ pub struct DbProfile {
     pub database: String,
     pub ssl: bool,
     pub connect_timeout_ms: u64,
+    pub proxy_type: String,
+    pub proxy_host: String,
+    pub proxy_port: u16,
+    pub proxy_username: Option<String>,
+    pub proxy_password: Option<String>,
+    pub tunnel_rule_id: String,
 }
 
 impl DbProfile {
@@ -192,6 +199,33 @@ impl DbProfile {
             .and_then(Value::as_str)
             .unwrap_or("")
             .to_string();
+        let proxy_type = profile
+            .get("proxy_type")
+            .and_then(Value::as_str)
+            .unwrap_or("none")
+            .to_string();
+        let proxy_host = profile
+            .get("proxy_host")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        let proxy_port = profile
+            .get("proxy_port")
+            .and_then(Value::as_u64)
+            .unwrap_or(0) as u16;
+        let proxy_username = profile
+            .get("proxy_username")
+            .and_then(Value::as_str)
+            .map(str::to_string);
+        let proxy_password = profile
+            .get("proxy_password")
+            .and_then(Value::as_str)
+            .map(str::to_string);
+        let tunnel_rule_id = profile
+            .get("tunnel_rule_id")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
         Ok(Self {
             engine,
             name,
@@ -202,6 +236,12 @@ impl DbProfile {
             database,
             ssl,
             connect_timeout_ms,
+            proxy_type,
+            proxy_host,
+            proxy_port,
+            proxy_username,
+            proxy_password,
+            tunnel_rule_id,
         })
     }
 
@@ -275,6 +315,7 @@ pub fn test_connection(profile: &Value) -> Value {
                 "latency_ms": null,
                 "engine": engine,
                 "engine_available": engine_available(&engine),
+                "route": null,
                 "message": message,
             })
         }
@@ -288,32 +329,217 @@ pub fn test_connection(profile: &Value) -> Value {
             "latency_ms": null,
             "engine": parsed.engine,
             "engine_available": engine_available(&parsed.engine),
+            "route": null,
             "message": if path_ok { "本地数据库文件可用" } else { "本地数据库文件不存在（连接时将创建）" },
         });
     }
-    let target = probe::Target {
-        host: parsed.host.clone(),
-        port: parsed.port,
-        username: parsed.username.clone(),
-    };
-    let timeout = Duration::from_millis(parsed.connect_timeout_ms.max(500));
-    let probe = probe::probe_tcp(&target, timeout);
+    let route_result = db_proxy_route(&parsed);
+    let route = route_result.as_ref().ok().cloned();
     let label = engine_label(&parsed.engine).unwrap_or(&parsed.engine);
-    let message = if probe.reachable {
-        format!("TCP 可达（{label}）")
-    } else {
-        "TCP 不可达（端口未监听或被防火墙拦截）".to_string()
+    let timeout = Duration::from_millis(parsed.connect_timeout_ms.max(500));
+    let (reachable, latency_ms, message) = match parsed.proxy_type.as_str() {
+        "" | "none" => {
+            let target = probe::Target {
+                host: parsed.host.clone(),
+                port: parsed.port,
+                username: parsed.username.clone(),
+            };
+            let probe = probe::probe_tcp(&target, timeout);
+            let message = if probe.reachable {
+                format!("TCP 可达（{label}）")
+            } else {
+                "TCP 不可达（端口未监听或被防火墙拦截）".to_string()
+            };
+            (probe.reachable, probe.latency_ms, message)
+        }
+        "socks5" | "http" => {
+            let started = std::time::Instant::now();
+            let proxied = runtime().block_on(proxy_connect(
+                &parsed.proxy_config(),
+                &parsed.host,
+                parsed.port,
+                parsed.connect_timeout_ms.max(500),
+            ));
+            match proxied {
+                Ok(_) => {
+                    let latency_ms = started.elapsed().as_millis() as u64;
+                    (true, Some(latency_ms), format!("代理路由可达（{label}）"))
+                }
+                Err(error) => (false, None, format!("代理路由不可达：{error}")),
+            }
+        }
+        "ssh" => match &route {
+            Some(route_value) => {
+                let host = route_value["endpoint"]["host"]
+                    .as_str()
+                    .unwrap_or("")
+                    .to_string();
+                let port = route_value["endpoint"]["port"].as_u64().unwrap_or(0) as u16;
+                let target = probe::Target {
+                    host,
+                    port,
+                    username: parsed.username.clone(),
+                };
+                let probe = probe::probe_tcp(&target, timeout);
+                let message = if probe.reachable {
+                    format!("SSH 隧道端点可达（{label}）")
+                } else {
+                    "SSH 隧道端点不可达".to_string()
+                };
+                (probe.reachable, probe.latency_ms, message)
+            }
+            None => {
+                let detail = route_result
+                    .as_ref()
+                    .err()
+                    .cloned()
+                    .unwrap_or_else(|| "SSH 隧道路由不可用".to_string());
+                (false, None, format!("SSH 隧道路由不可用：{detail}"))
+            }
+        },
+        other => (false, None, format!("未知代理类型：{other}")),
     };
     json!({
         "ok": true,
-        "reachable": probe.reachable,
-        "latency_ms": probe.latency_ms,
+        "reachable": reachable,
+        "latency_ms": latency_ms,
         "engine": parsed.engine,
         "engine_available": engine_available(&parsed.engine),
+        "route": route,
         "message": message,
     })
 }
 
+/// Parsed proxy settings for a database profile (T038).
+#[derive(Debug, Clone, Default)]
+pub struct ProxyConfig {
+    pub proxy_type: String,
+    pub proxy_host: String,
+    pub proxy_port: u16,
+    pub proxy_username: Option<String>,
+    pub proxy_password: Option<String>,
+}
+
+impl DbProfile {
+    /// Extracts the profile's proxy settings.
+    pub fn proxy_config(&self) -> ProxyConfig {
+        ProxyConfig {
+            proxy_type: self.proxy_type.clone(),
+            proxy_host: self.proxy_host.clone(),
+            proxy_port: self.proxy_port,
+            proxy_username: self.proxy_username.clone(),
+            proxy_password: self.proxy_password.clone(),
+        }
+    }
+}
+
+/// Resolves a database profile's proxy route to a concrete endpoint. Supports
+/// direct, SOCKS5, HTTP CONNECT and SSH-tunnel (reusing the tunnels runtime).
+pub fn db_proxy_route(parsed: &DbProfile) -> Result<Value, String> {
+    let direct = json!({ "host": parsed.host, "port": parsed.port });
+    match parsed.proxy_type.as_str() {
+        "" | "none" => Ok(json!({
+            "proxy_type": "none",
+            "direct": direct,
+            "endpoint": direct,
+            "via": "direct",
+            "note": "直连",
+        })),
+        "socks5" | "http" => {
+            if parsed.proxy_host.trim().is_empty() || parsed.proxy_port == 0 {
+                return Err("代理路由配置不完整：缺少代理主机或端口。".to_string());
+            }
+            let endpoint = json!({ "host": parsed.proxy_host, "port": parsed.proxy_port });
+            Ok(json!({
+                "proxy_type": parsed.proxy_type,
+                "direct": direct,
+                "endpoint": endpoint,
+                "via": parsed.proxy_type,
+                "note": if parsed.proxy_type == "socks5" {
+                    "经 SOCKS5 代理"
+                } else {
+                    "经 HTTP CONNECT 代理"
+                },
+            }))
+        }
+        "ssh" => {
+            if parsed.tunnel_rule_id.trim().is_empty() {
+                return Err("SSH 隧道路由需要 tunnel_rule_id。".to_string());
+            }
+            match crate::tunnels::tunnel_endpoint(&parsed.tunnel_rule_id) {
+                Some((host, port)) => Ok(json!({
+                    "proxy_type": "ssh",
+                    "direct": direct,
+                    "endpoint": { "host": host, "port": port },
+                    "via": "ssh-tunnel",
+                    "tunnel_rule_id": parsed.tunnel_rule_id,
+                    "note": format!("经 SSH 隧道 {host}:{port}"),
+                })),
+                None => Err(format!(
+                    "SSH 隧道未运行：{}。请先启动隧道规则再连接。",
+                    parsed.tunnel_rule_id
+                )),
+            }
+        }
+        other => Err(format!("未知代理类型：{other}")),
+    }
+}
+
+/// Opens a TCP stream through a SOCKS5 or HTTP CONNECT proxy and runs the
+/// proxy handshake against `target`. Returns the connected (proxied) stream so
+/// callers can continue with engine-specific protocols (e.g. tiberius).
+async fn proxy_connect(
+    config: &ProxyConfig,
+    target_host: &str,
+    target_port: u16,
+    timeout_ms: u64,
+) -> Result<tokio::net::TcpStream, String> {
+    let mut stream =
+        tokio::net::TcpStream::connect((config.proxy_host.as_str(), config.proxy_port))
+            .await
+            .map_err(|e| format!("代理连接失败：{e}"))?;
+    let timeout = Duration::from_millis(timeout_ms.max(500));
+    match config.proxy_type.as_str() {
+        "socks5" => {
+            let socks = proxy::Socks5Config {
+                timeout,
+                username: config.proxy_username.clone(),
+                password: config.proxy_password.clone(),
+                ..proxy::Socks5Config::default()
+            };
+            proxy::socks5_connect(
+                &mut stream,
+                &proxy::ProxyTarget::Hostname(target_host.to_string()),
+                target_port,
+                &socks,
+            )
+            .await
+            .map_err(|e| format!("SOCKS5 握手失败：{e}"))?;
+        }
+        "http" => {
+            let proxy_authorization = config.proxy_username.as_ref().map(|username| {
+                let credentials = format!(
+                    "{}:{}",
+                    username,
+                    config.proxy_password.as_deref().unwrap_or("")
+                );
+                format!(
+                    "Basic {}",
+                    base64::engine::general_purpose::STANDARD.encode(credentials.as_bytes())
+                )
+            });
+            let http = proxy::HttpConnectConfig {
+                timeout,
+                proxy_authorization,
+            };
+            proxy::http_connect(&mut stream, target_host, target_port, &http)
+                .await
+                .map_err(|e| format!("HTTP CONNECT 失败：{e}"))?;
+        }
+        other => return Err(format!("未知代理类型：{other}")),
+    }
+    Ok(stream)
+}
 /// Concrete tiberius client stream: tokio TcpStream wrapped in tokio-util compat.
 type MsSqlClient = tiberius::Client<tokio_util::compat::Compat<tokio::net::TcpStream>>;
 
@@ -786,9 +1012,20 @@ fn clickhouse_query(parsed: &DbProfile, sql: &str) -> Result<QueryOutcome, Strin
 /// is used when the username is blank, otherwise SQL Server auth.
 fn mssql_connect(parsed: &DbProfile) -> Result<MsSqlClient, String> {
     runtime().block_on(async {
-        let tcp = tokio::net::TcpStream::connect((parsed.host.as_str(), parsed.port))
+        let tcp = if matches!(parsed.proxy_type.as_str(), "socks5" | "http") {
+            proxy_connect(
+                &parsed.proxy_config(),
+                &parsed.host,
+                parsed.port,
+                parsed.connect_timeout_ms.max(500),
+            )
             .await
-            .map_err(|e| format!("SQL Server 连接失败：{e}"))?;
+            .map_err(|e| format!("SQL Server 代理连接失败：{e}"))?
+        } else {
+            tokio::net::TcpStream::connect((parsed.host.as_str(), parsed.port))
+                .await
+                .map_err(|e| format!("SQL Server 连接失败：{e}"))?
+        };
         tcp.set_nodelay(true)
             .map_err(|e| format!("SQL Server 配置失败：{e}"))?;
         let mut config = tiberius::Config::new();
@@ -1356,7 +1593,12 @@ pub fn query_session(session_id: &str, sql: &str) -> Result<QueryOutcome, String
 /// Opens a database session for a wired engine. MySQL/PostgreSQL verify the
 /// connection with a real handshake; unwired engines return a clear error.
 pub fn connect(profile: &Value) -> Result<String, String> {
-    let parsed = DbProfile::parse(profile)?;
+    let mut parsed = DbProfile::parse(profile)?;
+    if parsed.proxy_type == "ssh" {
+        let route = db_proxy_route(&parsed)?;
+        parsed.host = route["endpoint"]["host"].as_str().unwrap_or("").to_string();
+        parsed.port = route["endpoint"]["port"].as_u64().unwrap_or(0) as u16;
+    }
     if !engine_available(&parsed.engine) {
         let label = engine_label(&parsed.engine).unwrap_or(&parsed.engine);
         return Err(format!(
@@ -2738,6 +2980,153 @@ mod tests {
     fn er_metadata_missing_session_is_graceful() {
         let err = er_metadata("no-such-session").expect_err("missing session");
         assert!(err.contains("会话不存在"), "got {err:?}");
+    }
+
+    #[test]
+    fn proxy_route_parsing_and_resolution() {
+        let direct = DbProfile::parse(&json!({ "engine": "mysql", "host": "db", "port": 3306 }))
+            .expect("direct");
+        let route = db_proxy_route(&direct).expect("direct route");
+        assert_eq!(route["proxy_type"], "none");
+        assert_eq!(route["via"], "direct");
+        assert_eq!(route["endpoint"]["host"], "db");
+
+        let socks = DbProfile::parse(&json!({
+            "engine": "postgresql",
+            "host": "db",
+            "port": 5432,
+            "proxy_type": "socks5",
+            "proxy_host": "127.0.0.1",
+            "proxy_port": 1080,
+        }))
+        .expect("socks profile");
+        let socks_route = db_proxy_route(&socks).expect("socks route");
+        assert_eq!(socks_route["via"], "socks5");
+        assert_eq!(socks_route["endpoint"]["port"], 1080);
+
+        let http = DbProfile::parse(&json!({
+            "engine": "mysql",
+            "host": "db",
+            "port": 3306,
+            "proxy_type": "http",
+            "proxy_host": "proxy.local",
+            "proxy_port": 3128,
+        }))
+        .expect("http profile");
+        assert_eq!(db_proxy_route(&http).expect("http route")["via"], "http");
+
+        let incomplete = DbProfile::parse(&json!({
+            "engine": "mysql",
+            "host": "db",
+            "proxy_type": "socks5",
+            "proxy_host": "",
+        }))
+        .expect("incomplete profile");
+        let err = db_proxy_route(&incomplete).expect_err("incomplete");
+        assert!(err.contains("不完整"), "got {err:?}");
+
+        let unknown = DbProfile::parse(&json!({
+            "engine": "mysql",
+            "host": "db",
+            "proxy_type": "weird",
+        }))
+        .expect("unknown proxy profile");
+        let err = db_proxy_route(&unknown).expect_err("unknown");
+        assert!(err.contains("未知代理类型"), "got {err:?}");
+    }
+
+    #[test]
+    fn proxy_route_ssh_requires_running_tunnel() {
+        let profile = DbProfile::parse(&json!({
+            "engine": "mysql",
+            "host": "db",
+            "port": 3306,
+            "proxy_type": "ssh",
+            "tunnel_rule_id": "tunnel-missing",
+        }))
+        .expect("ssh profile");
+        let err = db_proxy_route(&profile).expect_err("tunnel not running");
+        assert!(err.contains("未运行"), "got {err:?}");
+
+        crate::tunnels::seed_runtime_state("tunnel-db", "127.0.0.1", 23306);
+        let running = DbProfile::parse(&json!({
+            "engine": "mysql",
+            "host": "db",
+            "port": 3306,
+            "proxy_type": "ssh",
+            "tunnel_rule_id": "tunnel-db",
+        }))
+        .expect("ssh running profile");
+        let route = db_proxy_route(&running).expect("running route");
+        assert_eq!(route["via"], "ssh-tunnel");
+        assert_eq!(route["endpoint"]["host"], "127.0.0.1");
+        assert_eq!(route["endpoint"]["port"], 23306);
+    }
+
+    #[test]
+    fn test_connection_reports_route() {
+        let result = test_connection(&json!({
+            "engine": "postgresql",
+            "host": "127.0.0.1",
+            "port": 1,
+            "proxy_type": "socks5",
+            "proxy_host": "127.0.0.1",
+            "proxy_port": 1,
+            "connect_timeout_ms": 500,
+        }));
+        assert_eq!(result["ok"], true);
+        assert_eq!(result["reachable"], false);
+        assert_eq!(result["route"]["proxy_type"], "socks5");
+        assert!(result["message"].as_str().unwrap_or("").contains("代理"));
+
+        let direct = test_connection(&json!({
+            "engine": "postgresql",
+            "host": "127.0.0.1",
+            "port": 1,
+            "connect_timeout_ms": 500,
+        }));
+        assert_eq!(direct["route"]["via"], "direct");
+    }
+
+    #[tokio::test]
+    async fn proxy_connect_socks5_loopback() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().expect("addr");
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.expect("accept");
+            let mut head = [0u8; 2];
+            stream.read_exact(&mut head).await.expect("greeting");
+            let mut methods = vec![0u8; head[1] as usize];
+            stream.read_exact(&mut methods).await.expect("methods");
+            stream.write_all(&[0x05, 0x00]).await.expect("select");
+            let mut request = [0u8; 4];
+            stream.read_exact(&mut request).await.expect("request head");
+            if request[3] == 0x03 {
+                let mut len = [0u8; 1];
+                stream.read_exact(&mut len).await.expect("len");
+                let mut domain = vec![0u8; len[0] as usize];
+                stream.read_exact(&mut domain).await.expect("domain");
+            } else {
+                let mut ip = [0u8; 4];
+                stream.read_exact(&mut ip).await.expect("ip");
+            }
+            let mut port = [0u8; 2];
+            stream.read_exact(&mut port).await.expect("port");
+            let reply = [0x05, 0x00, 0x00, 0x01, 127, 0, 0, 1, 0x0d, 0x9c];
+            stream.write_all(&reply).await.expect("reply");
+        });
+        let config = ProxyConfig {
+            proxy_type: "socks5".to_string(),
+            proxy_host: addr.ip().to_string(),
+            proxy_port: addr.port(),
+            ..ProxyConfig::default()
+        };
+        let result = proxy_connect(&config, "db.internal", 3306, 2000).await;
+        assert!(result.is_ok(), "got {result:?}");
+        server.await.expect("server joined");
     }
 
     #[test]

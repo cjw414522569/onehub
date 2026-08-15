@@ -7,6 +7,7 @@ import type {
   DbErMetadata,
   DbEngineInfo,
   DbObjectInfo,
+  DbProxyRoute,
   DbQueryRequest,
   DbQueryResult,
   DbTestResult,
@@ -1303,6 +1304,10 @@ export function dbCompare(sourceSessionId: string, targetSessionId: string, mode
 
 export function dbErMetadata(sessionId: string) {
   return invoke<DbErMetadata>("db_er_metadata", { request: { session_id: sessionId } });
+}
+
+export function dbProxyRoute(request: DbConnectionInput) {
+  return invoke<DbProxyRoute>("db_proxy_route", { request });
 }
 
 export function dbObjectList(sessionId: string, kind?: string) {
