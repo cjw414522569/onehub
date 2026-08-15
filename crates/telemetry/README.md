@@ -20,3 +20,22 @@
 - `examples/canary.rs` - attempts to log a canary secret under sensitive
   field names; `scripts/test-telemetry-logging.mjs` scans all emitted bytes
   and fails if the canary leaks.
+
+## T147: default-off, explicit-consent privacy telemetry
+
+`crates/telemetry/src/privacy.rs`:
+
+- `TelemetryConsent` - DefaultOff (default) / ExplicitConsent; nothing
+  leaves the machine without explicit consent.
+- `TELEMETRY_SCHEMA` - the public collection dictionary (app_start,
+  app_crash, session_duration_secs, feature_used, gateway_latency_ms) with
+  allowlisted fields only; `NEVER_COLLECTED` lists the data classes that
+  must never appear (terminal content, commands, identity, host data, ...).
+- `TelemetryCollector::collect` - rejects unknown events, drops
+  non-allowlisted fields, and hard-rejects any field touching forbidden
+  data.
+- `telemetry-schema.json` - the public schema (default off, events,
+  never_collected), validated by the contract.
+- `examples/privacy-canary.rs` - network-capture canary: off-mode capture
+  is empty and 9/9 forbidden data attempts are rejected; the contract scans
+  the outbound capture for zero leaks.

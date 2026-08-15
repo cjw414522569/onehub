@@ -8,9 +8,14 @@
 //! never reach emitted log output.
 
 pub mod log;
+pub mod privacy;
 
 pub use log::{
     escape_value, LogContext, LogEntry, LogLevel, Logger, SensitiveFieldPolicy, TraceId,
+};
+pub use privacy::{
+    OutboundEvent, TelemetryCollector, TelemetryConsent, TelemetryEventSpec, NEVER_COLLECTED,
+    TELEMETRY_SCHEMA,
 };
 
 /// Module identity used by diagnostics and architecture tooling.

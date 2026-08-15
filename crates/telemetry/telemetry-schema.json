@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "consent": {
+    "default": "off",
+    "note": "Telemetry is off by default and only leaves the machine after explicit user consent."
+  },
+  "events": [
+    { "name": "app_start", "fields": ["platform", "app_version", "build_channel"] },
+    { "name": "app_crash", "fields": ["crash_count"] },
+    { "name": "session_duration_secs", "fields": ["duration_secs"] },
+    { "name": "feature_used", "fields": ["feature"] },
+    { "name": "gateway_latency_ms", "fields": ["latency_ms", "region"] }
+  ],
+  "never_collected": [
+    "terminal content",
+    "terminal cell data",
+    "commands",
+    "command history",
+    "identity",
+    "user identity",
+    "host names",
+    "host addresses",
+    "credentials",
+    "keys",
+    "tokens",
+    "session payload",
+    "transfer payload"
+  ]
+}
