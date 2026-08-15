@@ -21,6 +21,7 @@ use clients_windows::ai_assistant;
 use clients_windows::docker_tools;
 use clients_windows::local_sessions;
 use clients_windows::mcp_tools;
+use clients_windows::misc_tools;
 use clients_windows::model::{
     GuiCommand, GuiModel, Rgb, SessionPhase, ACCENT, BORDER, CHROME_BG, DEFAULT_BG, DEFAULT_FG,
     PANEL_ACTIVE, PANEL_BG, TEXT_MAIN, TEXT_MUTED,
@@ -38,6 +39,7 @@ use clients_windows::vnc_tools;
 use clients_windows::webdav_tools;
 use windows_sys::core::w;
 use windows_sys::Win32::Foundation::{GetLastError, HWND, LPARAM, LRESULT, RECT, SIZE, WPARAM};
+use windows_sys::Win32::Graphics::Dwm::{DwmSetWindowAttribute, DWMWA_SYSTEMBACKDROP_TYPE};
 use windows_sys::Win32::Graphics::Gdi::{
     BeginPaint, CreateFontW, CreateSolidBrush, DeleteObject, EndPaint, FillRect, GetStockObject,
     GetTextExtentPoint32W, GetTextMetricsW, InvalidateRect, SelectObject, SetBkMode, SetTextColor,
@@ -202,7 +204,99 @@ fn main() {
         webdav_check();
         return;
     }
+    if std::env::args().any(|argument| argument == "--misc-check") {
+        misc_check();
+        return;
+    }
     run_gui();
+}
+
+/// End-to-end misc check (--misc-check): verifies known-host trust/check
+/// round-trip, local path metadata, Windows PTY info, and supported window
+/// materials (mxterm parity T018).
+fn misc_check() {
+    use clients_windows::misc_tools as mt;
+    use clients_windows::store::Store;
+    let dir = std::env::temp_dir().join(format!(
+        "misc-e2e-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    ));
+    let _ = std::fs::create_dir_all(&dir);
+    let db = dir.join("misc.db");
+    let mut store = Store::open(&db).expect("store");
+
+    // Known-host trust + check.
+    let host_key = serde_json::json!({
+        "host": "10.0.0.1",
+        "port": 22,
+        "key_algorithm": "ssh-ed25519",
+        "fingerprint_sha256": "sha256:abc123",
+        "public_key": "ssh-ed25519 AAAA...",
+    });
+    let trusted = mt::known_host_trust(&mut store, &host_key).expect("trust");
+    assert_eq!(trusted["host"], "10.0.0.1");
+    let check = mt::known_host_check(&store, "10.0.0.1", 22, "ssh-ed25519", "sha256:abc123")
+        .expect("check");
+    assert_eq!(check["trusted"].as_bool(), Some(true));
+    assert_eq!(check["match"].as_bool(), Some(true));
+    let unknown =
+        mt::known_host_check(&store, "10.0.0.9", 22, "ssh-ed25519", "x").expect("unknown");
+    assert_eq!(unknown["trusted"].as_bool(), Some(false));
+
+    // Local path metadata.
+    let sample = dir.join("sample.txt");
+    std::fs::write(&sample, b"data").expect("write");
+    let meta = mt::local_path_metadata(sample.to_str().expect("str")).expect("meta");
+    assert_eq!(meta["kind"], "file");
+    assert_eq!(meta["name"], "sample.txt");
+    assert!(mt::local_path_metadata("Z:/missing/path").is_err());
+
+    // Windows PTY info.
+    let pty = mt::windows_pty_info();
+    let pty_backend = pty
+        .get("backend")
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string);
+    if cfg!(windows) {
+        assert!(
+            pty_backend.is_some(),
+            "pty info must have backend on windows"
+        );
+    } else {
+        assert!(pty.is_null());
+    }
+
+    // Supported window materials + normalization.
+    let materials = mt::supported_window_materials();
+    let ids: Vec<i64> = materials
+        .as_array()
+        .expect("arr")
+        .iter()
+        .filter_map(|m| m["id"].as_i64())
+        .collect();
+    assert!(ids.contains(&0));
+    assert_eq!(mt::normalize_material(2).expect("2"), 2);
+    assert!(mt::normalize_material(1).is_err());
+
+    let result = serde_json::json!({
+        "known_host_trusted": true,
+        "known_host_check_match": check["match"],
+        "known_host_unknown_rejected": true,
+        "local_path_kind": meta["kind"],
+        "local_path_name": meta["name"],
+        "missing_path_errors": true,
+        "windows_pty_info": pty,
+        "supported_materials": ids,
+        "material_normalization": true,
+        "db": db.display().to_string(),
+    });
+    println!("{}", serde_json::to_string(&result).expect("json"));
+    let _ = std::fs::remove_file(&db);
+    let _ = std::fs::remove_dir_all(&dir);
 }
 
 /// End-to-end WebDAV check (--webdav-check): runs a local in-memory WebDAV
@@ -1904,6 +1998,65 @@ unsafe fn handle_key(state: &mut AppState, hwnd: HWND, wparam: WPARAM) {
     InvalidateRect(hwnd, std::ptr::null(), 1);
 }
 
+/// Handles misc commands (mxterm parity T018): known-host trust, local path
+/// metadata, Windows PTY info, and supported window materials.
+fn handle_misc_commands(
+    state: &mut AppState,
+    cmd: &str,
+    parsed: &serde_json::Value,
+) -> Option<String> {
+    if !matches!(
+        cmd,
+        "known_host_trust"
+            | "local_path_metadata"
+            | "get_windows_pty_info"
+            | "get_supported_window_materials"
+    ) {
+        return None;
+    }
+    let request_id = parsed
+        .get("requestId")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+    let payload = parsed
+        .get("payload")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+    let request = payload.get("request").cloned().unwrap_or(payload.clone());
+    let result: Result<serde_json::Value, String> = match cmd {
+        "known_host_trust" => {
+            let host_key = request
+                .get("host_key")
+                .cloned()
+                .unwrap_or(serde_json::Value::Null);
+            match state.store.as_mut() {
+                Some(store) => misc_tools::known_host_trust(store, &host_key),
+                None => Err("本地存储不可用。".to_string()),
+            }
+        }
+        "local_path_metadata" => {
+            let path = request
+                .get("path")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            misc_tools::local_path_metadata(path)
+        }
+        "get_windows_pty_info" => Ok(misc_tools::windows_pty_info()),
+        "get_supported_window_materials" => Ok(misc_tools::supported_window_materials()),
+        _ => return None,
+    };
+    let reply_payload = match result {
+        Ok(value) => value,
+        Err(message) => serde_json::json!({
+            "error": { "code": "misc_error", "message": message, "recoverable": true }
+        }),
+    };
+    Some(
+        serde_json::json!({ "kind": "invoke-reply", "requestId": request_id, "payload": reply_payload })
+            .to_string(),
+    )
+}
+
 /// Handles WebDAV commands (mxterm parity T017): settings persistence with an
 /// encrypted password, connection test, remote info, and snapshot
 /// upload/download.
@@ -3413,6 +3566,25 @@ fn handle_persisted_commands(
 
 /// Handles a WebView2 postMessage invoke request via the bridge and applies
 /// any window-control action.
+/// Applies a DWM system-backdrop window material to the main window
+/// (mxterm set_window_material). The DWM attribute call is unsafe, so it
+/// lives in the shell rather than the forbid(unsafe_code) library.
+fn apply_window_material(hwnd: HWND, material: i32) -> Result<serde_json::Value, String> {
+    let normalized = misc_tools::normalize_material(material)?;
+    unsafe {
+        let result = DwmSetWindowAttribute(
+            hwnd,
+            DWMWA_SYSTEMBACKDROP_TYPE as u32,
+            (&normalized as *const i32).cast::<std::os::raw::c_void>(),
+            std::mem::size_of::<i32>() as u32,
+        );
+        if result < 0 {
+            return Err(format!("设置 DWM 背景失败（0x{:08x}）。", result as u32));
+        }
+    }
+    Ok(misc_tools::window_material_info(normalized))
+}
+
 fn on_web_message(hwnd: HWND, message: &str) -> Option<String> {
     let raw = unsafe { GetWindowLongPtrW(hwnd, GWLP_USERDATA) };
     if raw == 0 {
@@ -3475,6 +3647,20 @@ fn on_web_message(hwnd: HWND, message: &str) -> Option<String> {
         });
         return Some(reply.to_string());
     }
+    if cmd == "set_window_material" {
+        let material = parsed
+            .get("material")
+            .and_then(serde_json::Value::as_i64)
+            .unwrap_or(0) as i32;
+        let payload = match apply_window_material(hwnd, material) {
+            Ok(value) => value,
+            Err(message) => serde_json::json!({
+                "error": { "code": "window_material_set_failed", "message": message, "recoverable": true }
+            }),
+        };
+        let reply = serde_json::json!({ "kind": "invoke-reply", "requestId": request_id, "payload": payload });
+        return Some(reply.to_string());
+    }
 
     if let Some(reply) = handle_vault_commands(state, cmd, &parsed) {
         return Some(reply);
@@ -3528,6 +3714,9 @@ fn on_web_message(hwnd: HWND, message: &str) -> Option<String> {
         return Some(reply);
     }
     if let Some(reply) = handle_webdav_commands(state, cmd, &parsed) {
+        return Some(reply);
+    }
+    if let Some(reply) = handle_misc_commands(state, cmd, &parsed) {
         return Some(reply);
     }
 

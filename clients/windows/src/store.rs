@@ -437,6 +437,47 @@ impl Store {
     pub fn delete_credential(&mut self, id: &str) -> rusqlite::Result<bool> {
         self.delete("credential", id)
     }
+    /// Trusts (records/updates) a host key (mxterm known_host_trust).
+    pub fn trust_known_host(&mut self, host_key: &Value, now: &str) -> rusqlite::Result<Value> {
+        let host = host_key.get("host").and_then(Value::as_str).unwrap_or("");
+        let port = host_key.get("port").and_then(Value::as_u64).unwrap_or(22);
+        let algorithm = host_key
+            .get("key_algorithm")
+            .and_then(Value::as_str)
+            .unwrap_or("");
+        let id = format!("{host}:{port}:{algorithm}");
+        let existing = self.get("known_host", &id).ok().flatten();
+        let first_trusted_at = existing
+            .and_then(|e| {
+                e.get("first_trusted_at")
+                    .and_then(Value::as_str)
+                    .map(str::to_string)
+            })
+            .unwrap_or_else(|| now.to_string());
+        let entry = json!({
+            "id": id,
+            "host": host,
+            "port": port,
+            "key_algorithm": algorithm,
+            "fingerprint_sha256": host_key.get("fingerprint_sha256").cloned().unwrap_or(Value::Null),
+            "public_key": host_key.get("public_key").cloned().unwrap_or(Value::Null),
+            "first_trusted_at": first_trusted_at,
+            "last_seen_at": now,
+        });
+        self.put("known_host", &id, &entry)?;
+        Ok(entry)
+    }
+
+    /// Looks up a trusted host key.
+    pub fn known_host_lookup(
+        &self,
+        host: &str,
+        port: u64,
+        algorithm: &str,
+    ) -> rusqlite::Result<Option<Value>> {
+        let id = format!("{host}:{port}:{algorithm}");
+        self.get("known_host", &id)
+    }
 
     // ---- command snippets ----
 
