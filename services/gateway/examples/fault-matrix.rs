@@ -198,10 +198,17 @@ fn run_fault(kind: &str) -> (String, bool, String) {
 }
 
 fn run_matrix() -> Vec<(String, bool, String)> {
-    ["latency", "packet_loss", "reordering", "disconnect", "dns_failure", "network_switch"]
-        .iter()
-        .map(|kind| run_fault(kind))
-        .collect()
+    [
+        "latency",
+        "packet_loss",
+        "reordering",
+        "disconnect",
+        "dns_failure",
+        "network_switch",
+    ]
+    .iter()
+    .map(|kind| run_fault(kind))
+    .collect()
 }
 
 fn main() {

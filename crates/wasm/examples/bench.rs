@@ -90,7 +90,8 @@ fn main() {
         v
     };
     let p50_mbps = throughput_sorted[throughput_sorted.len() / 2];
-    let p95_mbps = throughput_sorted[((throughput_sorted.len() - 1) as f64 * 0.95).round() as usize];
+    let p95_mbps =
+        throughput_sorted[((throughput_sorted.len() - 1) as f64 * 0.95).round() as usize];
 
     // 2. Input-to-pixel: bridge push + snapshot latency per small input.
     let mut latency = Vec::with_capacity(REPEATS);
@@ -122,7 +123,10 @@ fn main() {
         );
         bridge.push(&bytes);
         let snapshot = bridge.snapshot();
-        let _ = wgpu_renderer::render::build_plan(&snapshot, &wgpu_renderer::render::DrawBudget::default());
+        let _ = wgpu_renderer::render::build_plan(
+            &snapshot,
+            &wgpu_renderer::render::DrawBudget::default(),
+        );
         e2e_latency.push(start.elapsed().as_secs_f64() * 1_000_000.0); // us
     }
 

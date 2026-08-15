@@ -9,8 +9,8 @@ use std::time::Instant;
 
 use terminal_parser::BoundedByteStreamParser;
 use terminal_state::{ScreenModel, ScrollbackConfig, TerminalParser};
-use wgpu_renderer::render::{build_plan, DrawBudget};
 use wasm::TerminalBridge;
+use wgpu_renderer::render::{build_plan, DrawBudget};
 
 /// The real 10 MB recording fixture.
 const REPLAY: &str = concat!(

@@ -61,7 +61,7 @@ fn run_cycle(
                 {
                     let _transfer = transfers.acquire(); // in-flight transfer
                     let _frame = frames.acquire(); // GPU render frame
-                    // simulate work
+                                                   // simulate work
                 }
             }
         }
@@ -71,7 +71,9 @@ fn run_cycle(
 fn main() {
     // Fixed thread pool: the process thread count must stay constant across
     // the soak (no threads leaked by connect/close cycles).
-    let thread_count_before = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1);
+    let thread_count_before = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(1);
 
     let connections = Gauge::default();
     let windows = Gauge::default();
@@ -84,22 +86,39 @@ fn main() {
     }
 
     // After 10k cycles every gauge must be back at baseline (0 live).
-    let leaks = connections.live()
-        + windows.live()
-        + handles_g.live()
-        + transfers.live()
-        + frames.live();
-    let thread_count_after = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1);
+    let leaks =
+        connections.live() + windows.live() + handles_g.live() + transfers.live() + frames.live();
+    let thread_count_after = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(1);
     let thread_delta = thread_count_after.abs_diff(thread_count_before);
 
+    println!("RESOURCE_SOAK cycles={CYCLES} leaks={leaks} thread_delta={thread_delta} stable=true");
     println!(
-        "RESOURCE_SOAK cycles={CYCLES} leaks={leaks} thread_delta={thread_delta} stable=true"
+        "RESOURCE connections_live={} peak={}",
+        connections.live(),
+        connections.peak()
     );
-    println!("RESOURCE connections_live={} peak={}", connections.live(), connections.peak());
-    println!("RESOURCE windows_live={} peak={}", windows.live(), windows.peak());
-    println!("RESOURCE handles_live={} peak={}", handles_g.live(), handles_g.peak());
-    println!("RESOURCE transfers_live={} peak={}", transfers.live(), transfers.peak());
-    println!("RESOURCE frames_live={} peak={}", frames.live(), frames.peak());
+    println!(
+        "RESOURCE windows_live={} peak={}",
+        windows.live(),
+        windows.peak()
+    );
+    println!(
+        "RESOURCE handles_live={} peak={}",
+        handles_g.live(),
+        handles_g.peak()
+    );
+    println!(
+        "RESOURCE transfers_live={} peak={}",
+        transfers.live(),
+        transfers.peak()
+    );
+    println!(
+        "RESOURCE frames_live={} peak={}",
+        frames.live(),
+        frames.peak()
+    );
 
     if leaks != 0 || thread_delta > 0 {
         eprintln!("RESOURCE_SOAK resource leak detected");
