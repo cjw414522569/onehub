@@ -102,3 +102,18 @@
   (`set_binding` / `clear_binding`), with `chord_label` per platform.
 - Tests: the keyboard event matrix is platform-consistent (Ctrl+T vs Cmd+T),
   IME suppresses shortcuts, and rebinding works.
+
+## T109: mobile terminal extended keyboard and gestures
+
+`crates/host-library/src/gestures.rs`:
+
+- `GestureRecognizer` - deterministically disambiguates tap / long-press /
+  scroll (long press starts a selection; a drag past the threshold scrolls in
+  normal mode and extends the selection in selection mode; a tap ends the
+  selection).
+- `ExtendedKeyboard` - Ctrl / Alt / Esc / Tab / arrow keys emit chords
+  independently of the touch canvas, so extended keys never conflict with
+  scroll or selection.
+- Tests: tap/long-press/scroll disambiguation, selection drags never scroll,
+  extended keys emit chords mid-scroll and mid-selection without disturbing
+  the gesture state.

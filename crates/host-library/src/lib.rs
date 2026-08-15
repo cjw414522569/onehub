@@ -8,6 +8,7 @@
 pub mod auth_prompt;
 pub mod editor;
 pub mod fingerprint;
+pub mod gestures;
 pub mod host;
 pub mod keyboard;
 pub mod mobile;
@@ -24,6 +25,10 @@ pub use editor::{
 pub use fingerprint::{
     ChangeNotice, FingerprintReview, FingerprintSource, HostKeyFingerprint, KeyAlgorithm,
     ReviewDecision, ReviewState, ReviewView, RiskLevel, SHA256_FINGERPRINT_LEN,
+};
+pub use gestures::{
+    ExtendedKey, ExtendedKeyboard, Gesture, GestureRecognizer, InputMode, KeyChord, TouchPoint,
+    LONG_PRESS_MS, SCROLL_THRESHOLD,
 };
 pub use host::{
     GroupSummary, HostLibrary, HostRecord, SelectionModel, SortField, SortOrder, TagSummary,
