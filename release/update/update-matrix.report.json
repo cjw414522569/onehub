@@ -1,0 +1,22 @@
+{
+  "task": "T166",
+  "status": "pass",
+  "verified_at_utc": "2026-08-15T07:19:27Z",
+  "scenarios": [
+    "upgrade",
+    "interrupt",
+    "tamper",
+    "downgrade",
+    "staged",
+    "rollback"
+  ],
+  "outcomes": [
+    "upgrade=Ok(Version { major: 0, minor: 2, patch: 0 })",
+    "interrupt=Err(ApplyFailed) current=0.1.0",
+    "tamper=Err(InvalidSignature)",
+    "downgrade=Err(DowngradeRejected)",
+    "staged=off=0 all=1000 half=514",
+    "rollback=Err(ApplyFailed) current=0.1.0"
+  ],
+  "stable": true
+}
