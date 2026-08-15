@@ -86,3 +86,19 @@
   actions, 48/56px).
 - `SessionStack` - `on_system_back` pops history, otherwise asks the app to
   exit (Android/iOS system-back contract).
+
+## T108: physical keyboard, IME, modifiers, configurable shortcuts
+
+`crates/host-library/src/keyboard.rs`:
+
+- `KeyMap` / `parse_key` - normalize platform key names into a neutral
+  `KeyCode` (letters/digits normalized), so Windows / macOS / Linux /
+  Android / iOS share one key semantic.
+- `PlatformSemantics` - the primary shortcut modifier is explicit (Ctrl
+  everywhere, Cmd on macOS) with readable labels.
+- IME: `KeyEvent.composing` + text; shortcut chords are suppressed during
+  composition.
+- `KeyBindingConfig` - maps chords to `KeyAction`s; user-remappable
+  (`set_binding` / `clear_binding`), with `chord_label` per platform.
+- Tests: the keyboard event matrix is platform-consistent (Ctrl+T vs Cmd+T),
+  IME suppresses shortcuts, and rebinding works.

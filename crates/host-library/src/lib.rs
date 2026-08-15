@@ -9,6 +9,7 @@ pub mod auth_prompt;
 pub mod editor;
 pub mod fingerprint;
 pub mod host;
+pub mod keyboard;
 pub mod mobile;
 pub mod workspace;
 
@@ -26,6 +27,10 @@ pub use fingerprint::{
 };
 pub use host::{
     GroupSummary, HostLibrary, HostRecord, SelectionModel, SortField, SortOrder, TagSummary,
+};
+pub use keyboard::{
+    key_label, parse_key, Chord, Direction, KeyAction, KeyBindingConfig, KeyCode, KeyEvent, KeyMap,
+    ModifierKey, Modifiers, Platform, PlatformSemantics, PrimaryModifier,
 };
 pub use mobile::{
     effective_safe_area, BarLayout, BottomActionBar, FormFactor, Orientation, SafeAreaInsets,
