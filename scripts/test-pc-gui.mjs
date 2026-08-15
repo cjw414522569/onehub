@@ -169,7 +169,7 @@ if (process.argv.includes('--write')) {
       terminal_event_bridge:
         'terminal_write -> bridge -> terminal:output event with TerminalOutputEvent shape (data as number[]) delivered to the JS callback (--bridge-check event round-trip); EventRegistry listen/unlisten unit-tested',
       feature_matrix:
-        'docs/reports/FEATURES_MATRIX.json: 151 copied UI commands classified (wired=147 real backend T001-T032, interface_only=4 explicit boundary, pending=0); nothing faked',
+        'docs/reports/FEATURES_MATRIX.json: 152 copied UI commands classified (wired=148 real backend T001-T034, interface_only=4 explicit boundary, pending=0); nothing faked',
       contract:
         'layer L5, approved bridge abi-c, forbidden dependencies absent, dependency-rules external_imports synced',
       mxterm_reference:

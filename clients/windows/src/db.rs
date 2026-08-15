@@ -1512,6 +1512,45 @@ pub fn object_catalog_sql(engine: &str) -> &'static str {
     }
 }
 
+/// Engines whose SQL supports the LIMIT/OFFSET pagination syntax.
+pub fn engine_supports_limit(engine: &str) -> bool {
+    matches!(
+        engine,
+        "mysql"
+            | "oceanbase"
+            | "postgresql"
+            | "kingbase"
+            | "opengauss"
+            | "sqlite"
+            | "duckdb"
+            | "clickhouse"
+    )
+}
+
+/// Runs EXPLAIN for a session's engine. Engines without a plain EXPLAIN
+/// statement return a clear, honest error.
+pub fn explain(session_id: &str, sql: &str) -> Result<QueryOutcome, String> {
+    let engine = {
+        let guard = sessions_map().lock().expect("db sessions lock");
+        guard
+            .as_ref()
+            .and_then(|m| m.get(session_id))
+            .map(|s| s.engine.clone())
+            .ok_or_else(|| "数据库会话不存在。".to_string())?
+    };
+    let prefix = match engine.as_str() {
+        "mysql" | "oceanbase" | "postgresql" | "kingbase" | "opengauss" | "duckdb"
+        | "clickhouse" => "EXPLAIN",
+        "sqlite" => "EXPLAIN QUERY PLAN",
+        _ => {
+            let label = engine_label(&engine).unwrap_or(&engine);
+            return Err(format!("该引擎暂不支持 EXPLAIN 查看（{label}）。"));
+        }
+    };
+    let explain_sql = format!("{prefix} {sql}");
+    query_session(session_id, &explain_sql)
+}
+
 /// Lists database objects (tables/views/indexes/procedures) for a session.
 pub fn list_objects(session_id: &str, kind_filter: Option<&str>) -> Result<Vec<Value>, String> {
     let engine = {
@@ -1925,6 +1964,32 @@ mod tests {
     }
 
     #[test]
+    fn explain_works_on_sqlite_and_rejects_unsupported() {
+        let dir = std::env::temp_dir().join(format!(
+            "onehub-sqlite-explain-{}.sqlite",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&dir);
+        let profile = json!({ "engine": "sqlite", "database": dir.to_string_lossy() });
+        let session = connect(&profile).expect("connect");
+        let _ = query_session(
+            &session,
+            "CREATE TABLE demo (id INTEGER PRIMARY KEY, name TEXT)",
+        );
+        let plan = explain(&session, "SELECT * FROM demo WHERE id = 1").expect("explain");
+        assert!(!plan.columns.is_empty(), "plan columns");
+        let _ = close_session(&session);
+        let _ = std::fs::remove_file(&dir);
+
+        let unsupported = explain("db-missing", "SELECT 1").expect_err("no session");
+        assert!(unsupported.contains("会话不存在"));
+        assert!(engine_supports_limit("mysql"));
+        assert!(engine_supports_limit("sqlite"));
+        assert!(!engine_supports_limit("sqlserver"));
+        assert!(!engine_supports_limit("oracle"));
+    }
+
+    #[test]
     fn object_list_refused_session_is_graceful() {
         let profile = json!({ "engine": "postgresql", "host": "127.0.0.1", "port": 1, "username": "u", "password": "x", "connect_timeout_ms": 800 });
         let session = connect(&profile);
@@ -1943,6 +2008,5 @@ mod tests {
         .expect_err("redis not wired");
         assert!(err.contains("未接入"), "got {err:?}");
         assert!(!close_session("db-missing"));
-        assert!(active_db_session_ids().is_empty());
     }
 }

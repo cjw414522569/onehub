@@ -2718,6 +2718,25 @@ fn handle_db_commands(
                 .map(str::to_string);
             db::list_objects(session_id, kind.as_deref()).map(serde_json::Value::Array)
         }
+        "db_explain" => {
+            let request = payload.get("request").cloned().unwrap_or(payload.clone());
+            let session_id = request
+                .get("session_id")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            let sql = request
+                .get("sql")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("")
+                .to_string();
+            db::explain(session_id, &sql).map(|outcome| {
+                serde_json::json!({
+                    "columns": outcome.columns,
+                    "rows": outcome.rows,
+                    "affected_rows": outcome.affected_rows,
+                })
+            })
+        }
         "db_query" => {
             let request = payload.get("request").cloned().unwrap_or(payload.clone());
             let sql = request

@@ -7,6 +7,7 @@ import {
   dbConnectionSave,
   dbConnectionTest,
   dbEngineList,
+  dbExplain,
   dbObjectList,
   dbQuery,
 } from "../../shared/tauri/commands";
@@ -85,6 +86,9 @@ export function DatabasePanel({ open, onClose }: DatabasePanelProps) {
   const [activeSqlTabId, setActiveSqlTabId] = useState("sql-1");
   const activeSqlTab = sqlTabs.find((tab) => tab.id === activeSqlTabId) || sqlTabs[0];
   const [queryResult, setQueryResult] = useState<DbQueryResult | null>(null);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(100);
+  const [planResult, setPlanResult] = useState<DbQueryResult | null>(null);
   const [objects, setObjects] = useState<DbObjectInfo[]>([]);
   const [objectsLoaded, setObjectsLoaded] = useState(false);
 
@@ -163,13 +167,22 @@ export function DatabasePanel({ open, onClose }: DatabasePanelProps) {
     }
   };
 
-  const runQuery = async (sqlText: string) => {
+  const limitSupported = ["mysql", "oceanbase", "postgresql", "kingbase", "opengauss", "sqlite", "duckdb", "clickhouse"].includes(form.engine);
+
+  const paginatedSql = (sqlText: string, pageNumber: number) => {
+    if (!limitSupported) {
+      return sqlText;
+    }
+    return `${sqlText.trim()} LIMIT ${pageSize} OFFSET ${(pageNumber - 1) * pageSize}`;
+  };
+
+  const runQuery = async (sqlText: string, pageNumber = 1) => {
     setBusy(true);
     setMessage(null);
     try {
       const result: DbQueryResult = await dbQuery({
         session_id: sessionId || undefined,
-        sql: sqlText,
+        sql: paginatedSql(sqlText, pageNumber),
         engine: form.engine,
         host: form.host,
         port: form.port,
@@ -178,7 +191,31 @@ export function DatabasePanel({ open, onClose }: DatabasePanelProps) {
         database: form.database,
       });
       setQueryResult(result);
-      setMessage(result.affected_rows > 0 ? `执行完成，影响行数：${result.affected_rows}` : `查询完成，返回 ${result.rows.length} 行`);
+      setPage(pageNumber);
+      setPlanResult(null);
+      setMessage(
+        result.affected_rows > 0
+          ? `执行完成，影响行数：${result.affected_rows}`
+          : `查询完成，返回 ${result.rows.length} 行（第 ${pageNumber} 页）`,
+      );
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const runExplain = async () => {
+    if (!sessionId) {
+      setMessage("请先连接数据库。");
+      return;
+    }
+    setBusy(true);
+    setMessage(null);
+    try {
+      const result = await dbExplain(sessionId, activeSqlTab.sql);
+      setPlanResult(result);
+      setMessage(`执行计划已返回 ${result.rows.length} 行。`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error));
     } finally {
@@ -467,15 +504,43 @@ export function DatabasePanel({ open, onClose }: DatabasePanelProps) {
             onRun={() => void runQuery(activeSqlTab.sql)}
             objectNames={objects.map((obj) => obj.name)}
           />
-          <button type="button" onClick={() => void runQuery(activeSqlTab.sql)} disabled={busy || !activeSqlTab.sql.trim()} style={{ marginTop: 6 }}>
-            执行
-          </button>
-          {queryResult ? (
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
+            <button type="button" onClick={() => void runQuery(activeSqlTab.sql)} disabled={busy || !activeSqlTab.sql.trim()}>
+              执行
+            </button>
+            <button type="button" onClick={() => void runExplain()} disabled={busy || !sessionId || !activeSqlTab.sql.trim()}>
+              执行计划
+            </button>
+            {limitSupported ? (
+              <>
+                <button type="button" onClick={() => void runQuery(activeSqlTab.sql, Math.max(1, page - 1))} disabled={busy || page <= 1}>
+                  上一页
+                </button>
+                <span style={{ fontSize: 12 }}>第 {page} 页</span>
+                <button type="button" onClick={() => void runQuery(activeSqlTab.sql, page + 1)} disabled={busy || (queryResult ? queryResult.rows.length < pageSize : true)}>
+                  下一页
+                </button>
+                <select value={pageSize} onChange={(event) => setPageSize(Number(event.target.value))} style={{ fontSize: 12 }}>
+                  {[50, 100, 200, 500].map((size) => (
+                    <option key={size} value={size}>
+                      {size} 行/页
+                    </option>
+                  ))}
+                </select>
+              </>
+            ) : (
+              <span style={{ fontSize: 12, color: "#6b7280" }}>该引擎不支持 LIMIT 分页</span>
+            )}
+          </div>
+          {(queryResult || planResult) ? (
             <div style={{ marginTop: 8, overflow: "auto", maxHeight: 240 }}>
+              <p style={{ margin: "0 0 4px", fontSize: 12, color: "#6b7280" }}>
+                {planResult ? "执行计划" : "查询结果"}：{planResult || queryResult ? (planResult || queryResult)?.rows.length : 0} 行
+              </p>
               <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 12 }}>
                 <thead>
                   <tr>
-                    {queryResult.columns.map((column) => (
+                    {(planResult || queryResult)?.columns.map((column) => (
                       <th key={column} style={{ border: "1px solid #d1d5db", padding: "4px 8px", textAlign: "left" }}>
                         {column}
                       </th>
@@ -483,11 +548,11 @@ export function DatabasePanel({ open, onClose }: DatabasePanelProps) {
                   </tr>
                 </thead>
                 <tbody>
-                  {queryResult.rows.map((row, rowIndex) => (
+                  {(planResult || queryResult)?.rows.map((row, rowIndex) => (
                     <tr key={rowIndex}>
                       {row.map((cell, cellIndex) => (
                         <td key={cellIndex} style={{ border: "1px solid #d1d5db", padding: "4px 8px" }}>
-                          {cell === null ? "NULL" : String(cell)}
+                          {cell === null || cell === undefined ? "NULL" : String(cell)}
                         </td>
                       ))}
                     </tr>
