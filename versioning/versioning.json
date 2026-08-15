@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "policy": "SemVer for every independently-shipped component. Each versioned wire/ABI boundary rejects unknown newer versions cleanly (no silent downgrade). Database and sync schema support an N-1/N-2 window and migrate older versions forward. Deprecated features are removed only after N+2 (two releases after deprecation notice).",
+  "components": {
+    "client": { "kind": "semver", "current": "0.1.0", "window": "N/N-1/N-2" },
+    "gateway_protocol": { "kind": "wire", "constant": "SESSION_PROTOCOL_VERSION", "file": "services/gateway/src/session_protocol.rs", "current": 1, "window_mode": "strict-v1", "note": "v1 protocol: mismatched versions are rejected with VersionMismatch; the window widens as the protocol matures" },
+    "abi": { "kind": "wire", "constant": "ABI_SCHEMA_VERSION", "file": "crates/abi-c/src/lib.rs", "current": 1, "window_mode": "strict-v1", "note": "stable C ABI v1; stale headers rejected" },
+    "wasm": { "kind": "wire", "constant": "WASM_BOUNDARY_VERSION", "file": "crates/wasm/src/ffi.rs", "current": 1, "window_mode": "strict-v1", "note": "wasm-bindgen boundary v1" },
+    "sync_protocol": { "kind": "wire", "constant": "SYNC_PROTOCOL_VERSION", "file": "crates/sync-core/src/sync_protocol.rs", "current": 1, "window_mode": "strict-v1" },
+    "database_schema": { "kind": "schema", "current": 3, "window": "N-1/N-2 compatible", "note": "storage-sqlite Migrator applies steps from any older version; N-1/N-2 open strategies are explicit via OpenPolicy" }
+  },
+  "matrix": {
+    "rows": ["N", "N-1", "N-2"],
+    "cells": {
+      "gateway_protocol": { "N": "compatible", "N-1": "n/a (v1; no older release)", "N-2": "n/a (v1; no older release)", "N+1": "rejected (VersionMismatch)" },
+      "abi": { "N": "compatible", "N-1": "n/a (v1)", "N-2": "n/a (v1)", "N+1": "rejected (header_is_valid=-1)" },
+      "wasm": { "N": "compatible", "N-1": "n/a (v1)", "N-2": "n/a (v1)", "N+1": "rejected (boundary version)" },
+      "sync_protocol": { "N": "compatible", "N-1": "n/a (v1)", "N-2": "n/a (v1)", "N+1": "rejected (envelope version)" },
+      "database_schema": { "N": "compatible", "N-1": "compatible (migrates 2->3)", "N-2": "compatible (migrates 1->3)", "N+1": "rejected/read-only (OpenPolicy)" }
+    }
+  },
+  "deprecation": {
+    "notice_min_releases": 2,
+    "policy": "A feature is deprecated with a notice; removal ships no earlier than N+2. Deprecated features continue to honor the compatibility window until removal."
+  }
+}
