@@ -117,6 +117,14 @@ impl EventRegistry {
             .collect()
     }
 
+    /// Handler ids for every listener of `event` (for pushing UI events).
+    pub fn event_handler_ids(&self, event: &str) -> Vec<u64> {
+        self.listeners
+            .iter()
+            .filter(|listener| listener.event == event)
+            .map(|listener| listener.handler_id)
+            .collect()
+    }
     /// Number of registered listeners (for tests).
     #[cfg(test)]
     pub fn len(&self) -> usize {

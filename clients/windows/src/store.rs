@@ -478,7 +478,14 @@ mod tests {
 
     #[test]
     fn persistence_survives_reopen() {
-        let dir = std::env::temp_dir().join(format!("ssh-store-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!(
+            "ssh-store-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
         std::fs::create_dir_all(&dir).expect("mkdir");
         let db = dir.join("test.db");
         {

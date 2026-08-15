@@ -9,7 +9,8 @@ use std::sync::Arc;
 use russh::client;
 use russh::keys::{load_secret_key, PrivateKeyWithHashAlg};
 use russh_sftp::client::{Config as SftpConfig, SftpSession};
-use russh_sftp::protocol::{FileAttributes, Status, StatusCode};
+use russh_sftp::protocol::{FileAttributes, OpenFlags, Status, StatusCode};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 /// SSH connection parameters resolved from a connection profile.
 #[derive(Debug, Clone)]
@@ -390,4 +391,407 @@ mod tests {
         let result = rt.block_on(connect_sftp(&t));
         assert!(result.is_err());
     }
+}
+
+// ---- Transfer support (mxterm parity T005) ----
+
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
+
+/// In-process transfer cancellation registry (transfer_id -> cancelled flag).
+static CANCELLED: Mutex<Option<HashMap<String, Arc<AtomicBool>>>> = Mutex::new(None);
+
+fn cancelled_map() -> &'static Mutex<Option<HashMap<String, Arc<AtomicBool>>>> {
+    &CANCELLED
+}
+
+/// Registers a transfer; returns its cancellation flag.
+fn register_transfer(transfer_id: &str) -> Arc<AtomicBool> {
+    let flag = Arc::new(AtomicBool::new(false));
+    let mut guard = cancelled_map().lock().expect("cancel lock");
+    guard
+        .get_or_insert_with(HashMap::new)
+        .insert(transfer_id.to_string(), flag.clone());
+    flag
+}
+
+/// Cancels a transfer; returns whether it was registered.
+pub fn cancel_transfer(transfer_id: &str) -> bool {
+    let mut guard = cancelled_map().lock().expect("cancel lock");
+    match guard.as_mut().and_then(|m| m.get_mut(transfer_id)) {
+        Some(flag) => {
+            flag.store(true, Ordering::SeqCst);
+            true
+        }
+        None => false,
+    }
+}
+
+/// Resolves a conflict policy (ask/overwrite/skip/rename) for an existing
+/// remote path. Returns the final remote path to write to, or None for skip.
+async fn resolve_conflict(
+    sftp: &SftpSession,
+    path: &str,
+    policy: &str,
+) -> Result<Option<String>, String> {
+    let exists = sftp
+        .try_exists(path)
+        .await
+        .map_err(|e| format!("路径检查失败：{e}"))?;
+    if !exists {
+        return Ok(Some(path.to_string()));
+    }
+    match policy {
+        "overwrite" => Ok(Some(path.to_string())),
+        "skip" => Ok(None),
+        "rename" => {
+            for i in 1..1000 {
+                let candidate = format!("{}.{}", path, i);
+                let taken = sftp
+                    .try_exists(&candidate)
+                    .await
+                    .map_err(|e| format!("路径检查失败：{e}"))?;
+                if !taken {
+                    return Ok(Some(candidate));
+                }
+            }
+            Err("无法生成不冲突的文件名。".to_string())
+        }
+        _ => Err("不支持的冲突策略。".to_string()),
+    }
+}
+
+/// Uploads in-memory content to a remote path (remote_file_upload_file).
+pub async fn upload_content(
+    target: &SshTarget,
+    path: &str,
+    content: &[u8],
+    conflict_policy: &str,
+    transfer_id: &str,
+) -> Result<serde_json::Value, String> {
+    let sftp = connect_sftp(target).await?;
+    let final_path = match resolve_conflict(&sftp, path, conflict_policy).await? {
+        Some(p) => p,
+        None => {
+            return Ok(serde_json::json!({
+                "name": path.rsplit('/').next().unwrap_or(path),
+                "path": path,
+                "skipped": true,
+            }));
+        }
+    };
+    let cancelled = register_transfer(transfer_id);
+    let flags = OpenFlags::CREATE | OpenFlags::WRITE | OpenFlags::TRUNCATE;
+    let mut remote = sftp
+        .open_with_flags(&final_path, flags)
+        .await
+        .map_err(|e| format!("打开远程文件失败：{e}"))?;
+    let total = content.len() as u64;
+    let mut loaded: u64 = 0;
+    const CHUNK: usize = 64 * 1024;
+    for chunk in content.chunks(CHUNK) {
+        if cancelled.load(Ordering::SeqCst) {
+            return Err("传输已取消。".to_string());
+        }
+        remote
+            .write(chunk)
+            .await
+            .map_err(|e| format!("上传失败：{e}"))?;
+        loaded += chunk.len() as u64;
+        let _ = progress_sink(transfer_id, "upload", loaded, Some(total));
+    }
+    remote
+        .sync_all()
+        .await
+        .map_err(|e| format!("上传失败：{e}"))?;
+    let name = final_path
+        .rsplit('/')
+        .next()
+        .unwrap_or(&final_path)
+        .to_string();
+    Ok(serde_json::json!({
+        "metadata": {
+            "name": name,
+            "path": final_path,
+            "size": total,
+            "mtime": 0,
+        },
+        "name": name,
+        "path": final_path,
+        "skipped": false,
+    }))
+}
+
+/// Uploads a local file (remote_file_upload_local_file).
+pub async fn upload_local_file(
+    target: &SshTarget,
+    path: &str,
+    local_path: &str,
+    conflict_policy: &str,
+    transfer_id: &str,
+) -> Result<serde_json::Value, String> {
+    let sftp = connect_sftp(target).await?;
+    let final_path = match resolve_conflict(&sftp, path, conflict_policy).await? {
+        Some(p) => p,
+        None => {
+            return Ok(serde_json::json!({
+                "name": path.rsplit('/').next().unwrap_or(path),
+                "path": path,
+                "skipped": true,
+            }));
+        }
+    };
+    let cancelled = register_transfer(transfer_id);
+    let local = tokio::fs::File::open(local_path)
+        .await
+        .map_err(|e| format!("本地文件打开失败：{e}"))?;
+    let total = local.metadata().await.map(|m| m.len()).unwrap_or(0);
+    let flags = OpenFlags::CREATE | OpenFlags::WRITE | OpenFlags::TRUNCATE;
+    let mut remote = sftp
+        .open_with_flags(&final_path, flags)
+        .await
+        .map_err(|e| format!("打开远程文件失败：{e}"))?;
+    let mut reader = tokio::io::BufReader::new(local);
+    let mut loaded: u64 = 0;
+    let mut buf = vec![0u8; 64 * 1024];
+    loop {
+        if cancelled.load(Ordering::SeqCst) {
+            return Err("传输已取消。".to_string());
+        }
+        let n = reader
+            .read(&mut buf)
+            .await
+            .map_err(|e| format!("本地文件读取失败：{e}"))?;
+        if n == 0 {
+            break;
+        }
+        remote
+            .write(&buf[..n])
+            .await
+            .map_err(|e| format!("上传失败：{e}"))?;
+        loaded += n as u64;
+        let _ = progress_sink(transfer_id, "upload", loaded, Some(total));
+    }
+    remote
+        .sync_all()
+        .await
+        .map_err(|e| format!("上传失败：{e}"))?;
+    let name = final_path
+        .rsplit('/')
+        .next()
+        .unwrap_or(&final_path)
+        .to_string();
+    Ok(serde_json::json!({
+        "metadata": {
+            "name": name,
+            "path": final_path,
+            "size": total,
+            "mtime": 0,
+        },
+        "name": name,
+        "path": final_path,
+        "skipped": false,
+    }))
+}
+
+/// Downloads a remote file as content (remote_file_download).
+pub async fn download(target: &SshTarget, path: &str) -> Result<serde_json::Value, String> {
+    let sftp = connect_sftp(target).await?;
+    let content = sftp
+        .read(path)
+        .await
+        .map_err(|e| format!("下载失败：{e}"))?;
+    let name = path.rsplit('/').next().unwrap_or(path).to_string();
+    let bytes: Vec<serde_json::Value> = content.iter().map(|b| serde_json::json!(b)).collect();
+    Ok(serde_json::json!({
+        "content": bytes,
+        "name": name,
+        "path": path,
+    }))
+}
+
+/// Downloads a remote file to a local path (remote_file_download_to_local).
+pub async fn download_to_local(
+    target: &SshTarget,
+    path: &str,
+    local_path: &str,
+    transfer_id: &str,
+) -> Result<serde_json::Value, String> {
+    let sftp = connect_sftp(target).await?;
+    let cancelled = register_transfer(transfer_id);
+    let attrs = sftp
+        .metadata(path)
+        .await
+        .map_err(|e| format!("读取元数据失败：{e}"))?;
+    let total = attrs.size.unwrap_or(0);
+    let mut remote = sftp
+        .open_with_flags(path, OpenFlags::READ)
+        .await
+        .map_err(|e| format!("打开远程文件失败：{e}"))?;
+    let mut local = tokio::fs::File::create(local_path)
+        .await
+        .map_err(|e| format!("本地文件创建失败：{e}"))?;
+    let mut loaded: u64 = 0;
+    let mut buf = vec![0u8; 64 * 1024];
+    loop {
+        if cancelled.load(Ordering::SeqCst) {
+            return Err("传输已取消。".to_string());
+        }
+        let n = remote
+            .read(&mut buf)
+            .await
+            .map_err(|e| format!("下载失败：{e}"))?;
+        if n == 0 {
+            break;
+        }
+        local
+            .write_all(&buf[..n])
+            .await
+            .map_err(|e| format!("本地文件写入失败：{e}"))?;
+        loaded += n as u64;
+        let _ = progress_sink(transfer_id, "download", loaded, Some(total));
+    }
+    local
+        .flush()
+        .await
+        .map_err(|e| format!("本地文件写入失败：{e}"))?;
+    let name = path.rsplit('/').next().unwrap_or(path).to_string();
+    let local_name = local_path
+        .rsplit(['/', '\\'])
+        .next()
+        .unwrap_or(local_path)
+        .to_string();
+    Ok(serde_json::json!({
+        "archive_path": null,
+        "directory": false,
+        "local_directory": local_path.rsplit(['/', '\\']).next().map(|_| "").unwrap_or(""),
+        "local_path": local_path,
+        "name": name,
+        "remote_path": path,
+        "skipped": false,
+        "local_name": local_name,
+    }))
+}
+
+/// A progress sink: emits remote_file:transfer_progress events. The UI bridge
+/// registers a callback (see main.rs) that forwards to the WebView.
+/// A buffered progress record consumed by the shell after each transfer.
+#[derive(Debug, Clone)]
+pub struct ProgressRecord {
+    pub transfer_id: String,
+    pub direction: String,
+    pub loaded_bytes: u64,
+    pub total_bytes: Option<u64>,
+}
+
+static PROGRESS_BUFFER: Mutex<Option<Vec<ProgressRecord>>> = Mutex::new(None);
+
+/// Begins buffering progress records for the current transfer.
+pub fn begin_progress_buffer() {
+    *PROGRESS_BUFFER.lock().expect("progress lock") = Some(Vec::new());
+}
+
+/// Drains and returns buffered progress records.
+pub fn take_progress() -> Vec<ProgressRecord> {
+    PROGRESS_BUFFER
+        .lock()
+        .expect("progress lock")
+        .take()
+        .unwrap_or_default()
+}
+
+fn progress_sink(
+    transfer_id: &str,
+    direction: &str,
+    loaded: u64,
+    total: Option<u64>,
+) -> Result<(), ()> {
+    if let Some(buffer) = PROGRESS_BUFFER.lock().expect("progress lock").as_mut() {
+        buffer.push(ProgressRecord {
+            transfer_id: transfer_id.to_string(),
+            direction: direction.to_string(),
+            loaded_bytes: loaded,
+            total_bytes: total,
+        });
+    }
+    Ok(())
+}
+
+/// Prepares a local temp upload file (remote_file_prepare_upload_temp).
+pub async fn prepare_upload_temp(file_name: &str) -> Result<serde_json::Value, String> {
+    let dir = std::env::temp_dir().join("ssh-upload-tmp");
+    let _ = tokio::fs::create_dir_all(&dir).await;
+    let unique = format!(
+        "{}-{}-{file_name}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    );
+    let path = dir.join(unique);
+    tokio::fs::File::create(&path)
+        .await
+        .map_err(|e| format!("临时文件创建失败：{e}"))?;
+    Ok(serde_json::json!({ "local_path": path.to_string_lossy() }))
+}
+
+/// Appends a chunk to a local temp upload file (remote_file_append_upload_temp).
+pub async fn append_upload_temp(
+    local_path: &str,
+    chunk: &[u8],
+) -> Result<serde_json::Value, String> {
+    let mut file = tokio::fs::OpenOptions::new()
+        .append(true)
+        .open(local_path)
+        .await
+        .map_err(|e| format!("临时文件打开失败：{e}"))?;
+    file.write_all(chunk)
+        .await
+        .map_err(|e| format!("临时文件写入失败：{e}"))?;
+    Ok(serde_json::Value::Null)
+}
+
+/// Deletes a local temp upload file (remote_file_delete_upload_temp).
+pub async fn delete_upload_temp(local_path: &str) -> Result<serde_json::Value, String> {
+    let _ = tokio::fs::remove_file(local_path).await;
+    Ok(serde_json::Value::Null)
+}
+
+#[test]
+fn cancel_transfer_registers_and_cancels() {
+    let id = "t5-cancel-test";
+    assert!(!cancel_transfer(id));
+    let flag = register_transfer(id);
+    assert!(!flag.load(std::sync::atomic::Ordering::SeqCst));
+    assert!(cancel_transfer(id));
+    assert!(flag.load(std::sync::atomic::Ordering::SeqCst));
+}
+
+#[tokio::test]
+async fn upload_temp_roundtrip() {
+    let created = prepare_upload_temp("t5.bin").await.expect("prepare");
+    let local_path = created["local_path"].as_str().expect("path").to_string();
+    append_upload_temp(&local_path, b"hello")
+        .await
+        .expect("append");
+    append_upload_temp(&local_path, b" world")
+        .await
+        .expect("append2");
+    let data = tokio::fs::read(&local_path).await.expect("read");
+    assert_eq!(data, b"hello world");
+    delete_upload_temp(&local_path).await.expect("delete");
+    assert!(!tokio::fs::try_exists(&local_path).await.unwrap_or(false));
+}
+
+#[test]
+fn progress_buffer_records() {
+    begin_progress_buffer();
+    progress_sink("t1", "upload", 100, Some(200)).expect("sink");
+    progress_sink("t1", "upload", 200, Some(200)).expect("sink2");
+    let records = take_progress();
+    assert_eq!(records.len(), 2);
+    assert_eq!(records[1].loaded_bytes, 200);
+    assert_eq!(records[1].total_bytes, Some(200));
 }

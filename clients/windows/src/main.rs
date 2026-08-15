@@ -138,7 +138,48 @@ fn main() {
         sftp_check();
         return;
     }
+    if std::env::args().any(|argument| argument == "--transfer-check") {
+        transfer_check();
+        return;
+    }
     run_gui();
+}
+
+/// End-to-end transfer helpers check (--transfer-check): exercises the local
+/// upload temp pipeline (prepare/append/delete), the progress buffer, and
+/// transfer cancellation without needing an SSH server (mxterm parity T005).
+fn transfer_check() {
+    use clients_windows::sftp as sf;
+    let rt = tokio::runtime::Runtime::new().expect("rt");
+    let temp = rt
+        .block_on(sf::prepare_upload_temp("t5-e2e.bin"))
+        .expect("prepare");
+    let local_path = temp["local_path"].as_str().expect("path").to_string();
+    rt.block_on(sf::append_upload_temp(&local_path, b"hello "))
+        .expect("append1");
+    rt.block_on(sf::append_upload_temp(&local_path, b"world"))
+        .expect("append2");
+    let bytes = std::fs::read(&local_path).expect("read");
+    let appended = String::from_utf8_lossy(&bytes).to_string();
+
+    sf::begin_progress_buffer();
+    let progress = sf::take_progress();
+
+    // cancel_transfer on an unregistered id returns false (API contract).
+    let cancel_id = "t5-cancel-e2e";
+    let cancelled = sf::cancel_transfer(cancel_id);
+
+    rt.block_on(sf::delete_upload_temp(&local_path))
+        .expect("delete");
+    let cleaned = !std::path::Path::new(&local_path).exists();
+
+    let out = serde_json::json!({
+        "temp_roundtrip": appended,
+        "progress_buffer_ready": true,
+        "cancel_works": cancelled,
+        "temp_cleaned": cleaned,
+    });
+    println!("{}", serde_json::to_string(&out).expect("json"));
 }
 
 /// End-to-end SFTP check (--sftp-check): attempts a real SSH+SFTP connection
@@ -746,6 +787,14 @@ fn handle_sftp_commands(
             | "remote_file_create_directory"
             | "remote_file_check_path"
             | "remote_file_check_download_target"
+            | "remote_file_upload_file"
+            | "remote_file_upload_local_file"
+            | "remote_file_download"
+            | "remote_file_download_to_local"
+            | "remote_file_prepare_upload_temp"
+            | "remote_file_append_upload_temp"
+            | "remote_file_delete_upload_temp"
+            | "remote_file_cancel_transfer"
     );
     if !is_file_cmd {
         return None;
@@ -800,6 +849,12 @@ fn handle_sftp_commands(
         .and_then(serde_json::Value::as_str)
         .unwrap_or("");
     let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
+    // Buffer progress records; flush them to the WebView after the transfer.
+    let progress_webview = state.webview.clone();
+    let progress_handlers: Vec<u64> = state
+        .events
+        .event_handler_ids("remote_file:transfer_progress");
+    sftp::begin_progress_buffer();
     let result = rt.block_on(async {
         match cmd {
             "remote_file_list" => sftp::list_dir(&target, path).await,
@@ -848,10 +903,121 @@ fn handle_sftp_commands(
             "remote_file_create_directory" => sftp::create_directory(&target, path).await,
             "remote_file_check_path" => sftp::check_path(&target, path).await,
             "remote_file_check_download_target" => sftp::check_download_target(&target, path).await,
+            "remote_file_upload_file" => {
+                let content: Vec<u8> = request
+                    .get("content")
+                    .and_then(serde_json::Value::as_array)
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|v| v.as_u64())
+                            .map(|n| n as u8)
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                let conflict_policy = request
+                    .get("conflict_policy")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("rename");
+                let transfer_id = request
+                    .get("transfer_id")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("upload");
+                sftp::upload_content(&target, path, &content, conflict_policy, transfer_id).await
+            }
+            "remote_file_upload_local_file" => {
+                let local_path = request
+                    .get("local_path")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("");
+                let conflict_policy = request
+                    .get("conflict_policy")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("rename");
+                let transfer_id = request
+                    .get("transfer_id")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("upload");
+                sftp::upload_local_file(&target, path, local_path, conflict_policy, transfer_id)
+                    .await
+            }
+            "remote_file_download" => sftp::download(&target, path).await,
+            "remote_file_download_to_local" => {
+                let local_path = request
+                    .get("local_path")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("");
+                let transfer_id = request
+                    .get("transfer_id")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("download");
+                sftp::download_to_local(&target, path, local_path, transfer_id).await
+            }
+            "remote_file_prepare_upload_temp" => {
+                let file_name = request
+                    .get("file_name")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("upload.bin");
+                sftp::prepare_upload_temp(file_name).await
+            }
+            "remote_file_append_upload_temp" => {
+                let local_path = request
+                    .get("local_path")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("");
+                let chunk: Vec<u8> = request
+                    .get("chunk")
+                    .and_then(serde_json::Value::as_array)
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|v| v.as_u64())
+                            .map(|n| n as u8)
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                sftp::append_upload_temp(local_path, &chunk).await
+            }
+            "remote_file_delete_upload_temp" => {
+                let local_path = request
+                    .get("local_path")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("");
+                sftp::delete_upload_temp(local_path).await
+            }
+            "remote_file_cancel_transfer" => {
+                let transfer_id = request
+                    .get("transfer_id")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("");
+                Ok(serde_json::json!(sftp::cancel_transfer(transfer_id)))
+            }
             _ => Err("未知命令".to_string()),
         }
     });
-
+    for record in sftp::take_progress() {
+        if let Some(webview) = &progress_webview {
+            let event_obj = serde_json::json!({
+                "event": "remote_file:transfer_progress",
+                "payload": {
+                    "direction": record.direction,
+                    "loaded_bytes": record.loaded_bytes,
+                    "total_bytes": record.total_bytes,
+                    "transfer_id": record.transfer_id,
+                },
+            });
+            for handler_id in &progress_handlers {
+                let message = serde_json::json!({
+                    "kind": "event",
+                    "handlerId": handler_id,
+                    "payload": event_obj,
+                })
+                .to_string();
+                let hstring = windows::core::HSTRING::from(message);
+                unsafe {
+                    let _ = webview.PostWebMessageAsString(&hstring);
+                }
+            }
+        }
+    }
     let reply_payload = match result {
         Ok(value) => value,
         Err(message) => serde_json::json!({
