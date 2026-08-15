@@ -418,6 +418,7 @@
         "russh",
         "russh-sftp",
         "serde-json",
+        "sha2",
         "tiny-http",
         "tokio",
         "webview2",

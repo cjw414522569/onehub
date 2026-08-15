@@ -23,6 +23,8 @@ use clients_windows::model::{
 };
 use clients_windows::probe;
 use clients_windows::sftp;
+use clients_windows::store;
+use clients_windows::transfer_bundle;
 use windows_sys::core::w;
 use windows_sys::Win32::Foundation::{GetLastError, HWND, LPARAM, LRESULT, RECT, SIZE, WPARAM};
 use windows_sys::Win32::Graphics::Gdi::{
@@ -58,7 +60,6 @@ use windows::Win32::System::Com::{CoInitializeEx, COINIT_APARTMENTTHREADED};
 
 mod bridge;
 mod httpserver;
-mod store;
 mod vault;
 mod webview2;
 
@@ -142,7 +143,69 @@ fn main() {
         transfer_check();
         return;
     }
+    if std::env::args().any(|argument| argument == "--bundle-check") {
+        bundle_check();
+        return;
+    }
     run_gui();
+}
+
+/// End-to-end connection transfer bundle check (--bundle-check): exports
+/// connections+credentials to an encrypted bundle, previews it, and imports
+/// into a fresh store, printing JSON evidence (mxterm parity T006).
+fn bundle_check() {
+    use clients_windows::store::Store;
+    use clients_windows::transfer_bundle as tb;
+    let dir = std::env::temp_dir().join(format!(
+        "ssh-bundle-e2e-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    ));
+    let _ = std::fs::create_dir_all(&dir);
+    let db = dir.join("src.db");
+    let mut store = Store::open(&db).expect("store");
+    store
+        .upsert_connection(&serde_json::json!({
+            "name": "prod", "host": "10.1.1.1", "port": 22, "username": "root",
+            "password": "s3cret"
+        }))
+        .expect("conn");
+    store
+        .upsert_credential(&serde_json::json!({
+            "name": "deploy", "kind": "password", "username": "deploy",
+            "password": "cred-secret"
+        }))
+        .expect("cred");
+    let bundle = dir.join("export.mxconn");
+    let bundle_str = bundle.to_string_lossy().to_string();
+    let exported = tb::export_bundle(&store, &bundle_str, "bundle-pass").expect("export");
+    let preview = tb::preview_bundle(&bundle_str, "bundle-pass").expect("preview");
+    let fingerprint = preview["fingerprint"].as_str().expect("fp").to_string();
+    let wrong = tb::preview_bundle(&bundle_str, "wrong-pass").is_err();
+    let fresh_db = dir.join("fresh.db");
+    let mut fresh = Store::open(&fresh_db).expect("fresh");
+    let imported = tb::import_bundle(
+        &mut fresh,
+        &bundle_str,
+        "bundle-pass",
+        &fingerprint,
+        "overwrite",
+    )
+    .expect("import");
+    let list = fresh.list_connections().expect("list");
+    let result = serde_json::json!({
+        "export": exported,
+        "preview_total_connections": preview["summary"]["connections"]["total"],
+        "wrong_password_rejected": wrong,
+        "import": imported,
+        "fresh_connections": list.len(),
+        "fresh_first_name": list.first().and_then(|c| c.get("name").and_then(serde_json::Value::as_str)),
+    });
+    println!("{}", serde_json::to_string(&result).expect("json"));
+    let _ = std::fs::remove_dir_all(&dir);
 }
 
 /// End-to-end transfer helpers check (--transfer-check): exercises the local
@@ -163,7 +226,7 @@ fn transfer_check() {
     let appended = String::from_utf8_lossy(&bytes).to_string();
 
     sf::begin_progress_buffer();
-    let progress = sf::take_progress();
+    let _progress = sf::take_progress();
 
     // cancel_transfer on an unregistered id returns false (API contract).
     let cancel_id = "t5-cancel-e2e";
@@ -753,6 +816,74 @@ unsafe fn handle_key(state: &mut AppState, hwnd: HWND, wparam: WPARAM) {
         state.model.delete_forward();
     }
     InvalidateRect(hwnd, std::ptr::null(), 1);
+}
+
+/// Handles connection import/export bundle commands (mxterm parity T006):
+/// connection_transfer_export/preview/import.
+fn handle_transfer_bundle_commands(
+    state: &mut AppState,
+    cmd: &str,
+    parsed: &serde_json::Value,
+) -> Option<String> {
+    let is_bundle_cmd = matches!(
+        cmd,
+        "connection_transfer_export" | "connection_transfer_preview" | "connection_transfer_import"
+    );
+    if !is_bundle_cmd {
+        return None;
+    }
+    let request_id = parsed
+        .get("requestId")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+    let payload = parsed
+        .get("payload")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+    let request = payload.get("request").cloned().unwrap_or(payload.clone());
+    let path = request
+        .get("path")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("");
+    let password = request
+        .get("password")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("");
+
+    let result = match cmd {
+        "connection_transfer_export" => match state.store.as_ref() {
+            Some(store) => transfer_bundle::export_bundle(store, path, password),
+            None => Err("本地存储不可用。".to_string()),
+        },
+        "connection_transfer_preview" => transfer_bundle::preview_bundle(path, password),
+        "connection_transfer_import" => {
+            let fingerprint = request
+                .get("fingerprint")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            let strategy = request
+                .get("strategy")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("overwrite");
+            match state.store.as_mut() {
+                Some(store) => {
+                    transfer_bundle::import_bundle(store, path, password, fingerprint, strategy)
+                }
+                None => Err("本地存储不可用。".to_string()),
+            }
+        }
+        _ => Err("未知命令".to_string()),
+    };
+    let reply_payload = match result {
+        Ok(value) => value,
+        Err(message) => serde_json::json!({
+            "error": { "code": "connection_transfer_error", "message": message, "recoverable": true }
+        }),
+    };
+    Some(
+        serde_json::json!({ "kind": "invoke-reply", "requestId": request_id, "payload": reply_payload })
+            .to_string(),
+    )
 }
 
 /// Handles remote file commands (mxterm parity T004) via a real SSH + SFTP
@@ -1414,6 +1545,10 @@ fn on_web_message(hwnd: HWND, message: &str) -> Option<String> {
     }
 
     if let Some(reply) = handle_sftp_commands(state, cmd, &parsed) {
+        return Some(reply);
+    }
+
+    if let Some(reply) = handle_transfer_bundle_commands(state, cmd, &parsed) {
         return Some(reply);
     }
 
