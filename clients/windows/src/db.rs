@@ -488,6 +488,177 @@ pub fn db_proxy_route(parsed: &DbProfile) -> Result<Value, String> {
 /// Opens a TCP stream through a SOCKS5 or HTTP CONNECT proxy and runs the
 /// proxy handshake against `target`. Returns the connected (proxied) stream so
 /// callers can continue with engine-specific protocols (e.g. tiberius).
+/// SOCKS5 (RFC 1928 + RFC 1929) client CONNECT handshake over a connected
+/// TCP stream. In-house so the L5 client keeps its abi-c-only path boundary.
+async fn socks5_connect_handshake(
+    stream: &mut tokio::net::TcpStream,
+    target_host: &str,
+    target_port: u16,
+    username: Option<&str>,
+    password: Option<&str>,
+    timeout: Duration,
+) -> Result<(), String> {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let handshake = async {
+        let methods: Vec<u8> = if username.is_some() {
+            vec![0x00, 0x02]
+        } else {
+            vec![0x00]
+        };
+        let mut greeting = vec![0x05, methods.len() as u8];
+        greeting.extend_from_slice(&methods);
+        stream
+            .write_all(&greeting)
+            .await
+            .map_err(|e| format!("SOCKS5 写入失败：{e}"))?;
+        let mut selection = [0u8; 2];
+        stream
+            .read_exact(&mut selection)
+            .await
+            .map_err(|e| format!("SOCKS5 读取失败：{e}"))?;
+        if selection[0] != 0x05 {
+            return Err("SOCKS5 版本不匹配".to_string());
+        }
+        match selection[1] {
+            0x00 => {}
+            0x02 => {
+                let user = username.unwrap_or("");
+                let pass = password.unwrap_or("");
+                let mut auth = vec![0x01, user.len() as u8];
+                auth.extend_from_slice(user.as_bytes());
+                auth.push(pass.len() as u8);
+                auth.extend_from_slice(pass.as_bytes());
+                stream
+                    .write_all(&auth)
+                    .await
+                    .map_err(|e| format!("SOCKS5 认证写入失败：{e}"))?;
+                let mut status = [0u8; 2];
+                stream
+                    .read_exact(&mut status)
+                    .await
+                    .map_err(|e| format!("SOCKS5 认证读取失败：{e}"))?;
+                if status[0] != 0x01 || status[1] != 0x00 {
+                    return Err("SOCKS5 认证被拒绝".to_string());
+                }
+            }
+            0xff => return Err("SOCKS5 无可用认证方式".to_string()),
+            other => return Err(format!("SOCKS5 未知认证方式：{other}")),
+        }
+        let host_bytes = target_host.as_bytes();
+        if host_bytes.len() > 255 {
+            return Err("目标主机名过长".to_string());
+        }
+        let mut request = vec![0x05, 0x01, 0x00, 0x03, host_bytes.len() as u8];
+        request.extend_from_slice(host_bytes);
+        request.extend_from_slice(&target_port.to_be_bytes());
+        stream
+            .write_all(&request)
+            .await
+            .map_err(|e| format!("SOCKS5 连接请求写入失败：{e}"))?;
+        let mut reply = [0u8; 4];
+        stream
+            .read_exact(&mut reply)
+            .await
+            .map_err(|e| format!("SOCKS5 连接响应读取失败：{e}"))?;
+        if reply[0] != 0x05 {
+            return Err("SOCKS5 响应版本不匹配".to_string());
+        }
+        if reply[1] != 0x00 {
+            return Err(format!("SOCKS5 连接被拒绝（代码 {}）", reply[1]));
+        }
+        let addr_len = match reply[3] {
+            0x01 => 4,
+            0x04 => 16,
+            0x03 => {
+                let mut len = [0u8; 1];
+                stream
+                    .read_exact(&mut len)
+                    .await
+                    .map_err(|e| format!("SOCKS5 读取失败：{e}"))?;
+                len[0] as usize
+            }
+            other => return Err(format!("SOCKS5 未知地址类型：{other}")),
+        };
+        let mut rest = vec![0u8; addr_len + 2];
+        stream
+            .read_exact(&mut rest)
+            .await
+            .map_err(|e| format!("SOCKS5 读取失败：{e}"))?;
+        Ok::<(), String>(())
+    };
+    match tokio::time::timeout(timeout, handshake).await {
+        Ok(result) => result,
+        Err(_) => Err(format!("SOCKS5 握手超时（{}ms）", timeout.as_millis())),
+    }
+}
+
+/// HTTP CONNECT proxy handshake (CONNECT host:port HTTP/1.1 + 2xx check).
+async fn http_connect_handshake(
+    stream: &mut tokio::net::TcpStream,
+    target_host: &str,
+    target_port: u16,
+    username: Option<&str>,
+    password: Option<&str>,
+    timeout: Duration,
+) -> Result<(), String> {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let handshake = async {
+        let authorization = username.map(|user| {
+            let credentials = format!("{}:{}", user, password.unwrap_or(""));
+            format!(
+                "Basic {}",
+                base64::engine::general_purpose::STANDARD.encode(credentials.as_bytes())
+            )
+        });
+        let authority = format!("{target_host}:{target_port}");
+        let mut request = format!("CONNECT {authority} HTTP/1.1\r\nHost: {authority}\r\n");
+        if let Some(auth) = authorization {
+            request.push_str(&format!("Proxy-Authorization: {auth}\r\n"));
+        }
+        request.push_str("\r\n");
+        stream
+            .write_all(request.as_bytes())
+            .await
+            .map_err(|e| format!("HTTP CONNECT 写入失败：{e}"))?;
+        let mut header = Vec::new();
+        let mut buf = [0u8; 1];
+        loop {
+            stream
+                .read_exact(&mut buf)
+                .await
+                .map_err(|e| format!("HTTP CONNECT 读取失败：{e}"))?;
+            header.push(buf[0]);
+            if header.len() >= 4 && &header[header.len() - 4..] == b"\r\n\r\n" {
+                break;
+            }
+            if header.len() > 16 * 1024 {
+                return Err("HTTP CONNECT 响应头过大".to_string());
+            }
+        }
+        let text = String::from_utf8_lossy(&header);
+        let status_line = text.lines().next().unwrap_or("");
+        let code = status_line
+            .split_whitespace()
+            .nth(1)
+            .and_then(|value| value.parse::<u16>().ok())
+            .unwrap_or(0);
+        if !(200..300).contains(&code) {
+            return Err(format!("HTTP CONNECT 被拒绝（HTTP {code}）"));
+        }
+        Ok::<(), String>(())
+    };
+    match tokio::time::timeout(timeout, handshake).await {
+        Ok(result) => result,
+        Err(_) => Err(format!(
+            "HTTP CONNECT 握手超时（{}ms）",
+            timeout.as_millis()
+        )),
+    }
+}
+
+/// Opens a TCP stream through a SOCKS5 or HTTP CONNECT proxy and runs the
+/// proxy handshake against `target`. Returns the connected (proxied) stream so
+/// callers can continue with engine-specific protocols (e.g. tiberius).
 async fn proxy_connect(
     config: &ProxyConfig,
     target_host: &str,
@@ -501,46 +672,32 @@ async fn proxy_connect(
     let timeout = Duration::from_millis(timeout_ms.max(500));
     match config.proxy_type.as_str() {
         "socks5" => {
-            let socks = proxy::Socks5Config {
-                timeout,
-                username: config.proxy_username.clone(),
-                password: config.proxy_password.clone(),
-                ..proxy::Socks5Config::default()
-            };
-            proxy::socks5_connect(
+            socks5_connect_handshake(
                 &mut stream,
-                &proxy::ProxyTarget::Hostname(target_host.to_string()),
+                target_host,
                 target_port,
-                &socks,
+                config.proxy_username.as_deref(),
+                config.proxy_password.as_deref(),
+                timeout,
             )
-            .await
-            .map_err(|e| format!("SOCKS5 握手失败：{e}"))?;
+            .await?;
         }
         "http" => {
-            let proxy_authorization = config.proxy_username.as_ref().map(|username| {
-                let credentials = format!(
-                    "{}:{}",
-                    username,
-                    config.proxy_password.as_deref().unwrap_or("")
-                );
-                format!(
-                    "Basic {}",
-                    base64::engine::general_purpose::STANDARD.encode(credentials.as_bytes())
-                )
-            });
-            let http = proxy::HttpConnectConfig {
+            http_connect_handshake(
+                &mut stream,
+                target_host,
+                target_port,
+                config.proxy_username.as_deref(),
+                config.proxy_password.as_deref(),
                 timeout,
-                proxy_authorization,
-            };
-            proxy::http_connect(&mut stream, target_host, target_port, &http)
-                .await
-                .map_err(|e| format!("HTTP CONNECT 失败：{e}"))?;
+            )
+            .await?;
         }
         other => return Err(format!("未知代理类型：{other}")),
     }
     Ok(stream)
 }
-/// Concrete tiberius client stream: tokio TcpStream wrapped in tokio-util compat.
+/// Concrete tiberius client stream:/// Concrete tiberius client stream: tokio TcpStream wrapped in tokio-util compat.
 type MsSqlClient = tiberius::Client<tokio_util::compat::Compat<tokio::net::TcpStream>>;
 
 /// A live engine connection held by a session.

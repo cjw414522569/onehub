@@ -701,7 +701,6 @@ dependencies = [
  "mysql_async",
  "odbc",
  "oracle",
- "proxy",
  "rusqlite",
  "russh",
  "russh-sftp",
