@@ -415,6 +415,10 @@ impl Store {
     pub fn list_credentials(&self) -> rusqlite::Result<Vec<Value>> {
         self.list("credential")
     }
+    /// Gets one credential by id.
+    pub fn get_credential(&self, id: &str) -> rusqlite::Result<Option<Value>> {
+        self.get("credential", id)
+    }
 
     /// Upserts a credential; returns the persisted profile.
     pub fn upsert_credential(&mut self, request: &Value) -> rusqlite::Result<Value> {

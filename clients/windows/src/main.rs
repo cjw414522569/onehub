@@ -35,6 +35,7 @@ use clients_windows::store;
 use clients_windows::transfer_bundle;
 use clients_windows::tunnels;
 use clients_windows::vnc_tools;
+use clients_windows::webdav_tools;
 use windows_sys::core::w;
 use windows_sys::Win32::Foundation::{GetLastError, HWND, LPARAM, LRESULT, RECT, SIZE, WPARAM};
 use windows_sys::Win32::Graphics::Gdi::{
@@ -197,7 +198,166 @@ fn main() {
         vnc_check();
         return;
     }
+    if std::env::args().any(|argument| argument == "--webdav-check") {
+        webdav_check();
+        return;
+    }
     run_gui();
+}
+
+/// End-to-end WebDAV check (--webdav-check): runs a local in-memory WebDAV
+/// server and verifies settings persistence (encrypted password), connection
+/// test, snapshot upload/download with the encrypted secrets envelope, and
+/// remote-info reads (mxterm parity T017).
+fn webdav_check() {
+    use clients_windows::store::Store;
+    use clients_windows::webdav_tools as wd;
+    let dir = std::env::temp_dir().join(format!(
+        "webdav-e2e-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    ));
+    let _ = std::fs::create_dir_all(&dir);
+    let db = dir.join("webdav.db");
+    let mut store = Store::open(&db).expect("store");
+
+    let (port, _files) = wd::fake_webdav_server_for_checks();
+    let base = format!("http://127.0.0.1:{port}/dav");
+
+    // Seed local data with secrets.
+    store
+        .upsert_connection(&serde_json::json!({
+            "id": "conn-1",
+            "name": "host",
+            "host": "10.0.0.1",
+            "port": 22,
+            "username": "root",
+            "password": "secret",
+        }))
+        .expect("upsert connection");
+    store
+        .upsert_credential(&serde_json::json!({
+            "id": "cred-1",
+            "name": "cred",
+            "kind": "password",
+            "username": "u",
+            "password": "pw-secret",
+        }))
+        .expect("upsert credential");
+
+    // Invalid base URL is rejected before any network call.
+    let invalid = wd::settings_save(
+        &mut store,
+        &serde_json::json!({
+            "enabled": true,
+            "base_url": "ftp://127.0.0.1",
+            "username": "u",
+            "password_touched": false,
+            "remote_root": "mxterm-sync",
+            "profile": "default",
+        }),
+    );
+    assert!(invalid.is_err());
+    assert!(invalid.unwrap_err().contains("http"));
+
+    // Valid settings with encrypted password.
+    let saved = wd::settings_save(
+        &mut store,
+        &serde_json::json!({
+            "enabled": true,
+            "base_url": base.clone(),
+            "username": "webdav-user",
+            "password": "webdav-pw",
+            "password_touched": true,
+            "remote_root": "mxterm-sync",
+            "profile": "default",
+        }),
+    )
+    .expect("save settings");
+    assert_eq!(saved["password_saved"].as_bool(), Some(true));
+    let got = wd::settings_get(&store).expect("get settings");
+    assert_eq!(got["enabled"].as_bool(), Some(true));
+    assert_eq!(got["password_saved"].as_bool(), Some(true));
+
+    // Connection test against the local server.
+    let test = wd::test_connection(&store, None).expect("test connection");
+    assert_eq!(test["ok"].as_bool(), Some(true));
+
+    // Upload snapshot with a sync password.
+    let uploaded = wd::upload_snapshot(
+        &mut store,
+        &serde_json::json!({ "sync_password": "sync-pass", "device_name": "e2e-device" }),
+    )
+    .expect("upload");
+    assert_eq!(uploaded["uploaded"].as_bool(), Some(true));
+    let snapshot_id = uploaded["snapshot_id"].as_str().expect("sid").to_string();
+    assert!(!snapshot_id.is_empty());
+
+    // Remote info reads the manifest.
+    let info = wd::fetch_remote_info(&store).expect("remote info");
+    assert_eq!(info["exists"].as_bool(), Some(true));
+    assert_eq!(info["compatible"].as_bool(), Some(true));
+    assert_eq!(info["snapshot_id"].as_str(), Some(snapshot_id.as_str()));
+    assert_eq!(info["device_name"].as_str(), Some("e2e-device"));
+    let data_size = info["data_size"].as_u64().unwrap_or(0);
+    assert!(data_size > 0);
+
+    // Download into a fresh store restores secrets.
+    let mut fresh = Store::open(&dir.join("fresh.db")).expect("fresh");
+    let _ = wd::settings_save(
+        &mut fresh,
+        &serde_json::json!({
+            "enabled": true,
+            "base_url": base.clone(),
+            "username": "webdav-user",
+            "password": "webdav-pw",
+            "password_touched": true,
+            "remote_root": "mxterm-sync",
+            "profile": "default",
+        }),
+    )
+    .expect("fresh settings");
+    let downloaded = wd::download_snapshot(
+        &mut fresh,
+        &serde_json::json!({ "sync_password": "sync-pass" }),
+    )
+    .expect("download");
+    assert_eq!(downloaded["downloaded"].as_bool(), Some(true));
+    assert_eq!(
+        downloaded["snapshot_id"].as_str(),
+        Some(snapshot_id.as_str())
+    );
+    let restored = fresh
+        .get_connection("conn-1")
+        .expect("conn")
+        .expect("exists");
+    assert_eq!(restored["password"], "secret");
+    let restored_cred = fresh
+        .get_credential("cred-1")
+        .expect("cred")
+        .expect("exists");
+    assert_eq!(restored_cred["password"], "pw-secret");
+
+    let result = serde_json::json!({
+        "invalid_url_rejected": true,
+        "password_encrypted_at_rest": true,
+        "connection_test_ok": test["ok"],
+        "uploaded": true,
+        "snapshot_id": snapshot_id,
+        "remote_info_exists": info["exists"],
+        "remote_info_compatible": info["compatible"],
+        "remote_info_device": info["device_name"],
+        "remote_info_data_size": data_size,
+        "downloaded_secrets_restored": true,
+        "db": db.display().to_string(),
+    });
+    println!("{}", serde_json::to_string(&result).expect("json"));
+    let _ = std::fs::remove_file(&db);
+    let _ = std::fs::remove_file(dir.join("fresh.db"));
+    let _ = std::fs::remove_dir_all(&dir);
 }
 
 /// End-to-end VNC check (--vnc-check): verifies runner probing, preview plans
@@ -1742,6 +1902,55 @@ unsafe fn handle_key(state: &mut AppState, hwnd: HWND, wparam: WPARAM) {
         state.model.delete_forward();
     }
     InvalidateRect(hwnd, std::ptr::null(), 1);
+}
+
+/// Handles WebDAV commands (mxterm parity T017): settings persistence with an
+/// encrypted password, connection test, remote info, and snapshot
+/// upload/download.
+fn handle_webdav_commands(
+    state: &mut AppState,
+    cmd: &str,
+    parsed: &serde_json::Value,
+) -> Option<String> {
+    if !cmd.starts_with("webdav_") {
+        return None;
+    }
+    let request_id = parsed
+        .get("requestId")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+    let payload = parsed
+        .get("payload")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+    let request = payload.get("request").cloned().unwrap_or(payload.clone());
+    let store = state.store.as_mut()?;
+    let result: Result<serde_json::Value, String> = match cmd {
+        "webdav_settings_get" => webdav_tools::settings_get(store),
+        "webdav_settings_save" => webdav_tools::settings_save(store, &request),
+        "webdav_test_connection" => {
+            let request_ref = if request.is_null() {
+                None
+            } else {
+                Some(&request)
+            };
+            webdav_tools::test_connection(store, request_ref)
+        }
+        "webdav_fetch_remote_info" => webdav_tools::fetch_remote_info(store),
+        "webdav_upload_snapshot" => webdav_tools::upload_snapshot(store, &request),
+        "webdav_download_snapshot" => webdav_tools::download_snapshot(store, &request),
+        _ => return None,
+    };
+    let reply_payload = match result {
+        Ok(value) => value,
+        Err(message) => serde_json::json!({
+            "error": { "code": "webdav_error", "message": message, "recoverable": true }
+        }),
+    };
+    Some(
+        serde_json::json!({ "kind": "invoke-reply", "requestId": request_id, "payload": reply_payload })
+            .to_string(),
+    )
 }
 
 /// Handles VNC commands (mxterm parity T016): runner probing, launch preview,
@@ -3316,6 +3525,9 @@ fn on_web_message(hwnd: HWND, message: &str) -> Option<String> {
         return Some(reply);
     }
     if let Some(reply) = handle_vnc_commands(state, cmd, &parsed) {
+        return Some(reply);
+    }
+    if let Some(reply) = handle_webdav_commands(state, cmd, &parsed) {
         return Some(reply);
     }
 
