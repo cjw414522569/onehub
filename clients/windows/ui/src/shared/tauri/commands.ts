@@ -1515,6 +1515,40 @@ export function gitSwitch(repo: string, branch: string) {
   return invoke<GitSwitchResult>("git_switch", { request: { repo, branch } });
 }
 
+export interface AiPromptResult {
+  role: string;
+  prompt: string;
+}
+
+export interface AiChartSeries {
+  name: string;
+  values: number[];
+}
+
+export interface AiChartSpec {
+  chart_type: string;
+  reason?: string;
+  category?: string;
+  labels?: string[];
+  series?: AiChartSeries[];
+}
+
+export function aiExplainPrompt(sql: string, dialect?: string) {
+  return invoke<AiPromptResult>("ai_explain_prompt", { request: { sql, dialect } });
+}
+
+export function aiGenerateSqlPrompt(text: string, dialect?: string, schema?: string) {
+  return invoke<AiPromptResult>("ai_generate_sql_prompt", { request: { text, dialect, schema } });
+}
+
+export function aiChartSpec(sessionId: string, sql: string) {
+  return invoke<AiChartSpec>("ai_chart_spec", { request: { session_id: sessionId, sql } });
+}
+
+export function aiChartSpecData(columns: string[], rows: unknown[][]) {
+  return invoke<AiChartSpec>("ai_chart_spec_data", { request: { columns, rows } });
+}
+
 export function dbObjectList(sessionId: string, kind?: string) {
   return invoke<DbObjectInfo[]>("db_object_list", { request: { session_id: sessionId, kind } });
 }

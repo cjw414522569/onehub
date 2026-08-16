@@ -669,6 +669,129 @@ fn base64_decode(s: &str) -> Option<Vec<u8>> {
     base64::engine::general_purpose::STANDARD.decode(s).ok()
 }
 
+/// Builds an "explain this SQL" prompt for the AI (ai_explain_prompt).
+pub fn ai_build_explain_prompt(sql: &str, dialect: &str) -> Result<Value, String> {
+    if sql.trim().is_empty() {
+        return Err("SQL 为空。".to_string());
+    }
+    let dialect = if dialect.trim().is_empty() {
+        "通用 SQL"
+    } else {
+        dialect
+    };
+    Ok(json!({
+        "role": "user",
+        "prompt": format!(
+            "请用中文解释下面这段 {dialect} SQL 的作用、执行逻辑与潜在风险，分点说明：\n\n```sql\n{sql}\n```"
+        ),
+    }))
+}
+
+/// Builds a "generate SQL" prompt from natural language + schema (ai_generate_sql_prompt).
+pub fn ai_build_generate_sql_prompt(
+    natural_language: &str,
+    dialect: &str,
+    schema: &str,
+) -> Result<Value, String> {
+    if natural_language.trim().is_empty() {
+        return Err("描述为空。".to_string());
+    }
+    let dialect = if dialect.trim().is_empty() {
+        "通用 SQL"
+    } else {
+        dialect
+    };
+    let schema_block = if schema.trim().is_empty() {
+        "（未提供表结构）".to_string()
+    } else {
+        format!("可用表结构：\n{schema}")
+    };
+    Ok(json!({
+        "role": "user",
+        "prompt": format!(
+            "请根据下面的自然语言需求，生成 {dialect} 语句，只输出 SQL，不要额外解释。\n需求：{natural_language}\n{schema_block}"
+        ),
+    }))
+}
+
+/// Analyzes a query result (columns + rows) and produces a chart spec for the
+/// UI renderer (ai_chart_spec). Picks line/bar/pie heuristically.
+pub fn ai_chart_spec(columns: &[String], rows: &[Vec<Value>]) -> Value {
+    if columns.is_empty() {
+        return json!({ "chart_type": "none", "reason": "无列" });
+    }
+    if rows.is_empty() {
+        return json!({ "chart_type": "none", "reason": "无数据" });
+    }
+    // First non-numeric column is the category axis; numeric columns become series.
+    let numeric: Vec<usize> = (0..columns.len())
+        .filter(|&index| {
+            rows.iter()
+                .all(|row| row.get(index).map(is_numeric_value).unwrap_or(false))
+        })
+        .collect();
+    let category = if numeric.len() == columns.len() {
+        None
+    } else {
+        (0..columns.len()).find(|index| !numeric.contains(index))
+    };
+    let series: Vec<Value> = numeric
+        .iter()
+        .map(|&index| {
+            json!({
+                "name": columns[index],
+                "values": rows
+                    .iter()
+                    .map(|row| row.get(index).and_then(Value::as_f64).unwrap_or(0.0))
+                    .collect::<Vec<f64>>(),
+            })
+        })
+        .collect();
+    if series.is_empty() {
+        return json!({ "chart_type": "none", "reason": "没有数值列" });
+    }
+    let chart_type = if rows.len() <= 1 {
+        "pie"
+    } else if series.len() >= 2 {
+        "line"
+    } else {
+        "bar"
+    };
+    json!({
+        "chart_type": chart_type,
+        "category": category.map(|index| columns[index].clone()).unwrap_or_default(),
+        "labels": rows
+            .iter()
+            .map(|row| {
+                category
+                    .and_then(|index| row.get(index).map(cell_text))
+                    .unwrap_or_else(|| row[0].to_string())
+            })
+            .collect::<Vec<String>>(),
+        "series": series,
+    })
+}
+
+fn is_numeric_value(value: &Value) -> bool {
+    value.is_number()
+}
+
+fn cell_text(value: &Value) -> String {
+    match value {
+        Value::String(s) => s.clone(),
+        Value::Number(n) => n.to_string(),
+        Value::Bool(b) => b.to_string(),
+        Value::Null => String::new(),
+        _ => value.to_string(),
+    }
+}
+
+/// Runs a query against a database session and returns the chart spec
+/// (ai_chart_spec_from_query).
+pub fn ai_chart_spec_from_query(session_id: &str, sql: &str) -> Result<Value, String> {
+    let outcome = crate::db::query_session(session_id, sql)?;
+    Ok(ai_chart_spec(&outcome.columns, &outcome.rows))
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -703,6 +826,50 @@ mod tests {
         let inline = &suggestions[1];
         assert!(inline["command"].as_str().expect("cmd").starts_with("curl"));
         assert_eq!(inline["risk"], "dangerous");
+    }
+
+    #[test]
+    fn explain_and_generate_sql_prompts() {
+        let explain =
+            ai_build_explain_prompt("SELECT * FROM users WHERE id = 1", "mysql").expect("explain");
+        let prompt = explain["prompt"].as_str().unwrap_or("");
+        assert!(prompt.contains("mysql"));
+        assert!(prompt.contains("SELECT * FROM users"));
+        let empty = ai_build_explain_prompt("  ", "mysql").expect_err("empty");
+        assert!(empty.contains("SQL 为空"));
+
+        let generate =
+            ai_build_generate_sql_prompt("查所有用户的邮箱", "postgresql", "users(id, email)")
+                .expect("generate");
+        let gen_prompt = generate["prompt"].as_str().unwrap_or("");
+        assert!(gen_prompt.contains("postgresql"));
+        assert!(gen_prompt.contains("users(id, email)"));
+        let empty_gen = ai_build_generate_sql_prompt("", "pg", "").expect_err("empty");
+        assert!(empty_gen.contains("描述为空"));
+    }
+
+    #[test]
+    fn chart_spec_picks_type_and_series() {
+        let spec = ai_chart_spec(
+            &["month".to_string(), "sales".to_string(), "cost".to_string()],
+            &[
+                vec![json!("一月"), json!(100), json!(60)],
+                vec![json!("二月"), json!(120), json!(70)],
+            ],
+        );
+        assert_eq!(spec["chart_type"], "line", "got {spec:?}");
+        assert_eq!(spec["category"], "month");
+        assert_eq!(spec["series"].as_array().map(|a| a.len()).unwrap_or(0), 2);
+        assert_eq!(spec["labels"][0], "一月");
+
+        let single = ai_chart_spec(
+            &["name".to_string(), "count".to_string()],
+            &[vec![json!("a"), json!(5)]],
+        );
+        assert_eq!(single["chart_type"], "pie");
+
+        let no_data = ai_chart_spec(&["a".to_string()], &[]);
+        assert_eq!(no_data["chart_type"], "none");
     }
 
     #[test]

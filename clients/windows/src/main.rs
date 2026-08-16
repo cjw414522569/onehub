@@ -3469,6 +3469,66 @@ fn handle_ai_commands(
                 .unwrap_or("");
             ai_assistant::stream_stop(stream_id)
         }
+        "ai_explain_prompt" => {
+            let sql = request
+                .get("sql")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            let dialect = request
+                .get("dialect")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            ai_assistant::ai_build_explain_prompt(sql, dialect)
+        }
+        "ai_generate_sql_prompt" => {
+            let text = request
+                .get("text")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            let dialect = request
+                .get("dialect")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            let schema = request
+                .get("schema")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            ai_assistant::ai_build_generate_sql_prompt(text, dialect, schema)
+        }
+        "ai_chart_spec" => {
+            let session_id = request
+                .get("session_id")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            let sql = request
+                .get("sql")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            ai_assistant::ai_chart_spec_from_query(session_id, sql)
+        }
+        "ai_chart_spec_data" => {
+            let columns: Vec<String> = request
+                .get("columns")
+                .and_then(serde_json::Value::as_array)
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(serde_json::Value::as_str)
+                        .map(|s| s.to_string())
+                        .collect()
+                })
+                .unwrap_or_default();
+            let rows: Vec<Vec<serde_json::Value>> = request
+                .get("rows")
+                .and_then(serde_json::Value::as_array)
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(serde_json::Value::as_array)
+                        .cloned()
+                        .collect()
+                })
+                .unwrap_or_default();
+            Ok(ai_assistant::ai_chart_spec(&columns, &rows))
+        }
         "ai_command_assess" => {
             let command = request
                 .get("command")

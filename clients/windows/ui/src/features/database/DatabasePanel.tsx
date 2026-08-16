@@ -7,6 +7,8 @@ import {
   dbConnectionList,
   dbConnectionSave,
   dbConnectionTest,
+  aiChartSpec,
+  aiExplainPrompt,
   dbCompare,
   dbEngineList,
   dbExplain,
@@ -17,6 +19,8 @@ import {
   dbProxyRoute,
   dbQuery,
 } from "../../shared/tauri/commands";
+import type { AiChartSpec } from "../../shared/tauri/commands";
+import { ChartView } from "./ChartView";
 import type {
   DbConnectionInput,
   DbCompareResult,
@@ -117,6 +121,8 @@ export function DatabasePanel({ open, onClose }: DatabasePanelProps) {
   const [importContent, setImportContent] = useState("");
   const [exportContent, setExportContent] = useState("");
   const [compareTargetId, setCompareTargetId] = useState("");
+  const [aiPrompt, setAiPrompt] = useState<string | null>(null);
+  const [aiChart, setAiChart] = useState<AiChartSpec | null>(null);
   const [compareResult, setCompareResult] = useState<DbCompareResult | null>(null);
   const [routeInfo, setRouteInfo] = useState<DbProxyRoute | null>(null);
 
@@ -298,6 +304,44 @@ export function DatabasePanel({ open, onClose }: DatabasePanelProps) {
         content: importContent,
       });
       setMessage(`导入成功（${result.statements} 条语句）。`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const explainSql = async () => {
+    if (!activeSqlTab.sql.trim()) {
+      setMessage("请先输入要解释的 SQL。");
+      return;
+    }
+    setBusy(true);
+    setMessage(null);
+    try {
+      const result = await aiExplainPrompt(activeSqlTab.sql, form.engine);
+      setAiPrompt(result.prompt);
+      setAiChart(null);
+      setMessage("AI 解释提示词已生成。");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const generateChart = async () => {
+    if (!sessionId || !activeSqlTab.sql.trim()) {
+      setMessage("请先连接并输入要绘图的 SQL。");
+      return;
+    }
+    setBusy(true);
+    setMessage(null);
+    try {
+      const result = await aiChartSpec(sessionId, activeSqlTab.sql);
+      setAiChart(result);
+      setAiPrompt(null);
+      setMessage(`图表已生成（${result.chart_type}）。`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error));
     } finally {
@@ -711,6 +755,12 @@ export function DatabasePanel({ open, onClose }: DatabasePanelProps) {
             <button type="button" onClick={() => void runQuery(activeSqlTab.sql)} disabled={busy || !activeSqlTab.sql.trim()}>
               执行
             </button>
+            <button type="button" onClick={() => void explainSql()} disabled={busy || !activeSqlTab.sql.trim()}>
+              AI 解释
+            </button>
+            <button type="button" onClick={() => void generateChart()} disabled={busy || !sessionId || !activeSqlTab.sql.trim()}>
+              AI 图表
+            </button>
             <button type="button" onClick={() => void runExplain()} disabled={busy || !sessionId || !activeSqlTab.sql.trim()}>
               执行计划
             </button>
@@ -984,6 +1034,18 @@ export function DatabasePanel({ open, onClose }: DatabasePanelProps) {
             </div>
           ) : null}
         </section>
+          {aiPrompt ? (
+            <div style={{ marginTop: 8, border: "1px solid #d1d5db", borderRadius: 4, padding: 8, background: "#ffffff" }}>
+              <p style={{ margin: "0 0 4px", fontSize: 12, fontWeight: 600 }}>AI 解释提示词</p>
+              <pre style={{ margin: 0, fontSize: 11, whiteSpace: "pre-wrap", wordBreak: "break-all" }}>{aiPrompt}</pre>
+            </div>
+          ) : null}
+          {aiChart ? (
+            <div style={{ marginTop: 8, border: "1px solid #d1d5db", borderRadius: 4, padding: 8, background: "#ffffff" }}>
+              <p style={{ margin: "0 0 6px", fontSize: 12, fontWeight: 600 }}>AI 图表（{aiChart.chart_type}）</p>
+              <ChartView spec={aiChart} />
+            </div>
+          ) : null}
         {message ? (
           <p role="status" style={{ marginTop: 12, padding: 8, background: "#eef2ff", borderRadius: 4 }}>
             {message}
