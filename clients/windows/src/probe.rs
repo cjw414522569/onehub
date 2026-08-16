@@ -121,6 +121,14 @@ pub fn step_result(ok: bool, message: impl Into<String>) -> serde_json::Value {
     serde_json::json!({ "ok": ok, "message": message.into() })
 }
 
+fn step_result_verified(
+    ok: bool,
+    ssh_verified: bool,
+    message: impl Into<String>,
+) -> serde_json::Value {
+    serde_json::json!({ "ok": ok, "ssh_verified": ssh_verified, "message": message.into() })
+}
+
 /// Full connection test: TCP + banner.
 pub fn test_connection(request: &serde_json::Value, timeout: Duration) -> serde_json::Value {
     let target = Target::from_request(request);
@@ -135,15 +143,17 @@ pub fn test_connection(request: &serde_json::Value, timeout: Duration) -> serde_
         );
     }
     if probe.banner.is_empty() {
-        return step_result(
+        return step_result_verified(
             true,
+            false,
             format!(
-                "TCP 连接成功（{}:{}），未检测到 SSH banner。",
+                "TCP 可达但未检测到 SSH 服务（{}:{}）。端口能连上但服务端无响应——可能端口不是 SSH、sshd 未运行、或防火墙/防护只放行 TCP 握手。",
                 target.host, target.port
             ),
         );
     }
-    step_result(
+    step_result_verified(
+        true,
         true,
         format!(
             "连接成功（{}:{}），SSH banner: {}",

@@ -8162,15 +8162,21 @@ export function WorkspaceShell() {
       }
 
       if (step.mode === "test") {
-        await connectionTest(runtimeCredentialRequest(step));
+        const testResult = await connectionTest(runtimeCredentialRequest(step));
         if (!connectingTabExists(tabId)) {
           return;
         }
         void probeSystem(runtimeCredentialRequest(step)).catch(() => null);
+        const verified = testResult?.ssh_verified === true;
         updateConnectingTabStep(tabId, {
           ...runningStep,
-          logs: [...runningStep.logs, "认证通过", "连接测试通过"],
-          status: "success",
+          logs: [
+            ...runningStep.logs,
+            verified
+              ? "SSH 服务可达（banner 已识别）"
+              : testResult?.message || "连接测试未通过",
+          ],
+          status: verified ? "success" : "error",
         });
         return;
       }

@@ -361,6 +361,7 @@ export interface HostKeyInfo {
 export interface ConnectionStepResult {
   ok: boolean;
   message: string;
+  ssh_verified?: boolean;
 }
 
 export interface RdpRunnerProbeResult {
