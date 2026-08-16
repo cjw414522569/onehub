@@ -5,9 +5,9 @@
 //! over TCP. Each open returns a session id tracked in a registry; the UI
 //! feeds input via terminal_write (routed to the session in a later row).
 
+use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
 use std::collections::HashMap;
 use std::io::{Read, Write};
-use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::mpsc::{Receiver, Sender};
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -20,15 +20,53 @@ fn sessions_map() -> &'static Mutex<Option<HashMap<String, String>>> {
     &SESSIONS
 }
 
-/// A live local terminal session: the spawned shell process plus channels for
-/// stdin (write) and stdout/stderr (read). Output is pumped by reader threads
-/// into `rx`; main.rs drains it on a timer and emits terminal:output events.
+/// A live local terminal session backed by a real pseudo-console (ConPTY on
+/// Windows via portable-pty), which provides echo, line editing and resize.
+/// Output is pumped by a reader thread into `rx`; main.rs drains it on a
+/// timer and emits terminal:output events. Input goes through `writer`.
 struct LocalSession {
-    child: Child,
-    stdin: Option<ChildStdin>,
+    child: Box<dyn Child + Send + Sync>,
+    writer: Option<Box<dyn Write + Send>>,
+    master: Option<Box<dyn MasterPty + Send>>,
     rx: Receiver<Vec<u8>>,
     request_id: Option<String>,
     closed: bool,
+    /// Trailing bytes that may be a partial cursor-position DSR query,
+    /// held back until the next drain completes the sequence.
+    dsr_pending: Vec<u8>,
+}
+
+/// Cursor-position DSR query emitted by console hosts (cmd/PowerShell) during
+/// startup. A terminal must answer `ESC[<row>;<col>R`; without an answer the
+/// shell stalls waiting for the cursor position (breaks headless tests and
+/// --local-check where no xterm.js frontend can respond).
+const DSR_QUERY: &[u8] = b"\x1b[6n";
+const DSR_REPLY: &[u8] = b"\x1b[1;1R";
+
+/// Scans a PTY output stream, removing DSR queries and holding back a
+/// possible trailing partial query. Returns (cleaned, answered, held_back).
+fn scan_dsr(stream: &[u8]) -> (Vec<u8>, bool, Vec<u8>) {
+    let mut cleaned = Vec::with_capacity(stream.len());
+    let mut i = 0;
+    let mut answered = false;
+    while i < stream.len() {
+        if stream[i..].starts_with(DSR_QUERY) {
+            answered = true;
+            i += DSR_QUERY.len();
+        } else {
+            cleaned.push(stream[i]);
+            i += 1;
+        }
+    }
+    let mut hold_start = cleaned.len();
+    for start in cleaned.len().saturating_sub(DSR_QUERY.len() - 1)..cleaned.len() {
+        if DSR_QUERY.starts_with(&cleaned[start..]) {
+            hold_start = start;
+            break;
+        }
+    }
+    let held = cleaned.split_off(hold_start);
+    (cleaned, answered, held)
 }
 
 /// Registry for real local terminal processes (session_id -> session).
@@ -291,47 +329,51 @@ pub async fn open_serial(port_name: &str, baud_rate: Option<u32>) -> Result<Stri
 }
 
 /// Opens a local terminal session (local_terminal_open): spawns the shell
-/// process with piped stdio and starts reader threads that pump stdout/stderr
-/// into the session output channel. Returns the session id.
+/// inside a real pseudo-console (ConPTY on Windows via portable-pty) and
+/// starts a reader thread that pumps the master output into the session
+/// channel. Returns the session id.
 pub fn open_local(
     command: &str,
     args: &[String],
     cwd: Option<&str>,
     request_id: Option<String>,
+    cols: u16,
+    rows: u16,
 ) -> Result<String, String> {
     if command.is_empty() {
         return Err("缺少本地终端命令。".to_string());
     }
-    let mut cmd = Command::new(command);
-    cmd.args(args);
-    cmd.stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
+    let system = native_pty_system();
+    let size = PtySize {
+        cols,
+        rows,
+        pixel_width: 0,
+        pixel_height: 0,
+    };
+    let pair = system
+        .openpty(size)
+        .map_err(|e| format!("本地终端 PTY 打开失败：{e}"))?;
+    let mut builder = CommandBuilder::new(command);
+    builder.args(args.iter().map(|arg| arg.as_str()));
     if let Some(cwd) = cwd {
         if !cwd.is_empty() {
-            cmd.current_dir(cwd);
+            builder.cwd(cwd);
         }
     }
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
-    }
-    let mut child = cmd
-        .spawn()
+    let child = pair
+        .slave
+        .spawn_command(builder)
         .map_err(|e| format!("启动 {command} 失败：{e}"))?;
-    let stdin = child.stdin.take();
-    let stdout = child
-        .stdout
-        .take()
-        .ok_or_else(|| "无法获取标准输出。".to_string())?;
-    let stderr = child
-        .stderr
-        .take()
-        .ok_or_else(|| "无法获取标准错误。".to_string())?;
+    let reader = pair
+        .master
+        .try_clone_reader()
+        .map_err(|e| format!("本地终端读取器创建失败：{e}"))?;
+    let writer = pair
+        .master
+        .take_writer()
+        .map_err(|e| format!("本地终端写入器创建失败：{e}"))?;
     let (tx, rx): (Sender<Vec<u8>>, Receiver<Vec<u8>>) = std::sync::mpsc::channel();
-    pump_stream(stdout, tx.clone());
-    pump_stream(stderr, tx);
+    pump_stream(reader, tx);
     let id = new_id("local");
     local_sessions_map()
         .lock()
@@ -341,10 +383,12 @@ pub fn open_local(
             id.clone(),
             LocalSession {
                 child,
-                stdin,
+                writer: Some(writer),
+                master: Some(pair.master),
                 rx,
                 request_id,
                 closed: false,
+                dsr_pending: Vec::new(),
             },
         );
     Ok(id)
@@ -368,7 +412,7 @@ fn pump_stream<R: Read + Send + 'static>(mut reader: R, tx: Sender<Vec<u8>>) {
     });
 }
 
-/// Writes bytes to a local session's stdin (terminal_write).
+/// Writes bytes to a local session's PTY master (terminal_write).
 pub fn local_write(session_id: &str, data: &[u8]) -> Result<(), String> {
     let mut guard = local_sessions_map().lock().expect("local sessions lock");
     let session = guard
@@ -378,27 +422,69 @@ pub fn local_write(session_id: &str, data: &[u8]) -> Result<(), String> {
     if session.closed {
         return Err("本地会话已关闭。".to_string());
     }
-    let stdin = session
-        .stdin
+    let writer = session
+        .writer
         .as_mut()
         .ok_or_else(|| "本地会话标准输入不可用。".to_string())?;
-    stdin
+    writer
         .write_all(data)
         .map_err(|e| format!("写入本地会话失败：{e}"))?;
-    stdin.flush().map_err(|e| format!("刷新本地会话失败：{e}"))
+    writer.flush().map_err(|e| format!("刷新本地会话失败：{e}"))
 }
 
-/// Drains all pending output chunks from a local session (WM_TIMER poll) and
-/// detects process exit.
+/// Resizes a local session's pseudo-console (terminal_resize).
+pub fn local_resize(session_id: &str, cols: u16, rows: u16) -> Result<(), String> {
+    let mut guard = local_sessions_map().lock().expect("local sessions lock");
+    let session = guard
+        .as_mut()
+        .and_then(|m| m.get_mut(session_id))
+        .ok_or_else(|| "本地会话不存在。".to_string())?;
+    let master = session
+        .master
+        .as_mut()
+        .ok_or_else(|| "本地会话控制台不可用。".to_string())?;
+    master
+        .resize(PtySize {
+            cols,
+            rows,
+            pixel_width: 0,
+            pixel_height: 0,
+        })
+        .map_err(|e| format!("本地终端尺寸同步失败：{e}"))
+}
+
+/// Drains all pending output chunks from a local session (WM_TIMER poll),
+/// auto-answers cursor-position DSR queries, and detects process exit.
 pub fn drain_local_output(session_id: &str) -> Vec<Vec<u8>> {
     let mut guard = local_sessions_map().lock().expect("local sessions lock");
     let Some(session) = guard.as_mut().and_then(|m| m.get_mut(session_id)) else {
         return Vec::new();
     };
-    let mut out = Vec::new();
+    let mut pending = Vec::new();
     while let Ok(chunk) = session.rx.try_recv() {
-        out.push(chunk);
+        pending.extend_from_slice(&chunk);
     }
+    if pending.is_empty() && session.dsr_pending.is_empty() {
+        if !session.closed && matches!(session.child.try_wait(), Ok(Some(_))) {
+            session.closed = true;
+        }
+        return Vec::new();
+    }
+    let mut stream = std::mem::take(&mut session.dsr_pending);
+    stream.extend_from_slice(&pending);
+    let (cleaned, answered, held) = scan_dsr(&stream);
+    session.dsr_pending = held;
+    if answered {
+        if let Some(writer) = session.writer.as_mut() {
+            let _ = writer.write_all(DSR_REPLY);
+            let _ = writer.flush();
+        }
+    }
+    let out = if cleaned.is_empty() {
+        Vec::new()
+    } else {
+        vec![cleaned]
+    };
     if !session.closed && matches!(session.child.try_wait(), Ok(Some(_))) {
         session.closed = true;
     }
@@ -430,7 +516,14 @@ pub fn close_session(session_id: &str) -> bool {
     let removed_local = removed.is_some();
     if let Some(mut session) = removed {
         let _ = session.child.kill();
-        let _ = session.child.wait();
+        // Bounded wait so a stuck child never blocks session shutdown.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        while std::time::Instant::now() < deadline {
+            if matches!(session.child.try_wait(), Ok(Some(_))) {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
     }
     drop(guard);
     let removed_other = sessions_map()
@@ -501,6 +594,8 @@ mod tests {
             &["/c".to_string(), "echo hello".to_string()],
             None,
             Some("req-1".to_string()),
+            80,
+            24,
         )
         .expect("open");
         assert!(id.starts_with("local-"));
@@ -512,7 +607,7 @@ mod tests {
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
         while std::time::Instant::now() < deadline {
             out.extend(drain_local_output(&id));
-            if local_session_info(&id).expect("info").1 {
+            if String::from_utf8_lossy(&out.concat()).contains("hello") {
                 break;
             }
             std::thread::sleep(std::time::Duration::from_millis(20));
@@ -560,6 +655,8 @@ mod tests {
             ],
             None,
             Some("e2e-prompt".to_string()),
+            80,
+            24,
         )
         .expect("open powershell");
         let mut output = Vec::new();
@@ -579,6 +676,50 @@ mod tests {
         assert!(
             text.contains("ONEHUB[") && text.contains("]> "),
             "prompt not rendered: {text:?}"
+        );
+    }
+
+    #[test]
+    fn local_conpty_echo_roundtrip() {
+        // A real pseudo-console (ConPTY) must echo typed input back, which a
+        // plain pipe never did (T059). Open cmd interactively, write a
+        // command, and assert the marker shows up in the PTY output.
+        let id = open_local("cmd.exe", &[], None, Some("e2e-pty".to_string()), 80, 24)
+            .expect("open cmd conpty");
+        let mut output = Vec::new();
+        let boot_deadline = std::time::Instant::now() + std::time::Duration::from_secs(6);
+        while std::time::Instant::now() < boot_deadline {
+            output.extend(drain_local_output(&id));
+            if local_session_info(&id)
+                .map(|(_, closed)| closed)
+                .unwrap_or(true)
+            {
+                break;
+            }
+            if String::from_utf8_lossy(&output.concat()).contains('>') {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        let _ = local_write(&id, b"echo onehub-pty-ok\r");
+        let mut combined = output.clone();
+        let reply_deadline = std::time::Instant::now() + std::time::Duration::from_secs(8);
+        loop {
+            combined.extend(drain_local_output(&id));
+            let combined_text = combined.concat();
+            if String::from_utf8_lossy(&combined_text).contains("onehub-pty-ok") {
+                break;
+            }
+            if std::time::Instant::now() >= reply_deadline {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        let _ = close_session(&id);
+        let text = String::from_utf8_lossy(&combined.concat()).to_string();
+        assert!(
+            text.contains("onehub-pty-ok"),
+            "conpty echo roundtrip failed: {text:?}"
         );
     }
 

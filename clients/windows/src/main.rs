@@ -1638,6 +1638,8 @@ fn local_check() {
         &["/c".to_string(), "echo onehub-local-ok".to_string()],
         None,
         Some("e2e-req".to_string()),
+        80,
+        24,
     )
     .expect("open");
     let mut output = Vec::new();
@@ -1669,6 +1671,8 @@ fn local_check() {
         ],
         None,
         Some("e2e-prompt-check".to_string()),
+        80,
+        24,
     )
     .expect("open powershell");
     let mut ps_output = Vec::new();
@@ -2000,7 +2004,8 @@ fn command_check() {
     ));
     let _ = std::fs::create_dir_all(&dir);
     let mut store = Store::open(&dir.join("cmd.db")).expect("store");
-    let id = ls::open_local("cmd.exe", &[], None, Some("cmd-check".to_string())).expect("open");
+    let id =
+        ls::open_local("cmd.exe", &[], None, Some("cmd-check".to_string()), 80, 24).expect("open");
     let result = send_command_to_terminal(
         &mut store,
         &serde_json::json!({
@@ -4110,8 +4115,25 @@ fn handle_local_session_commands(
                     }
                 }
             }
-            local_sessions::open_local(&command, &effective_args, cwd.as_deref(), request_id)
-                .map(serde_json::Value::String)
+            let cols = request
+                .get("cols")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(80)
+                .clamp(1, 500) as u16;
+            let rows = request
+                .get("rows")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(24)
+                .clamp(1, 500) as u16;
+            local_sessions::open_local(
+                &command,
+                &effective_args,
+                cwd.as_deref(),
+                request_id,
+                cols,
+                rows,
+            )
+            .map(serde_json::Value::String)
         }
         "telnet_terminal_open" => {
             let host = request
@@ -5662,7 +5684,7 @@ fn on_web_message(hwnd: HWND, message: &str) -> Option<String> {
         let reply = serde_json::json!({ "kind": "invoke-reply", "requestId": request_id, "payload": result });
         return Some(reply.to_string());
     }
-    if cmd == "terminal_write" || cmd == "terminal_close" {
+    if cmd == "terminal_write" || cmd == "terminal_close" || cmd == "terminal_resize" {
         let payload = parsed
             .get("payload")
             .cloned()
@@ -5705,6 +5727,27 @@ fn on_web_message(hwnd: HWND, message: &str) -> Option<String> {
                 let reply = serde_json::json!({ "kind": "invoke-reply", "requestId": request_id, "payload": reply_payload });
                 return Some(reply.to_string());
             }
+            if cmd == "terminal_resize" {
+                let cols = req
+                    .get("cols")
+                    .and_then(serde_json::Value::as_u64)
+                    .unwrap_or(80)
+                    .clamp(1, 500) as u16;
+                let rows = req
+                    .get("rows")
+                    .and_then(serde_json::Value::as_u64)
+                    .unwrap_or(24)
+                    .clamp(1, 500) as u16;
+                let result = local_sessions::local_resize(&session_id, cols, rows);
+                let reply_payload = match result {
+                    Ok(_) => serde_json::Value::Null,
+                    Err(message) => serde_json::json!({
+                        "error": { "code": "terminal_resize_failed", "message": message, "recoverable": true }
+                    }),
+                };
+                let reply = serde_json::json!({ "kind": "invoke-reply", "requestId": request_id, "payload": reply_payload });
+                return Some(reply.to_string());
+            }
             let _ = local_sessions::close_session(&session_id);
             let reply = serde_json::json!({ "kind": "invoke-reply", "requestId": request_id, "payload": serde_json::Value::Null });
             return Some(reply.to_string());
@@ -5735,9 +5778,13 @@ fn on_web_message(hwnd: HWND, message: &str) -> Option<String> {
                 let reply = serde_json::json!({ "kind": "invoke-reply", "requestId": request_id, "payload": reply_payload });
                 return Some(reply.to_string());
             }
-            let _ = ssh_terminal::close(&session_id);
-            let reply = serde_json::json!({ "kind": "invoke-reply", "requestId": request_id, "payload": serde_json::Value::Null });
-            return Some(reply.to_string());
+            if cmd == "terminal_close" {
+                let _ = ssh_terminal::close(&session_id);
+                let reply = serde_json::json!({ "kind": "invoke-reply", "requestId": request_id, "payload": serde_json::Value::Null });
+                return Some(reply.to_string());
+            }
+            // terminal_resize for SSH sessions falls through to the bridge
+            // model resize (SSH PTY resize is out of scope for this pass).
         }
     }
 

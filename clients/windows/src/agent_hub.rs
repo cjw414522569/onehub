@@ -85,7 +85,7 @@ pub fn agent_start(kind: &str) -> Result<Value, String> {
             }
         }
     }
-    let id = crate::local_sessions::open_local(&command, &effective_args, None, None)?;
+    let id = crate::local_sessions::open_local(&command, &effective_args, None, None, 80, 24)?;
     Ok(json!({ "id": id, "kind": kind, "status": "running" }))
 }
 

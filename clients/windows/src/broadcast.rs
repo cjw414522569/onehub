@@ -88,14 +88,27 @@ mod tests {
             &[],
             None,
             Some("req-broadcast".to_string()),
+            80,
+            24,
         )
         .expect("open local");
         let ids = active_session_ids();
         assert!(ids.contains(&id), "got {ids:?}");
         let result = broadcast_write("REM broadcast\n", "");
-        assert_eq!(result["targets"], 1, "got {result:?}");
-        let ok = result["results"][0]["ok"].as_bool().unwrap_or(false);
-        assert!(ok, "got {result:?}");
+        // Other tests may keep sessions open in the shared registry, so only
+        // require that our own session received the write.
+        let targets = result["targets"].as_u64().unwrap_or(0);
+        assert!(targets >= 1, "got {result:?}");
+        let own_ok = result["results"]
+            .as_array()
+            .map(|arr| {
+                arr.iter().any(|entry| {
+                    entry["session_id"].as_str() == Some(id.as_str())
+                        && entry["ok"].as_bool() == Some(true)
+                })
+            })
+            .unwrap_or(false);
+        assert!(own_ok, "got {result:?}");
         let _ = crate::local_sessions::close_session(&id);
         assert!(!active_session_ids().contains(&id));
     }

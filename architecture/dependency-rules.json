@@ -419,6 +419,7 @@
         "mysql-async",
         "odbc",
         "oracle",
+        "portable-pty",
         "redis",
         "rusqlite",
         "russh",
