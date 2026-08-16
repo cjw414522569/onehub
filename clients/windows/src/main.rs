@@ -19,6 +19,7 @@
 #![recursion_limit = "256"]
 
 use abi_c::{BatchItem, EventBatch, EVENT_BATCH_VERSION};
+use clients_windows::agent_hub;
 use clients_windows::ai_assistant;
 use clients_windows::broadcast;
 use clients_windows::db;
@@ -208,6 +209,10 @@ fn main() {
     }
     if std::env::args().any(|argument| argument == "--webdav-check") {
         webdav_check();
+        return;
+    }
+    if std::env::args().any(|argument| argument == "--agent-check") {
+        agent_check();
         return;
     }
     if std::env::args().any(|argument| argument == "--command-check") {
@@ -1754,6 +1759,25 @@ fn task_check() {
     });
     println!("{}", serde_json::to_string(&result).expect("json"));
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// End-to-end agent hub check (--agent-check): lists agents, starts a cmd
+/// agent, lists the project files, stops the agent (T047).
+fn agent_check() {
+    use clients_windows::agent_hub as ah;
+    let agents = ah::agent_list();
+    assert!(agents.as_array().map(|a| !a.is_empty()).unwrap_or(false));
+    let started = ah::agent_start("cmd").expect("start agent");
+    let id = started["id"].as_str().unwrap_or("").to_string();
+    assert!(id.starts_with("local-"));
+    let files = ah::agent_project_files(&serde_json::json!({})).expect("project files");
+    assert!(files["root"]
+        .as_str()
+        .map(|s| !s.is_empty())
+        .unwrap_or(false));
+    let stopped = ah::agent_stop(&id);
+    assert_eq!(stopped["stopped"], true);
+    println!("[agent-check] PASS");
 }
 
 /// End-to-end command-library check (--command-check): opens a local session,
@@ -5012,6 +5036,43 @@ fn on_web_message(hwnd: HWND, message: &str) -> Option<String> {
             Ok(session_id) => serde_json::Value::String(session_id),
             Err(message) => serde_json::json!({
                 "error": { "code": "terminal_connect_failed", "message": message, "recoverable": true }
+            }),
+        };
+        let reply = serde_json::json!({ "kind": "invoke-reply", "requestId": request_id, "payload": reply_payload });
+        return Some(reply.to_string());
+    }
+
+    if cmd == "agent_list"
+        || cmd == "agent_start"
+        || cmd == "agent_stop"
+        || cmd == "agent_project_files"
+    {
+        let payload = parsed
+            .get("payload")
+            .cloned()
+            .unwrap_or(serde_json::Value::Null);
+        let req = payload.get("request").cloned().unwrap_or(payload.clone());
+        let result: Result<serde_json::Value, String> = if cmd == "agent_list" {
+            Ok(agent_hub::agent_list())
+        } else if cmd == "agent_start" {
+            let kind = req
+                .get("kind")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("cmd");
+            agent_hub::agent_start(kind)
+        } else if cmd == "agent_stop" {
+            let session_id = req
+                .get("session_id")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            Ok(agent_hub::agent_stop(session_id))
+        } else {
+            agent_hub::agent_project_files(&req)
+        };
+        let reply_payload = match result {
+            Ok(value) => value,
+            Err(message) => serde_json::json!({
+                "error": { "code": "agent_failed", "message": message, "recoverable": true }
             }),
         };
         let reply = serde_json::json!({ "kind": "invoke-reply", "requestId": request_id, "payload": reply_payload });

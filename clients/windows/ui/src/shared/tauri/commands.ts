@@ -34,6 +34,12 @@ import type {
   NoteSaveResult,
 } from "../../features/notes/notesTypes";
 import type {
+  AgentInfo,
+  AgentProjectFilesResult,
+  AgentStartResult,
+  AgentStopResult,
+} from "../../features/agent/agentTypes";
+import type {
   ConnectionRuntimeCredentialRequest,
   ConnectionStepResult,
   CredentialProfile,
@@ -1469,6 +1475,22 @@ export function commandSendToTerminal(sessionId: string, command: string) {
   return invoke<CommandSendToTerminalResult>("command_send_to_terminal", {
     request: { session_id: sessionId, command },
   });
+}
+
+export function agentList() {
+  return invoke<AgentInfo[]>("agent_list");
+}
+
+export function agentStart(kind: string) {
+  return invoke<AgentStartResult>("agent_start", { request: { kind } });
+}
+
+export function agentStop(sessionId: string) {
+  return invoke<AgentStopResult>("agent_stop", { request: { session_id: sessionId } });
+}
+
+export function agentProjectFiles(path?: string, relative?: string) {
+  return invoke<AgentProjectFilesResult>("agent_project_files", { request: { path, relative } });
 }
 
 export function dbObjectList(sessionId: string, kind?: string) {
