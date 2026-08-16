@@ -20,6 +20,7 @@
 
 use abi_c::{BatchItem, EventBatch, EVENT_BATCH_VERSION};
 use clients_windows::ai_assistant;
+use clients_windows::broadcast;
 use clients_windows::db;
 use clients_windows::docker_tools;
 use clients_windows::local_sessions;
@@ -4855,6 +4856,37 @@ fn on_web_message(hwnd: HWND, message: &str) -> Option<String> {
     }
 
     // Route terminal I/O for real local terminal sessions (Fix B).
+    if cmd == "terminal_set_broadcast"
+        || cmd == "terminal_broadcast_status"
+        || cmd == "terminal_broadcast"
+    {
+        let payload = parsed
+            .get("payload")
+            .cloned()
+            .unwrap_or(serde_json::Value::Null);
+        let req = payload.get("request").cloned().unwrap_or(payload.clone());
+        let result = if cmd == "terminal_set_broadcast" {
+            let enabled = req
+                .get("enabled")
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or(false);
+            broadcast::set_broadcast(enabled)
+        } else if cmd == "terminal_broadcast_status" {
+            broadcast::broadcast_status()
+        } else {
+            let input = req
+                .get("input")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            let exclude = req
+                .get("exclude")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            broadcast::broadcast_write(input, exclude)
+        };
+        let reply = serde_json::json!({ "kind": "invoke-reply", "requestId": request_id, "payload": result });
+        return Some(reply.to_string());
+    }
     if cmd == "terminal_write" || cmd == "terminal_close" {
         let payload = parsed
             .get("payload")
@@ -4881,6 +4913,14 @@ fn on_web_message(hwnd: HWND, message: &str) -> Option<String> {
                     .as_bytes()
                     .to_vec();
                 let result = local_sessions::local_write(&session_id, &data);
+                if result.is_ok() && broadcast::broadcast_enabled() {
+                    let _ = broadcast::broadcast_write(
+                        req.get("data")
+                            .and_then(serde_json::Value::as_str)
+                            .unwrap_or(""),
+                        &session_id,
+                    );
+                }
                 let reply_payload = match result {
                     Ok(_) => serde_json::Value::Null,
                     Err(message) => serde_json::json!({
@@ -4903,6 +4943,14 @@ fn on_web_message(hwnd: HWND, message: &str) -> Option<String> {
                     .as_bytes()
                     .to_vec();
                 let result = ssh_terminal::write(&session_id, &data);
+                if result.is_ok() && broadcast::broadcast_enabled() {
+                    let _ = broadcast::broadcast_write(
+                        req.get("data")
+                            .and_then(serde_json::Value::as_str)
+                            .unwrap_or(""),
+                        &session_id,
+                    );
+                }
                 let reply_payload = match result {
                     Ok(_) => serde_json::Value::Null,
                     Err(message) => serde_json::json!({

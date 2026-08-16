@@ -1421,6 +1421,27 @@ export function notesExport(name: string, format: string, html: string, text: st
   });
 }
 
+export interface TerminalBroadcastResult {
+  enabled?: boolean;
+  input?: string;
+  targets?: number;
+  results?: { session_id: string; ok: boolean }[];
+}
+
+export function terminalSetBroadcast(enabled: boolean) {
+  return invoke<TerminalBroadcastResult>("terminal_set_broadcast", { request: { enabled } });
+}
+
+export function terminalBroadcastStatus() {
+  return invoke<TerminalBroadcastResult>("terminal_broadcast_status");
+}
+
+export function terminalBroadcast(input: string, exclude?: string) {
+  return invoke<TerminalBroadcastResult>("terminal_broadcast", {
+    request: { input, exclude },
+  });
+}
+
 export function dbObjectList(sessionId: string, kind?: string) {
   return invoke<DbObjectInfo[]>("db_object_list", { request: { session_id: sessionId, kind } });
 }

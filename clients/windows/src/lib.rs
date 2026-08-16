@@ -8,6 +8,7 @@
 //! keystrokes, so every GUI behavior is verifiable without opening a window.
 
 pub mod ai_assistant;
+pub mod broadcast;
 pub mod db;
 pub mod docker_tools;
 pub mod local_sessions;

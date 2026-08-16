@@ -44,6 +44,7 @@ import {
   Pencil,
   Play,
   Plus,
+  Radio,
   RefreshCw,
   Search,
   Send,
@@ -58,6 +59,7 @@ import { DatabasePanel } from "../database/DatabasePanel";
 import { RedisPanel } from "../database/RedisPanel";
 import { MongoPanel } from "../database/MongoPanel";
 import { NotesPanel } from "../notes/NotesPanel";
+import { terminalBroadcast, terminalSetBroadcast } from "../../shared/tauri/commands";
 
 import { ConnectionPane } from "../connections/ConnectionPane";
 import { ConnectionSystemLogo } from "../connections/ConnectionSystemLogo";
@@ -11786,6 +11788,8 @@ function ConnectionHome({
   const [redisOpen, setRedisOpen] = useState(false);
   const [mongoOpen, setMongoOpen] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
+  const [broadcastOn, setBroadcastOn] = useState(false);
+  const [broadcastInput, setBroadcastInput] = useState("");
   const [latencyByConnectionId, setLatencyByConnectionId] = useState<Record<string, LatencyProbeState>>({});
   const latencyProbeRunRef = useRef(0);
   const rows = useMemo(() => {
@@ -11964,6 +11968,43 @@ function ConnectionHome({
               <span style={{ fontSize: 10 }}>笔记</span>
             </button>
           </Tooltip>
+          <Tooltip label="终端广播模式：开启后输入会同步到所有终端标签">
+            <button
+              className="repository-icon-button"
+              type="button"
+              aria-label="终端广播模式"
+              aria-pressed={broadcastOn}
+              onClick={() => void toggleBroadcast()}
+              style={broadcastOn ? { color: "#ffffff", background: "#2374c6" } : undefined}
+            >
+              <Radio className="ui-icon" aria-hidden="true" />
+              <span style={{ fontSize: 10 }}>广播</span>
+            </button>
+          </Tooltip>
+          {broadcastOn ? (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+              <input
+                aria-label="广播输入"
+                placeholder="发送到全部终端…"
+                value={broadcastInput}
+                onChange={(event) => setBroadcastInput(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    void sendBroadcast();
+                  }
+                }}
+                style={{ width: 140, fontSize: 12, padding: "2px 6px" }}
+              />
+              <button
+                type="button"
+                onClick={() => void sendBroadcast()}
+                disabled={!broadcastInput.trim()}
+                style={{ fontSize: 12, padding: "2px 8px" }}
+              >
+                发送到全部
+              </button>
+            </span>
+          ) : null}
           <Tooltip label="刷新连接并探测延迟">
             <button
               className="repository-icon-button"
@@ -12175,6 +12216,29 @@ function ConnectionHome({
       />
     </section>
   );
+
+  const toggleBroadcast = async () => {
+    const next = !broadcastOn;
+    try {
+      const result = await terminalSetBroadcast(next);
+      setBroadcastOn(Boolean(result.enabled));
+    } catch {
+      setBroadcastOn(false);
+    }
+  };
+
+  const sendBroadcast = async () => {
+    const input = broadcastInput;
+    if (!input.trim()) {
+      return;
+    }
+    try {
+      await terminalBroadcast(input);
+      setBroadcastInput("");
+    } catch {
+      // bridge unavailable (browser preview)
+    }
+  };
 
   async function refreshConnectionsAndLatency() {
     latencyProbeRunRef.current += 1;
