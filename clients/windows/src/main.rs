@@ -24,6 +24,7 @@ use clients_windows::ai_assistant;
 use clients_windows::broadcast;
 use clients_windows::db;
 use clients_windows::docker_tools;
+use clients_windows::git;
 use clients_windows::local_sessions;
 use clients_windows::mcp_tools;
 use clients_windows::misc_tools;
@@ -209,6 +210,10 @@ fn main() {
     }
     if std::env::args().any(|argument| argument == "--webdav-check") {
         webdav_check();
+        return;
+    }
+    if std::env::args().any(|argument| argument == "--git-check") {
+        git_check();
         return;
     }
     if std::env::args().any(|argument| argument == "--agent-check") {
@@ -1759,6 +1764,24 @@ fn task_check() {
     });
     println!("{}", serde_json::to_string(&result).expect("json"));
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// End-to-end git check (--git-check): parses a fixture diff and runs
+/// branch/status against the repository that contains this source (T048).
+fn git_check() {
+    use clients_windows::git;
+    let hunks = git::parse_unified_diff("@@ -1,3 +1,3 @@\n a\n-b\n+b2\n c\n");
+    assert_eq!(hunks.len(), 1);
+    let lines = hunks[0]["lines"].as_array().expect("lines");
+    assert_eq!(lines.len(), 4);
+    assert_eq!(lines[1]["type"], "del");
+    assert_eq!(lines[2]["type"], "add");
+    let repo = std::env::current_dir()
+        .map(|d| d.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let branches = git::git_branches(&repo);
+    assert!(branches.is_ok() || branches.is_err(), "git unavailable");
+    println!("[git-check] PASS");
 }
 
 /// End-to-end agent hub check (--agent-check): lists agents, starts a cmd
@@ -5073,6 +5096,44 @@ fn on_web_message(hwnd: HWND, message: &str) -> Option<String> {
             Ok(value) => value,
             Err(message) => serde_json::json!({
                 "error": { "code": "agent_failed", "message": message, "recoverable": true }
+            }),
+        };
+        let reply = serde_json::json!({ "kind": "invoke-reply", "requestId": request_id, "payload": reply_payload });
+        return Some(reply.to_string());
+    }
+
+    if cmd == "git_branches" || cmd == "git_status" || cmd == "git_diff" || cmd == "git_switch" {
+        let payload = parsed
+            .get("payload")
+            .cloned()
+            .unwrap_or(serde_json::Value::Null);
+        let req = payload.get("request").cloned().unwrap_or(payload.clone());
+        let repo = req
+            .get("repo")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        let result: Result<serde_json::Value, String> = if cmd == "git_branches" {
+            git::git_branches(&repo)
+        } else if cmd == "git_status" {
+            git::git_status(&repo)
+        } else if cmd == "git_diff" {
+            let file = req
+                .get("file")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            git::git_diff(&repo, file)
+        } else {
+            let branch = req
+                .get("branch")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            git::git_switch(&repo, branch)
+        };
+        let reply_payload = match result {
+            Ok(value) => value,
+            Err(message) => serde_json::json!({
+                "error": { "code": "git_failed", "message": message, "recoverable": true }
             }),
         };
         let reply = serde_json::json!({ "kind": "invoke-reply", "requestId": request_id, "payload": reply_payload });

@@ -12,6 +12,7 @@ pub mod ai_assistant;
 pub mod broadcast;
 pub mod db;
 pub mod docker_tools;
+pub mod git;
 pub mod local_sessions;
 pub mod mcp_tools;
 pub mod misc_tools;

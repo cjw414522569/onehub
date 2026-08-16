@@ -46,6 +46,7 @@ import {
   Plus,
   Bot,
   Copy,
+  GitBranch,
   Radio,
   RefreshCw,
   Search,
@@ -62,6 +63,7 @@ import { RedisPanel } from "../database/RedisPanel";
 import { MongoPanel } from "../database/MongoPanel";
 import { NotesPanel } from "../notes/NotesPanel";
 import { AgentHubPanel } from "../agent/AgentHubPanel";
+import { GitPanel } from "../git/GitPanel";
 import { terminalBroadcast, terminalSetBroadcast } from "../../shared/tauri/commands";
 import { remoteFileCopyAcross } from "../../shared/tauri/commands";
 import { commandSendToTerminal } from "../../shared/tauri/commands";
@@ -11804,6 +11806,7 @@ function ConnectionHome({
   const [copyTargetPassword, setCopyTargetPassword] = useState("");
   const [copyMessage, setCopyMessage] = useState("");
   const [agentHubOpen, setAgentHubOpen] = useState(false);
+  const [gitOpen, setGitOpen] = useState(false);
   const [copyBusy, setCopyBusy] = useState(false);
   const [latencyByConnectionId, setLatencyByConnectionId] = useState<Record<string, LatencyProbeState>>({});
   const latencyProbeRunRef = useRef(0);
@@ -12005,6 +12008,17 @@ function ConnectionHome({
               <span style={{ fontSize: 10 }}>Agent</span>
             </button>
           </Tooltip>
+          <Tooltip label="Git 分支与 Diff">
+            <button
+              className="repository-icon-button"
+              type="button"
+              aria-label="Git 分支与 Diff"
+              onClick={() => setGitOpen(true)}
+            >
+              <GitBranch className="ui-icon" aria-hidden="true" />
+              <span style={{ fontSize: 10 }}>Git</span>
+            </button>
+          </Tooltip>
           <Tooltip label="终端广播模式：开启后输入会同步到所有终端标签">
             <button
               className="repository-icon-button"
@@ -12174,6 +12188,8 @@ function ConnectionHome({
         <NotesPanel open={notesOpen} onClose={() => setNotesOpen(false)} />
 
         <AgentHubPanel open={agentHubOpen} onClose={() => setAgentHubOpen(false)} />
+
+        <GitPanel open={gitOpen} onClose={() => setGitOpen(false)} />
 
       <div className="connection-home-body">
         <section className="connection-board" aria-label="连接表格">

@@ -40,6 +40,12 @@ import type {
   AgentStopResult,
 } from "../../features/agent/agentTypes";
 import type {
+  GitBranchesResult,
+  GitDiffResult,
+  GitStatusResult,
+  GitSwitchResult,
+} from "../../features/git/gitTypes";
+import type {
   ConnectionRuntimeCredentialRequest,
   ConnectionStepResult,
   CredentialProfile,
@@ -1491,6 +1497,22 @@ export function agentStop(sessionId: string) {
 
 export function agentProjectFiles(path?: string, relative?: string) {
   return invoke<AgentProjectFilesResult>("agent_project_files", { request: { path, relative } });
+}
+
+export function gitBranches(repo: string) {
+  return invoke<GitBranchesResult>("git_branches", { request: { repo } });
+}
+
+export function gitStatus(repo: string) {
+  return invoke<GitStatusResult>("git_status", { request: { repo } });
+}
+
+export function gitDiff(repo: string, file: string) {
+  return invoke<GitDiffResult>("git_diff", { request: { repo, file } });
+}
+
+export function gitSwitch(repo: string, branch: string) {
+  return invoke<GitSwitchResult>("git_switch", { request: { repo, branch } });
 }
 
 export function dbObjectList(sessionId: string, kind?: string) {
