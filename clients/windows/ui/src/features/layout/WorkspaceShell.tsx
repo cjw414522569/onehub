@@ -62,6 +62,7 @@ import { MongoPanel } from "../database/MongoPanel";
 import { NotesPanel } from "../notes/NotesPanel";
 import { terminalBroadcast, terminalSetBroadcast } from "../../shared/tauri/commands";
 import { remoteFileCopyAcross } from "../../shared/tauri/commands";
+import { commandSendToTerminal } from "../../shared/tauri/commands";
 
 import { ConnectionPane } from "../connections/ConnectionPane";
 import { ConnectionSystemLogo } from "../connections/ConnectionSystemLogo";
@@ -6341,7 +6342,7 @@ export function WorkspaceShell() {
       return;
     }
 
-    const payload = appendEnter ? `${command}\r` : command;
+
 
     setCommandSenderDeliveryByKey((deliveryByKey) => {
       const nextDeliveryByKey = { ...deliveryByKey };
@@ -6357,7 +6358,7 @@ export function WorkspaceShell() {
         if (!hasTauriRuntime()) {
           throw new Error("当前环境无法写入终端输入流。");
         }
-        await terminalWrite(target.sessionId, payload);
+        await commandSendToTerminal(target.sessionId, historyCommand);
         setCommandSenderDeliveryByKey((deliveryByKey) => ({
           ...deliveryByKey,
           [target.key]: { status: "sent" },

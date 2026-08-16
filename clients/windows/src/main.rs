@@ -210,6 +210,10 @@ fn main() {
         webdav_check();
         return;
     }
+    if std::env::args().any(|argument| argument == "--command-check") {
+        command_check();
+        return;
+    }
     if std::env::args().any(|argument| argument == "--export-check") {
         export_check();
         return;
@@ -1750,6 +1754,45 @@ fn task_check() {
     });
     println!("{}", serde_json::to_string(&result).expect("json"));
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// End-to-end command-library check (--command-check): opens a local session,
+/// sends a command line through command_send_to_terminal and verifies history
+/// recording (T046).
+fn command_check() {
+    use clients_windows::local_sessions as ls;
+    use clients_windows::store::Store;
+    let dir = std::env::temp_dir().join(format!(
+        "command-check-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    ));
+    let _ = std::fs::create_dir_all(&dir);
+    let mut store = Store::open(&dir.join("cmd.db")).expect("store");
+    let id = ls::open_local("cmd.exe", &[], None, Some("cmd-check".to_string())).expect("open");
+    let result = send_command_to_terminal(
+        &mut store,
+        &serde_json::json!({
+            "session_id": id,
+            "command": "REM onehub-cmd-check",
+        }),
+    );
+    assert_eq!(result["session_id"], id);
+    assert_eq!(result["sent"], true, "got {result:?}");
+    assert_eq!(result["recorded"], true, "got {result:?}");
+    let history = store.list_command_history().expect("history");
+    assert!(
+        history
+            .iter()
+            .any(|entry| entry["command"].as_str().unwrap_or("") == "REM onehub-cmd-check"),
+        "history missing command: {history:?}"
+    );
+    let _ = ls::close_session(&id);
+    let _ = std::fs::remove_dir_all(&dir);
+    println!("[command-check] PASS");
 }
 
 /// End-to-end export check (--export-check): generates HTML/PDF/DOCX for a
@@ -4545,6 +4588,39 @@ fn handle_vault_commands(
 /// T001): connection/credential/command-snippet/command-history CRUD. Returns
 /// the reply JSON when the command is persisted (store available), or None so
 /// the caller falls through to the pure bridge (headless/no-store mode).
+/// Sends a command line to a terminal session and records it in history
+/// (command_send_to_terminal). Returns per-leg results for auditability.
+fn send_command_to_terminal(
+    store: &mut store::Store,
+    request: &serde_json::Value,
+) -> serde_json::Value {
+    let session_id = request
+        .get("session_id")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    let command = request
+        .get("command")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    let mut sent = false;
+    if !command.trim().is_empty() {
+        let payload_bytes = format!("{command}\r").into_bytes();
+        if local_sessions::local_session_info(&session_id).is_some() {
+            sent = local_sessions::local_write(&session_id, &payload_bytes).is_ok();
+        } else if ssh_terminal::session_info(&session_id).is_some() {
+            sent = ssh_terminal::write(&session_id, &payload_bytes).is_ok();
+        }
+    }
+    let recorded = store.record_command_history(request).is_ok();
+    serde_json::json!({
+        "session_id": session_id,
+        "sent": sent,
+        "recorded": recorded,
+    })
+}
+
 fn handle_persisted_commands(
     state: &mut AppState,
     cmd: &str,
@@ -4694,6 +4770,10 @@ fn handle_persisted_commands(
         "command_history_record" => {
             let request = payload.get("request").cloned().unwrap_or(payload.clone());
             store.record_command_history(&request).ok()?
+        }
+        "command_send_to_terminal" => {
+            let request = payload.get("request").cloned().unwrap_or(payload.clone());
+            send_command_to_terminal(store, &request)
         }
         "command_history_delete" => {
             let id = payload

@@ -1459,6 +1459,18 @@ export function remoteFileCopyAcross(
   });
 }
 
+export interface CommandSendToTerminalResult {
+  session_id: string;
+  sent: boolean;
+  recorded: boolean;
+}
+
+export function commandSendToTerminal(sessionId: string, command: string) {
+  return invoke<CommandSendToTerminalResult>("command_send_to_terminal", {
+    request: { session_id: sessionId, command },
+  });
+}
+
 export function dbObjectList(sessionId: string, kind?: string) {
   return invoke<DbObjectInfo[]>("db_object_list", { request: { session_id: sessionId, kind } });
 }
