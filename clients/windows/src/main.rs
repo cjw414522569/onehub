@@ -1616,6 +1616,45 @@ fn local_check() {
     }
     let output_text = String::from_utf8_lossy(&output.concat()).to_string();
     let closed = ls::close_session(&id);
+
+    // T044 shell integration: a one-shot PowerShell that defines the prompt
+    // and invokes it must render the ONEHUB[<cwd>][<exit>]> marker.
+    let ps_command = "function global:prompt { 'ONEHUB[' + (Get-Location).Path + '][' + $LASTEXITCODE + ']> ' }; [Console]::Out.WriteLine((prompt))";
+    let ps_id = ls::open_local(
+        "powershell.exe",
+        &[
+            "-NoProfile".to_string(),
+            "-NoLogo".to_string(),
+            "-NonInteractive".to_string(),
+            "-Command".to_string(),
+            ps_command.to_string(),
+        ],
+        None,
+        Some("e2e-prompt-check".to_string()),
+    )
+    .expect("open powershell");
+    let mut ps_output = Vec::new();
+    let ps_deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while std::time::Instant::now() < ps_deadline {
+        ps_output.extend(ls::drain_local_output(&ps_id));
+        if ls::local_session_info(&ps_id)
+            .map(|(_, closed)| closed)
+            .unwrap_or(true)
+        {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(30));
+    }
+    let _ = ls::close_session(&ps_id);
+    let prompt_text = String::from_utf8_lossy(&ps_output.concat()).to_string();
+    let prompt_args = ls::shell_integration_args("powershell");
+    let cmd_prompt_args = ls::shell_integration_args("cmd");
+    let shell_prompt_ok = prompt_text.contains(ls::SHELL_PROMPT_MARKER)
+        && prompt_text.contains("]> ")
+        && prompt_args.iter().any(|a| a.contains("global:prompt"))
+        && cmd_prompt_args
+            .iter()
+            .any(|a| a.starts_with("PROMPT ONEHUB["));
     let profile_kinds: Vec<String> = profiles
         .as_array()
         .expect("arr")
@@ -1631,6 +1670,8 @@ fn local_check() {
         "local_output_ok": output_text.contains("onehub-local-ok"),
         "local_output": output_text.chars().take(80).collect::<String>(),
         "close_ok": closed,
+        "shell_prompt_ok": shell_prompt_ok,
+        "prompt_sample": prompt_text.chars().take(80).collect::<String>(),
     });
     println!("{}", serde_json::to_string(&result).expect("json"));
 }
@@ -3723,7 +3764,22 @@ fn handle_local_session_commands(
                 .get("request_id")
                 .and_then(serde_json::Value::as_str)
                 .map(str::to_string);
-            local_sessions::open_local(&command, &args, cwd.as_deref(), request_id)
+            let mut effective_args = args;
+            if effective_args.is_empty() {
+                // T044 shell integration: plain shell launches get a prompt
+                // that shows the current directory and last exit code.
+                let kind = profile
+                    .get("kind")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("")
+                    .to_string();
+                for arg in local_sessions::shell_integration_args(&kind) {
+                    if !effective_args.contains(&arg) {
+                        effective_args.push(arg);
+                    }
+                }
+            }
+            local_sessions::open_local(&command, &effective_args, cwd.as_deref(), request_id)
                 .map(serde_json::Value::String)
         }
         "telnet_terminal_open" => {

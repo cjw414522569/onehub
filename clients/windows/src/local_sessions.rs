@@ -109,6 +109,32 @@ pub fn list_local_profiles() -> serde_json::Value {
     serde_json::json!(profiles)
 }
 
+/// Builds shell-specific startup arguments that customize the interactive
+/// prompt to show the current directory and (where the shell supports it) the
+/// last exit code. PowerShell renders `ONEHUB[<cwd>][<exit>]> `; CMD renders
+/// `ONEHUB[<drive>\<path>]>` (CMD's PROMPT has no exit-code placeholder, so the
+/// exit code is shown only by PowerShell). Git Bash/WSL keep their defaults.
+pub fn shell_integration_args(kind: &str) -> Vec<String> {
+    match kind {
+        "powershell" | "pwsh" => vec![
+            "-NoLogo".to_string(),
+            "-NoExit".to_string(),
+            "-Command".to_string(),
+            "function global:prompt { 'ONEHUB[' + (Get-Location).Path + '][' + $LASTEXITCODE + ']> ' }"
+                .to_string(),
+        ],
+        "cmd" => vec![
+            "/Q".to_string(),
+            "/K".to_string(),
+            "PROMPT ONEHUB[$P]$G".to_string(),
+        ],
+        _ => Vec::new(),
+    }
+}
+
+/// The prompt marker used by shell integration assertions (--local-check).
+pub const SHELL_PROMPT_MARKER: &str = "ONEHUB[";
+
 /// Enumerates serial (COM) ports (serial_list_ports). Runs `mode` and parses
 /// the "COMx" device lines (no unsafe FFI needed in the forbid(unsafe_code)
 /// library).
@@ -400,6 +426,61 @@ mod tests {
         );
         assert!(close_session(&id));
         assert!(!close_session(&id));
+    }
+
+    #[test]
+    fn shell_integration_args_set_prompt() {
+        let ps = shell_integration_args("powershell");
+        assert!(ps.iter().any(|a| a == "-NoExit"));
+        assert!(
+            ps.iter().any(|a| a.contains("global:prompt")
+                && a.contains("ONEHUB[")
+                && a.contains("$LASTEXITCODE")),
+            "got {ps:?}"
+        );
+        let cmd = shell_integration_args("cmd");
+        assert!(cmd.iter().any(|a| a.starts_with("PROMPT ONEHUB[")));
+        assert!(shell_integration_args("wsl").is_empty());
+        assert!(shell_integration_args("git_bash").is_empty());
+    }
+
+    #[test]
+    fn powershell_prompt_function_renders_cwd_and_exit_code() {
+        // Run a one-shot PowerShell that defines the prompt and invokes it, so
+        // we deterministically assert cwd + exit-code rendering without an
+        // interactive session.
+        let ps_command = "function global:prompt { 'ONEHUB[' + (Get-Location).Path + '][' + $LASTEXITCODE + ']> ' }; [Console]::Out.WriteLine((prompt))";
+        let id = open_local(
+            "powershell.exe",
+            &[
+                "-NoProfile".to_string(),
+                "-NoLogo".to_string(),
+                "-NonInteractive".to_string(),
+                "-Command".to_string(),
+                ps_command.to_string(),
+            ],
+            None,
+            Some("e2e-prompt".to_string()),
+        )
+        .expect("open powershell");
+        let mut output = Vec::new();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while std::time::Instant::now() < deadline {
+            output.extend(drain_local_output(&id));
+            if local_session_info(&id)
+                .map(|(_, closed)| closed)
+                .unwrap_or(true)
+            {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(30));
+        }
+        let _ = close_session(&id);
+        let text = String::from_utf8_lossy(&output.concat()).to_string();
+        assert!(
+            text.contains("ONEHUB[") && text.contains("]> "),
+            "prompt not rendered: {text:?}"
+        );
     }
 
     #[test]
