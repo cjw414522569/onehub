@@ -348,7 +348,13 @@ pub fn test_connection(profile: &Value) -> Value {
             };
             let probe = probe::probe_tcp(&target, timeout);
             let message = if probe.reachable {
-                format!("TCP 可达（{label}）")
+                if probe.banner.is_empty() {
+                    format!(
+                        "TCP 可达但未识别到 SSH 服务（{label}）：端口可连但服务端无响应，请确认端口是 SSH 服务且 sshd 正常运行"
+                    )
+                } else {
+                    format!("TCP 可达（{label}，SSH banner: {}）", probe.banner)
+                }
             } else {
                 "TCP 不可达（端口未监听或被防火墙拦截）".to_string()
             };

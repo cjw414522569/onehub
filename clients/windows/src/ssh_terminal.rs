@@ -162,7 +162,16 @@ async fn run_session(
         let config = std::sync::Arc::new(client::Config::default());
         let mut session = client::connect(config, (host.as_str(), port), AcceptAllHostKey)
             .await
-            .map_err(|e| format!("SSH 连接失败：{e}"))?;
+            .map_err(|e| {
+                let detail = e.to_string();
+                if detail.contains("Disconnected") || detail.contains("timed out") {
+                    format!(
+                        "SSH 连接失败：服务端无响应（{detail}）。请检查服务器 sshd 是否运行、端口是否正确、防火墙/安全组是否放行。"
+                    )
+                } else {
+                    format!("SSH 连接失败：{detail}")
+                }
+            })?;
         let authenticated = if let Some(password) = &password {
             session
                 .authenticate_password(username.as_str(), password.as_str())
