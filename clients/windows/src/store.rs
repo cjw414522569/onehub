@@ -343,6 +343,32 @@ impl Store {
         self.get("app_setting", key)
     }
 
+    /// Lists all app settings (keyed by id).
+    pub fn list_app_settings(&self) -> rusqlite::Result<Vec<Value>> {
+        self.list("app_setting")
+    }
+
+    /// Lists app settings as {id, value} pairs for snapshot sync.
+    pub fn list_app_setting_pairs(&self) -> rusqlite::Result<Vec<Value>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT id, data FROM items WHERE category=?1 ORDER BY id")?;
+        let rows = stmt
+            .query_map(params!["app_setting"], |row| {
+                let id: String = row.get(0)?;
+                let data: String = row.get(1)?;
+                Ok((id, data))
+            })?
+            .filter_map(|r| r.ok())
+            .filter_map(|(id, data)| {
+                serde_json::from_str::<Value>(&data)
+                    .ok()
+                    .map(|value| serde_json::json!({ "id": id, "value": value }))
+            })
+            .collect();
+        Ok(rows)
+    }
+
     /// Writes an app-level settings value.
     pub fn put_app_setting(&mut self, key: &str, value: &Value) -> rusqlite::Result<()> {
         self.put("app_setting", key, value)

@@ -744,7 +744,12 @@ fn build_snapshot(
         }
         data_credentials.push(entry);
     }
-    let data = json!({ "connections": data_connections, "credentials": data_credentials });
+    let app_settings = store.list_app_setting_pairs().map_err(|e| e.to_string())?;
+    let data = json!({
+        "connections": data_connections,
+        "credentials": data_credentials,
+        "settings": app_settings,
+    });
     let data_json = serde_json::to_string(&data).map_err(|e| e.to_string())?;
     let mut secrets_bin: Option<String> = None;
     if !secrets.is_empty() {
@@ -879,6 +884,23 @@ fn import_snapshot(store: &mut Store, data: &Value, secrets_map: Value) -> Resul
             }
         }
         let _ = store.upsert_credential(&profile);
+    }
+    let settings = data
+        .get("settings")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    for setting in settings {
+        let key = setting
+            .get("id")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        if key.is_empty() {
+            continue;
+        }
+        let value = setting.get("value").cloned().unwrap_or(Value::Null);
+        let _ = store.put_app_setting(&key, &value);
     }
     Ok(())
 }
@@ -1067,6 +1089,9 @@ mod tests {
         )
         .expect("save settings");
         assert_eq!(saved["password_saved"].as_bool(), Some(true));
+        store
+            .put_app_setting("theme.accent", &json!("#38bdf8"))
+            .expect("accent setting");
 
         let test = test_connection(&store, None).expect("test");
         assert_eq!(test["ok"].as_bool(), Some(true));
@@ -1119,6 +1144,11 @@ mod tests {
             .expect("cred")
             .expect("exists");
         assert_eq!(restored_cred["password"], "pw-secret");
+        let restored_setting = fresh
+            .get_app_setting("theme.accent")
+            .expect("setting")
+            .expect("exists");
+        assert_eq!(restored_setting, json!("#38bdf8"));
         let _ = std::fs::remove_file(&db);
         let _ = std::fs::remove_file(dir.join("fresh.db"));
         let _ = std::fs::remove_dir_all(&dir);
