@@ -54,6 +54,7 @@ import {
   LayoutGrid,
   SquareTerminal,
   Star,
+  Terminal,
   Trash2,
   Upload,
   X,
@@ -64,6 +65,7 @@ import { MongoPanel } from "../database/MongoPanel";
 import { NotesPanel } from "../notes/NotesPanel";
 import { AgentHubPanel } from "../agent/AgentHubPanel";
 import { GitPanel } from "../git/GitPanel";
+import { AcpPanel } from "../acp/AcpPanel";
 import { terminalBroadcast, terminalSetBroadcast } from "../../shared/tauri/commands";
 import { remoteFileCopyAcross } from "../../shared/tauri/commands";
 import { commandSendToTerminal } from "../../shared/tauri/commands";
@@ -11807,6 +11809,7 @@ function ConnectionHome({
   const [copyMessage, setCopyMessage] = useState("");
   const [agentHubOpen, setAgentHubOpen] = useState(false);
   const [gitOpen, setGitOpen] = useState(false);
+  const [acpOpen, setAcpOpen] = useState(false);
   const [copyBusy, setCopyBusy] = useState(false);
   const [latencyByConnectionId, setLatencyByConnectionId] = useState<Record<string, LatencyProbeState>>({});
   const latencyProbeRunRef = useRef(0);
@@ -12019,6 +12022,17 @@ function ConnectionHome({
               <span style={{ fontSize: 10 }}>Git</span>
             </button>
           </Tooltip>
+          <Tooltip label="ACP 外部 Agent">
+            <button
+              className="repository-icon-button"
+              type="button"
+              aria-label="ACP 外部 Agent"
+              onClick={() => setAcpOpen(true)}
+            >
+              <Terminal className="ui-icon" aria-hidden="true" />
+              <span style={{ fontSize: 10 }}>ACP</span>
+            </button>
+          </Tooltip>
           <Tooltip label="终端广播模式：开启后输入会同步到所有终端标签">
             <button
               className="repository-icon-button"
@@ -12190,6 +12204,8 @@ function ConnectionHome({
         <AgentHubPanel open={agentHubOpen} onClose={() => setAgentHubOpen(false)} />
 
         <GitPanel open={gitOpen} onClose={() => setGitOpen(false)} />
+
+        <AcpPanel open={acpOpen} onClose={() => setAcpOpen(false)} />
 
       <div className="connection-home-body">
         <section className="connection-board" aria-label="连接表格">

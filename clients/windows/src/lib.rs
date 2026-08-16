@@ -7,6 +7,7 @@
 //! `onehub` binary (`src/main.rs`): it only renders the model and feeds it
 //! keystrokes, so every GUI behavior is verifiable without opening a window.
 
+pub mod acp;
 pub mod agent_hub;
 pub mod ai_assistant;
 pub mod broadcast;

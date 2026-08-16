@@ -19,6 +19,7 @@
 #![recursion_limit = "256"]
 
 use abi_c::{BatchItem, EventBatch, EVENT_BATCH_VERSION};
+use clients_windows::acp;
 use clients_windows::agent_hub;
 use clients_windows::ai_assistant;
 use clients_windows::broadcast;
@@ -210,6 +211,10 @@ fn main() {
     }
     if std::env::args().any(|argument| argument == "--webdav-check") {
         webdav_check();
+        return;
+    }
+    if std::env::args().any(|argument| argument == "--acp-check") {
+        acp_check();
         return;
     }
     if std::env::args().any(|argument| argument == "--git-check") {
@@ -1764,6 +1769,22 @@ fn task_check() {
     });
     println!("{}", serde_json::to_string(&result).expect("json"));
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// End-to-end ACP check (--acp-check): verifies framing round-trip,
+/// initialize/tool-call message shape and graceful missing-binary errors (T050).
+fn acp_check() {
+    use clients_windows::acp;
+    let message = r#"{"jsonrpc":"2.0","id":1,"method":"initialize"}"#;
+    let (body, remaining) = acp::acp_parse_frame(&acp::acp_frame(message)).expect("frame");
+    assert_eq!(body, message);
+    assert!(remaining.is_empty());
+    assert!(acp::acp_parse_frame(&acp::acp_frame("{}")[..10]).is_none());
+    let agents = acp::acp_detect_agents();
+    assert!(agents.as_array().map(|a| a.len() >= 3).unwrap_or(false));
+    let err = acp::acp_handshake("onehub-no-such-agent", 800).expect_err("missing");
+    assert!(err.contains("无法启动"));
+    println!("[acp-check] PASS");
 }
 
 /// End-to-end git check (--git-check): parses a fixture diff and runs
@@ -5194,6 +5215,49 @@ fn on_web_message(hwnd: HWND, message: &str) -> Option<String> {
             Ok(value) => value,
             Err(message) => serde_json::json!({
                 "error": { "code": "git_failed", "message": message, "recoverable": true }
+            }),
+        };
+        let reply = serde_json::json!({ "kind": "invoke-reply", "requestId": request_id, "payload": reply_payload });
+        return Some(reply.to_string());
+    }
+
+    if cmd == "acp_detect_agents" || cmd == "acp_handshake" || cmd == "acp_run_tool" {
+        let payload = parsed
+            .get("payload")
+            .cloned()
+            .unwrap_or(serde_json::Value::Null);
+        let req = payload.get("request").cloned().unwrap_or(payload.clone());
+        let result: Result<serde_json::Value, String> = if cmd == "acp_detect_agents" {
+            Ok(acp::acp_detect_agents())
+        } else if cmd == "acp_handshake" {
+            let binary = req
+                .get("binary")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            let timeout_ms = req
+                .get("timeout_ms")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(8000);
+            acp::acp_handshake(binary, timeout_ms)
+        } else {
+            let binary = req
+                .get("binary")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            let name = req
+                .get("name")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            let arguments = req
+                .get("arguments")
+                .cloned()
+                .unwrap_or(serde_json::Value::Null);
+            acp::acp_run_tool(binary, name, &arguments)
+        };
+        let reply_payload = match result {
+            Ok(value) => value,
+            Err(message) => serde_json::json!({
+                "error": { "code": "acp_failed", "message": message, "recoverable": true }
             }),
         };
         let reply = serde_json::json!({ "kind": "invoke-reply", "requestId": request_id, "payload": reply_payload });

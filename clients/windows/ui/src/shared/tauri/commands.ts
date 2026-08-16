@@ -46,6 +46,11 @@ import type {
   GitSwitchResult,
 } from "../../features/git/gitTypes";
 import type {
+  AcpAgentInfo,
+  AcpHandshakeResult,
+  AcpRunToolResult,
+} from "../../features/acp/acpTypes";
+import type {
   ConnectionRuntimeCredentialRequest,
   ConnectionStepResult,
   CredentialProfile,
@@ -1547,6 +1552,20 @@ export function aiChartSpec(sessionId: string, sql: string) {
 
 export function aiChartSpecData(columns: string[], rows: unknown[][]) {
   return invoke<AiChartSpec>("ai_chart_spec_data", { request: { columns, rows } });
+}
+
+export function acpDetectAgents() {
+  return invoke<AcpAgentInfo[]>("acp_detect_agents");
+}
+
+export function acpHandshake(binary: string, timeoutMs = 8000) {
+  return invoke<AcpHandshakeResult>("acp_handshake", { request: { binary, timeout_ms: timeoutMs } });
+}
+
+export function acpRunTool(binary: string, name: string, argumentsValue: Record<string, unknown>) {
+  return invoke<AcpRunToolResult>("acp_run_tool", {
+    request: { binary, name, arguments: argumentsValue },
+  });
 }
 
 export function dbObjectList(sessionId: string, kind?: string) {
