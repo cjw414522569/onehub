@@ -25,3 +25,10 @@ export interface NoteAssetResult {
   mime: string;
   data_url: string;
 }
+
+export interface NoteExportResult {
+  name: string;
+  format: string;
+  path: string;
+  bytes: number;
+}

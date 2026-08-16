@@ -209,6 +209,10 @@ fn main() {
         webdav_check();
         return;
     }
+    if std::env::args().any(|argument| argument == "--export-check") {
+        export_check();
+        return;
+    }
     if std::env::args().any(|argument| argument == "--notes-check") {
         notes_check();
         return;
@@ -1706,6 +1710,45 @@ fn task_check() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// End-to-end export check (--export-check): generates HTML/PDF/DOCX for a
+/// scratch note into the export directory and validates the artifacts.
+fn export_check() {
+    use clients_windows::notes;
+    let name = format!("export-check-{}", std::process::id());
+    let html = "<h1>导出检查</h1><p>onehub</p>";
+    let text = "导出检查\nonehub";
+    for format in ["html", "pdf", "docx"] {
+        let result = notes::notes_export(&name, format, html, text).expect("export");
+        let path = result["path"].as_str().unwrap_or("");
+        assert!(!path.is_empty(), "{format} path missing");
+        let bytes = result["bytes"].as_u64().unwrap_or(0);
+        assert!(bytes > 0, "{format} bytes = 0");
+        let data = std::fs::read(path).expect("read artifact");
+        match format {
+            "html" => assert!(String::from_utf8_lossy(&data).contains("导出检查")),
+            "pdf" => {
+                let text_data = String::from_utf8_lossy(&data);
+                assert!(text_data.contains("%PDF-1.4"));
+                assert!(text_data.contains("%%EOF"));
+            }
+            "docx" => {
+                use std::io::Read;
+                let mut archive = zip::ZipArchive::new(std::io::Cursor::new(data)).expect("zip");
+                let mut document = String::new();
+                archive
+                    .by_name("word/document.xml")
+                    .expect("document.xml")
+                    .read_to_string(&mut document)
+                    .expect("read");
+                assert!(document.contains("导出检查"));
+            }
+            _ => unreachable!(),
+        }
+        let _ = std::fs::remove_file(path);
+    }
+    println!("[export-check] PASS");
+}
+
 /// End-to-end notes check (--notes-check): save/list/read/delete a scratch
 /// note through the real notes directory (exe_dir/notes).
 fn notes_check() {
@@ -3011,6 +3054,26 @@ fn handle_db_commands(
                 .and_then(serde_json::Value::as_str)
                 .unwrap_or("");
             notes::notes_asset(relative)
+        }
+        "notes_export" => {
+            let request = payload.get("request").cloned().unwrap_or(payload.clone());
+            let name = request
+                .get("name")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            let format = request
+                .get("format")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("html");
+            let html = request
+                .get("html")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            let text = request
+                .get("text")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            notes::notes_export(name, format, html, text)
         }
         "db_export" => {
             let request = payload.get("request").cloned().unwrap_or(payload.clone());

@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import * as monaco from "monaco-editor";
-import { notesDelete, notesList, notesRead, notesSave } from "../../shared/tauri/commands";
+import { notesDelete, notesExport, notesList, notesRead, notesSave } from "../../shared/tauri/commands";
+import { markdownToPlainText, renderMarkdown } from "./renderMarkdown";
 
 const loadMarkdownPreview = () => import("./MarkdownPreview");
 const MarkdownPreview = lazy(loadMarkdownPreview);
@@ -18,6 +19,7 @@ export function NotesPanel({ open, onClose }: NotesPanelProps) {
   const [mode, setMode] = useState<"edit" | "preview" | "split">("split");
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [exportFormat, setExportFormat] = useState("html");
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef(content);
@@ -156,6 +158,28 @@ export function NotesPanel({ open, onClose }: NotesPanelProps) {
     }
   };
 
+  const exportNote = async () => {
+    if (!active) {
+      setMessage("请先选择笔记。");
+      return;
+    }
+    setBusy(true);
+    setMessage(null);
+    try {
+      const result = await notesExport(
+        active,
+        exportFormat,
+        renderMarkdown(content),
+        markdownToPlainText(content),
+      );
+      setMessage(`已导出 ${result.format.toUpperCase()}：${result.path}（${result.bytes} 字节）。`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   if (!open) {
     return null;
   }
@@ -204,6 +228,20 @@ export function NotesPanel({ open, onClose }: NotesPanelProps) {
             </button>
             <button type="button" onClick={() => void remove()} disabled={busy || !active} style={{ color: "#b91c1c" }}>
               删除
+            </button>
+            <select
+              value={exportFormat}
+              onChange={(event) => setExportFormat(event.target.value)}
+              disabled={!active}
+              aria-label="导出格式"
+              style={{ fontSize: 12 }}
+            >
+              <option value="html">HTML</option>
+              <option value="pdf">PDF</option>
+              <option value="docx">DOCX</option>
+            </select>
+            <button type="button" onClick={() => void exportNote()} disabled={busy || !active}>
+              导出
             </button>
             <button
               type="button"

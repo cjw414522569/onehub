@@ -26,6 +26,7 @@ import type {
 } from "../../features/database/dbTypes";
 import type {
   NoteAssetResult,
+  NoteExportResult,
   NoteDeleteResult,
   NoteReadResult,
   NotesDirResult,
@@ -1412,6 +1413,12 @@ export function notesDelete(name: string) {
 
 export function notesAsset(relative: string) {
   return invoke<NoteAssetResult>("notes_asset", { request: { relative } });
+}
+
+export function notesExport(name: string, format: string, html: string, text: string) {
+  return invoke<NoteExportResult>("notes_export", {
+    request: { name, format, html, text },
+  });
 }
 
 export function dbObjectList(sessionId: string, kind?: string) {
