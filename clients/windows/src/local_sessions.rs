@@ -46,65 +46,132 @@ fn new_id(prefix: &str) -> String {
     format!("{prefix}-{nanos:x}")
 }
 
-fn shell_exists(path: &str) -> bool {
-    std::path::Path::new(path).exists()
-}
-
-/// Detects local terminal profiles (local_terminal_list_profiles).
-pub fn list_local_profiles() -> serde_json::Value {
+/// Locates a Windows executable via PATH search, then well-known fallbacks.
+fn find_windows_command(candidates: &[&str]) -> Option<String> {
     let system_root = std::env::var("SystemRoot").unwrap_or_else(|_| "C:\\Windows".to_string());
     let program_files =
         std::env::var("ProgramFiles").unwrap_or_else(|_| "C:\\Program Files".to_string());
-    let user_profile = std::env::var("USERPROFILE").unwrap_or_default();
+    let extensions = std::env::var("PATHEXT")
+        .map(|value| {
+            value
+                .split(';')
+                .map(|item| item.trim().to_string())
+                .filter(|item| !item.is_empty())
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_else(|_| vec![".EXE".to_string(), ".BAT".to_string(), ".CMD".to_string()]);
 
+    for candidate in candidates {
+        if let Some(path) = std::env::var_os("PATH") {
+            for dir in std::env::split_paths(&path) {
+                let direct = dir.join(candidate);
+                if direct.exists() {
+                    return Some(direct.to_string_lossy().to_string());
+                }
+                if std::path::Path::new(candidate).extension().is_none() {
+                    for extension in &extensions {
+                        let with_ext = dir.join(format!("{candidate}{extension}"));
+                        if with_ext.exists() {
+                            return Some(with_ext.to_string_lossy().to_string());
+                        }
+                    }
+                }
+            }
+        }
+        let fallback = match candidate.to_ascii_lowercase().as_str() {
+            "powershell.exe" => Some(format!(
+                "{system_root}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+            )),
+            "cmd.exe" => Some(format!("{system_root}\\System32\\cmd.exe")),
+            "wsl.exe" => Some(format!("{system_root}\\System32\\wsl.exe")),
+            "bash.exe" | "git-bash.exe" => [
+                format!("{program_files}\\Git\\bin\\bash.exe"),
+                format!("{program_files}\\Git\\usr\\bin\\bash.exe"),
+                format!("{program_files}\\Git\\git-bash.exe"),
+            ]
+            .into_iter()
+            .find(|path| std::path::Path::new(path).exists()),
+            _ => None,
+        };
+        if let Some(fallback) = fallback {
+            if std::path::Path::new(&fallback).exists() {
+                return Some(fallback);
+            }
+        }
+    }
+    None
+}
+
+/// Lists installed WSL distributions (mirrors mxterm's per-distro profiles);
+/// returns empty when no distro is installed even if the wsl.exe launcher
+/// stub exists.
+fn detect_wsl_distributions() -> Vec<String> {
+    let Ok(output) = std::process::Command::new("wsl.exe")
+        .args(["-l", "-q"])
+        .output()
+    else {
+        return Vec::new();
+    };
+    if !output.status.success() {
+        return Vec::new();
+    }
+    let text = String::from_utf8_lossy(&output.stdout);
+    text.lines()
+        .map(|line| line.trim().trim_matches('*').trim().to_string())
+        .filter(|line| {
+            !line.is_empty()
+                && !line.eq_ignore_ascii_case("Windows Subsystem for Linux")
+                && !line.eq_ignore_ascii_case("Legacy")
+                && !line.to_lowercase().contains("no installed distributions")
+        })
+        .collect()
+}
+
+/// Detects local terminal profiles (local_terminal_list_profiles). Only
+/// shells whose binary actually exists on this machine are listed, so the
+/// auto-detect UI never shows phantom PowerShell 7 / WSL entries (T058).
+pub fn list_local_profiles() -> serde_json::Value {
     let mut profiles = Vec::new();
-    let mut push = |id: &str,
-                    name: &str,
-                    kind: &str,
-                    command: &str,
-                    args: Vec<String>,
-                    detected: bool| {
+    let mut push = |id: &str, name: &str, kind: &str, command: String, args: Vec<String>| {
         profiles.push(serde_json::json!({
             "id": id, "name": name, "kind": kind, "platform": "windows",
             "source": "detected", "command": command, "args": args,
-            "cwd": if user_profile.is_empty() { serde_json::Value::Null } else { serde_json::json!(user_profile) },
+            "cwd": serde_json::Value::Null,
             "env": serde_json::json!({}), "icon": kind, "hidden": false,
-            "detected": detected,
+            "detected": true,
         }));
     };
 
+    // PowerShell 7 is only auto-detected from its canonical install location
+    // (not a bare PATH hit) so dev-runtime copies like codex-runtimes/pwsh.exe
+    // never surface as phantom "PowerShell 7" entries.
+    let program_files =
+        std::env::var("ProgramFiles").unwrap_or_else(|_| "C:\\Program Files".to_string());
     let pwsh = format!("{program_files}\\PowerShell\\7\\pwsh.exe");
-    let winps = format!("{system_root}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe");
-    let cmd = format!("{system_root}\\System32\\cmd.exe");
-    let wsl = format!("{system_root}\\System32\\wsl.exe");
-    let gitbash = format!("{program_files}\\Git\\bin\\bash.exe");
-
-    push(
-        "pwsh",
-        "PowerShell 7",
-        "pwsh",
-        &pwsh,
-        vec![],
-        shell_exists(&pwsh),
-    );
-    push(
-        "powershell",
-        "Windows PowerShell",
-        "powershell",
-        &winps,
-        vec![],
-        shell_exists(&winps),
-    );
-    push("cmd", "命令提示符", "cmd", &cmd, vec![], shell_exists(&cmd));
-    push("wsl", "WSL", "wsl", &wsl, vec![], shell_exists(&wsl));
-    push(
-        "git_bash",
-        "Git Bash",
-        "git_bash",
-        &gitbash,
-        vec![],
-        shell_exists(&gitbash),
-    );
+    if std::path::Path::new(&pwsh).exists() {
+        push("pwsh", "PowerShell 7", "pwsh", pwsh, Vec::new());
+    }
+    if let Some(command) = find_windows_command(&["powershell.exe"]) {
+        push(
+            "powershell",
+            "Windows PowerShell",
+            "powershell",
+            command,
+            Vec::new(),
+        );
+    }
+    if let Some(command) = find_windows_command(&["cmd.exe"]) {
+        push("cmd", "命令提示符", "cmd", command, Vec::new());
+    }
+    let has_wsl_distro = !detect_wsl_distributions().is_empty();
+    if let Some(command) = find_windows_command(&["wsl.exe"]) {
+        if has_wsl_distro {
+            push("wsl", "WSL", "wsl", command, Vec::new());
+        }
+    }
+    if let Some(command) = find_windows_command(&["git-bash.exe", "bash.exe"]) {
+        push("git_bash", "Git Bash", "git_bash", command, Vec::new());
+    }
 
     serde_json::json!(profiles)
 }
@@ -380,13 +447,45 @@ mod tests {
     use super::*;
 
     #[test]
-    fn local_profiles_detect_windows_shells() {
+    fn local_profiles_only_include_existing_shells() {
         let profiles = list_local_profiles();
         let arr = profiles.as_array().expect("arr");
-        assert!(arr.len() >= 3);
-        let kinds: Vec<&str> = arr.iter().filter_map(|p| p["kind"].as_str()).collect();
-        assert!(kinds.contains(&"powershell"));
-        assert!(kinds.contains(&"cmd"));
+        // Every listed profile must point at an existing binary, be detected,
+        // and carry no phantom cwd (T058).
+        for profile in arr {
+            let command = profile["command"].as_str().unwrap_or("");
+            assert!(!command.is_empty(), "empty command: {profile}");
+            assert_eq!(
+                profile["detected"],
+                serde_json::Value::Bool(true),
+                "undetected profile listed: {profile}"
+            );
+            assert!(
+                std::path::Path::new(command).exists(),
+                "command missing on disk: {command}"
+            );
+            assert_eq!(
+                profile["cwd"],
+                serde_json::Value::Null,
+                "cwd should be null: {profile}"
+            );
+        }
+        // cmd.exe (System32) is present on every supported Windows host.
+        assert!(
+            arr.iter().any(|p| p["kind"].as_str() == Some("cmd")),
+            "cmd profile missing: {profiles}"
+        );
+        // Windows PowerShell ships with Windows; verify its binary when listed.
+        if let Some(ps) = arr
+            .iter()
+            .find(|p| p["kind"].as_str() == Some("powershell"))
+        {
+            let command = ps["command"].as_str().unwrap_or("");
+            assert!(
+                std::path::Path::new(command).exists(),
+                "powershell command missing on disk: {command}"
+            );
+        }
     }
 
     #[test]

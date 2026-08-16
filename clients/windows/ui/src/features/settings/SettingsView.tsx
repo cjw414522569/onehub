@@ -3354,7 +3354,8 @@ function LocalTerminalSettingsSection({
     .filter((profile): profile is LocalTerminalProfileInput => Boolean(profile));
   const profileOptions = [...detectedProfiles, ...customProfiles];
   const visibleDetectedProfiles = detectedProfiles.filter(
-    (profile) => !settings.hiddenProfileIds.includes(profile.id),
+    (profile) =>
+      profile.detected !== false && !settings.hiddenProfileIds.includes(profile.id),
   );
 
   useEffect(() => {
@@ -3558,12 +3559,12 @@ function LocalTerminalSettingsSection({
         <header className="local-terminal-panel-head">
           <span>
             <strong>自动探测</strong>
-            <small>{loading ? "探测中..." : `${detectedProfiles.length.toString()} 项`}</small>
+            <small>{loading ? "探测中..." : `${visibleDetectedProfiles.length.toString()} 项`}</small>
           </span>
           {error ? <small className="form-error">{error}</small> : null}
         </header>
         <div className="local-terminal-profile-list">
-          {detectedProfiles.map((profile) => {
+          {visibleDetectedProfiles.map((profile) => {
             const hidden = settings.hiddenProfileIds.includes(profile.id);
             return (
               <div className={`local-terminal-profile-card ${hidden ? "is-hidden-profile" : ""}`} key={profile.id}>

@@ -13120,6 +13120,9 @@ function mergeLocalTerminalProfiles(
   const byId = new Map<string, LocalTerminalProfile>();
 
   detectedProfiles.forEach((profile) => {
+    if (profile.detected === false) {
+      return;
+    }
     if (!hiddenIdSet.has(profile.id) && !profile.hidden) {
       byId.set(profile.id, profile);
     }
