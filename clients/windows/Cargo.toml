@@ -50,3 +50,4 @@ windows-sys = { version = "0.61", features = [
 redis = { version = "1.6.0", features = ["tokio-comp", "connection-manager"] }
 mongodb = "3.8.0"
 zip = "8.6.0"
+wasmi = "1.1.0"

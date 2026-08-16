@@ -1585,6 +1585,40 @@ export function extUninstall(id: string) {
   return invoke<ExtUninstallResult>("ext_uninstall", { request: { id } });
 }
 
+export interface WasmLoadResult {
+  id: string;
+  exports: string[];
+}
+
+export interface WasmCallResult {
+  handle: string;
+  function: string;
+  results: number[];
+}
+
+export interface WasmUnloadResult {
+  handle: string;
+  unloaded: boolean;
+}
+
+export function extWasmLoad(wasm: string) {
+  return invoke<WasmLoadResult>("ext_wasm_load", { request: { wasm } });
+}
+
+export function extWasmCall(handle: string, functionName: string, args: number[]) {
+  return invoke<WasmCallResult>("ext_wasm_call", {
+    request: { handle, function: functionName, args },
+  });
+}
+
+export function extWasmUnload(handle: string) {
+  return invoke<WasmUnloadResult>("ext_wasm_unload", { request: { handle } });
+}
+
+export function extWasmList() {
+  return invoke<{ id: string; exports: string[] }[]>("ext_wasm_list");
+}
+
 export function dbObjectList(sessionId: string, kind?: string) {
   return invoke<DbObjectInfo[]>("db_object_list", { request: { session_id: sessionId, kind } });
 }

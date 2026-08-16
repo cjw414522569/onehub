@@ -214,6 +214,10 @@ fn main() {
         webdav_check();
         return;
     }
+    if std::env::args().any(|argument| argument == "--wasm-check") {
+        wasm_check();
+        return;
+    }
     if std::env::args().any(|argument| argument == "--ext-check") {
         ext_check();
         return;
@@ -1774,6 +1778,26 @@ fn task_check() {
     });
     println!("{}", serde_json::to_string(&result).expect("json"));
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// End-to-end WASM runtime check (--wasm-check): loads a hand-encoded
+/// add(2,3) module, calls it, unloads, and verifies the sandbox rejects an
+/// unavailable import (T052).
+fn wasm_check() {
+    use base64::Engine as _;
+    use clients_windows::extensions as ex;
+    const ADD_WASM: &[u8] = &[
+        0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00, 0x01, 0x07, 0x01, 0x60, 0x02, 0x7f, 0x7f,
+        0x01, 0x7f, 0x03, 0x02, 0x01, 0x00, 0x07, 0x07, 0x01, 0x03, 0x61, 0x64, 0x64, 0x00, 0x00,
+        0x0a, 0x09, 0x01, 0x07, 0x00, 0x20, 0x00, 0x20, 0x01, 0x6a, 0x0b,
+    ];
+    let encoded = base64::engine::general_purpose::STANDARD.encode(ADD_WASM);
+    let loaded = ex::ext_wasm_load(&encoded).expect("load");
+    let handle = loaded["id"].as_str().expect("handle").to_string();
+    let call = ex::ext_wasm_call(&handle, "add", vec![2, 3]).expect("call");
+    assert_eq!(call["results"][0], 5);
+    assert!(ex::ext_wasm_unload(&handle).expect("unload")["unloaded"] == true);
+    println!("[wasm-check] PASS");
 }
 
 /// End-to-end extension check (--ext-check): marketplace list, install,
@@ -4959,6 +4983,40 @@ fn handle_persisted_commands(
                 .and_then(serde_json::Value::as_str)
                 .unwrap_or("");
             extensions::ext_uninstall(store, id).ok()?
+        }
+        "ext_wasm_list" => extensions::ext_wasm_list(),
+        "ext_wasm_load" => {
+            let request = payload.get("request").cloned().unwrap_or(payload.clone());
+            let wasm_base64 = request
+                .get("wasm")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            extensions::ext_wasm_load(wasm_base64).ok()?
+        }
+        "ext_wasm_call" => {
+            let request = payload.get("request").cloned().unwrap_or(payload.clone());
+            let handle = request
+                .get("handle")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            let function = request
+                .get("function")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            let args: Vec<i64> = request
+                .get("args")
+                .and_then(serde_json::Value::as_array)
+                .map(|arr| arr.iter().filter_map(serde_json::Value::as_i64).collect())
+                .unwrap_or_default();
+            extensions::ext_wasm_call(handle, function, args).ok()?
+        }
+        "ext_wasm_unload" => {
+            let request = payload.get("request").cloned().unwrap_or(payload.clone());
+            let handle = request
+                .get("handle")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            extensions::ext_wasm_unload(handle).ok()?
         }
         "command_history_delete" => {
             let id = payload

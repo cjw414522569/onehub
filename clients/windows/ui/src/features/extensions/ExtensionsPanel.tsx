@@ -3,6 +3,10 @@ import {
   extInstall,
   extMarketplaceList,
   extUninstall,
+  extWasmCall,
+  extWasmList,
+  extWasmLoad,
+  extWasmUnload,
 } from "../../shared/tauri/commands";
 import type { ExtMarketplaceProvider, ExtMarketplaceResult } from "./extensionsTypes";
 
@@ -43,6 +47,61 @@ export function ExtensionsPanel({ open, onClose }: ExtensionsPanelProps) {
       void refresh();
     }
   }, [open, refresh]);
+
+  const [wasmInput, setWasmInput] = useState("");
+  const [wasmInstances, setWasmInstances] = useState<{ id: string; exports: string[] }[]>([]);
+  const [wasmResult, setWasmResult] = useState<unknown>(null);
+
+  const refreshWasmList = async () => {
+    try {
+      setWasmInstances(await extWasmList());
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  const loadWasm = async () => {
+    setBusy(true);
+    setMessage(null);
+    try {
+      const result = await extWasmLoad(wasmInput.trim());
+      setMessage(`WASM 已加载：${result.id}（导出 ${result.exports.join(", ")}）。`);
+      setWasmInput("");
+      await refreshWasmList();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const callWasm = async (handle: string, functionName: string, args: number[]) => {
+    setBusy(true);
+    setMessage(null);
+    try {
+      const result = await extWasmCall(handle, functionName, args);
+      setWasmResult(result);
+      setMessage(`调用完成：${JSON.stringify(result.results)}。`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const unloadWasm = async (handle: string) => {
+    setBusy(true);
+    setMessage(null);
+    try {
+      const result = await extWasmUnload(handle);
+      setMessage(result.unloaded ? `已卸载 ${handle}。` : `${handle} 不存在。`);
+      await refreshWasmList();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const toggleInstall = async (provider: ExtMarketplaceProvider) => {
     setBusy(true);
@@ -191,6 +250,50 @@ export function ExtensionsPanel({ open, onClose }: ExtensionsPanelProps) {
           ))}
         </ul>
 
+        <section style={{ marginTop: 14, borderTop: "1px solid #e5e7eb", paddingTop: 10 }}>
+          <h3 style={{ margin: "0 0 6px", fontSize: 13 }}>WASM 扩展运行时（沙箱，仅暴露 host.log）</h3>
+          <div style={{ display: "grid", gap: 6 }}>
+            <label style={{ display: "grid", gap: 2, fontSize: 12 }}>
+              WASM（base64）
+              <textarea
+                value={wasmInput}
+                onChange={(event) => setWasmInput(event.target.value)}
+                rows={2}
+                placeholder="粘贴 wasm 的 base64…"
+                style={{ fontFamily: "monospace", fontSize: 11 }}
+              />
+            </label>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <button type="button" onClick={() => void loadWasm()} disabled={busy || !wasmInput.trim()}>
+                加载
+              </button>
+              <button type="button" onClick={() => void refreshWasmList()} disabled={busy}>
+                刷新已加载
+              </button>
+            </div>
+            {wasmInstances.length > 0 ? (
+              <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
+                {wasmInstances.map((instance) => (
+                  <li key={instance.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 6px", border: "1px solid #e5e7eb", borderRadius: 4, marginBottom: 4, background: "#ffffff" }}>
+                    <code style={{ flex: 1, fontSize: 11 }}>{instance.id}</code>
+                    <span style={{ fontSize: 11, color: "#6b7280" }}>{instance.exports.join(", ")}</span>
+                    <button type="button" onClick={() => void callWasm(instance.id, "add", [2, 3])} disabled={busy} style={{ fontSize: 11 }}>
+                      add(2,3)
+                    </button>
+                    <button type="button" onClick={() => void unloadWasm(instance.id)} disabled={busy} style={{ fontSize: 11, color: "#b91c1c" }}>
+                      卸载
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            {wasmResult ? (
+              <pre style={{ margin: 0, fontSize: 11, background: "#ffffff", border: "1px solid #d1d5db", borderRadius: 4, padding: 6 }}>
+                {JSON.stringify(wasmResult, null, 2)}
+              </pre>
+            ) : null}
+          </div>
+        </section>
         {message ? (
           <p role="status" style={{ marginTop: 10, padding: 8, background: "#eef2ff", borderRadius: 4 }}>
             {message}

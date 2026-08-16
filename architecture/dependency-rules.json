@@ -430,6 +430,7 @@
         "tokio",
         "tokio-postgres",
         "tokio-util",
+        "wasmi",
         "webview2",
         "windows",
         "windows-app-sdk",
