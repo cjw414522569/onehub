@@ -25,6 +25,7 @@ use clients_windows::ai_assistant;
 use clients_windows::broadcast;
 use clients_windows::db;
 use clients_windows::docker_tools;
+use clients_windows::extensions;
 use clients_windows::git;
 use clients_windows::local_sessions;
 use clients_windows::mcp_tools;
@@ -211,6 +212,10 @@ fn main() {
     }
     if std::env::args().any(|argument| argument == "--webdav-check") {
         webdav_check();
+        return;
+    }
+    if std::env::args().any(|argument| argument == "--ext-check") {
+        ext_check();
         return;
     }
     if std::env::args().any(|argument| argument == "--acp-check") {
@@ -1769,6 +1774,40 @@ fn task_check() {
     });
     println!("{}", serde_json::to_string(&result).expect("json"));
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// End-to-end extension check (--ext-check): marketplace list, install,
+/// verify installed, uninstall (T051).
+fn ext_check() {
+    use clients_windows::extensions as ex;
+    use clients_windows::store::Store;
+    let dir = std::env::temp_dir().join(format!(
+        "ext-check-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    ));
+    let _ = std::fs::create_dir_all(&dir);
+    let mut store = Store::open(&dir.join("ext.db")).expect("store");
+    let market = ex::ext_marketplace_list(&store).expect("market");
+    assert!(market["providers"]
+        .as_array()
+        .map(|a| a.len() >= 15)
+        .unwrap_or(false));
+    ex::ext_install(&mut store, "db-mysql").expect("install");
+    let after = ex::ext_marketplace_list(&store).expect("after");
+    let mysql = after["providers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|p| p["id"] == "db-mysql")
+        .expect("mysql");
+    assert_eq!(mysql["installed"], true);
+    ex::ext_uninstall(&mut store, "db-mysql").expect("uninstall");
+    let _ = std::fs::remove_dir_all(&dir);
+    println!("[ext-check] PASS");
 }
 
 /// End-to-end ACP check (--acp-check): verifies framing round-trip,
@@ -4902,6 +4941,24 @@ fn handle_persisted_commands(
         "command_send_to_terminal" => {
             let request = payload.get("request").cloned().unwrap_or(payload.clone());
             send_command_to_terminal(store, &request)
+        }
+        "ext_marketplace_list" => extensions::ext_marketplace_list(store).ok()?,
+        "ext_list" => extensions::ext_list(store).ok()?,
+        "ext_install" => {
+            let request = payload.get("request").cloned().unwrap_or(payload.clone());
+            let id = request
+                .get("id")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            extensions::ext_install(store, id).ok()?
+        }
+        "ext_uninstall" => {
+            let request = payload.get("request").cloned().unwrap_or(payload.clone());
+            let id = request
+                .get("id")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            extensions::ext_uninstall(store, id).ok()?
         }
         "command_history_delete" => {
             let id = payload

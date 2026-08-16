@@ -51,6 +51,11 @@ import type {
   AcpRunToolResult,
 } from "../../features/acp/acpTypes";
 import type {
+  ExtInstallResult,
+  ExtMarketplaceResult,
+  ExtUninstallResult,
+} from "../../features/extensions/extensionsTypes";
+import type {
   ConnectionRuntimeCredentialRequest,
   ConnectionStepResult,
   CredentialProfile,
@@ -1566,6 +1571,18 @@ export function acpRunTool(binary: string, name: string, argumentsValue: Record<
   return invoke<AcpRunToolResult>("acp_run_tool", {
     request: { binary, name, arguments: argumentsValue },
   });
+}
+
+export function extMarketplaceList() {
+  return invoke<ExtMarketplaceResult>("ext_marketplace_list");
+}
+
+export function extInstall(id: string) {
+  return invoke<ExtInstallResult>("ext_install", { request: { id } });
+}
+
+export function extUninstall(id: string) {
+  return invoke<ExtUninstallResult>("ext_uninstall", { request: { id } });
 }
 
 export function dbObjectList(sessionId: string, kind?: string) {

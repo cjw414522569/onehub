@@ -550,6 +550,23 @@ impl Store {
             .execute("DELETE FROM items WHERE category=?1", params!["history"])?;
         Ok(())
     }
+
+    // ---- extensions (T051) ----
+
+    /// Persists an installed extension marker.
+    pub fn put_extension(&mut self, id: &str, value: &Value) -> rusqlite::Result<()> {
+        self.put("extension", id, value)
+    }
+
+    /// Lists installed extensions.
+    pub fn list_extensions(&self) -> rusqlite::Result<Vec<Value>> {
+        self.list("extension")
+    }
+
+    /// Removes an installed extension marker.
+    pub fn delete_extension(&mut self, id: &str) -> rusqlite::Result<bool> {
+        self.delete("extension", id)
+    }
 }
 
 #[cfg(test)]
