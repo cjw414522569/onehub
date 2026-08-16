@@ -1442,6 +1442,23 @@ export function terminalBroadcast(input: string, exclude?: string) {
   });
 }
 
+export interface RemoteFileCopyResult {
+  source: string;
+  target: string;
+  copied_bytes: number;
+}
+
+export function remoteFileCopyAcross(
+  source: Record<string, unknown>,
+  sourcePath: string,
+  target: Record<string, unknown>,
+  targetPath: string,
+) {
+  return invoke<RemoteFileCopyResult>("remote_file_copy_across", {
+    request: { source, source_path: sourcePath, target, target_path: targetPath },
+  });
+}
+
 export function dbObjectList(sessionId: string, kind?: string) {
   return invoke<DbObjectInfo[]>("db_object_list", { request: { session_id: sessionId, kind } });
 }

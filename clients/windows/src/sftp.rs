@@ -759,6 +759,90 @@ pub async fn delete_upload_temp(local_path: &str) -> Result<serde_json::Value, S
     Ok(serde_json::Value::Null)
 }
 
+/// Streams bytes from `reader` to `writer` in chunks, reporting progress.
+/// Used by cross-server copy (T045) and testable without a live SFTP server.
+pub async fn copy_stream<R, W>(reader: &mut R, writer: &mut W) -> Result<u64, String>
+where
+    R: tokio::io::AsyncRead + Unpin,
+    W: tokio::io::AsyncWrite + Unpin,
+{
+    let mut buf = vec![0u8; 64 * 1024];
+    let mut copied = 0u64;
+    loop {
+        let n = reader
+            .read(&mut buf)
+            .await
+            .map_err(|e| format!("读取源失败：{e}"))?;
+        if n == 0 {
+            break;
+        }
+        writer
+            .write_all(&buf[..n])
+            .await
+            .map_err(|e| format!("写入目标失败：{e}"))?;
+        copied += n as u64;
+    }
+    writer
+        .flush()
+        .await
+        .map_err(|e| format!("刷新目标失败：{e}"))?;
+    Ok(copied)
+}
+
+/// Copies a remote file from one SFTP server to another entirely in memory
+/// (remote_file_copy_across): no local disk round-trip is involved.
+pub async fn remote_file_copy_across(
+    source: &serde_json::Value,
+    source_path: &str,
+    target: &serde_json::Value,
+    target_path: &str,
+) -> Result<serde_json::Value, String> {
+    if source_path.trim().is_empty() || target_path.trim().is_empty() {
+        return Err("源路径或目标路径为空。".to_string());
+    }
+    let source_target = SshTarget::from_request(source);
+    let target_target = SshTarget::from_request(target);
+    if source_target.host.is_empty() || target_target.host.is_empty() {
+        return Err("缺少源或目标主机地址。".to_string());
+    }
+    let source_sftp = connect_sftp(&source_target).await?;
+    let target_sftp = connect_sftp(&target_target).await?;
+    let mut reader = source_sftp
+        .open(source_path)
+        .await
+        .map_err(|e| format!("源文件打开失败：{e}"))?;
+    let mut writer = target_sftp
+        .create(target_path)
+        .await
+        .map_err(|e| format!("目标文件创建失败：{e}"))?;
+    begin_progress_buffer();
+    let mut buf = vec![0u8; 64 * 1024];
+    let mut copied = 0u64;
+    loop {
+        let n = reader
+            .read(&mut buf)
+            .await
+            .map_err(|e| format!("读取源文件失败：{e}"))?;
+        if n == 0 {
+            break;
+        }
+        writer
+            .write_all(&buf[..n])
+            .await
+            .map_err(|e| format!("写入目标文件失败：{e}"))?;
+        copied += n as u64;
+        let _ = progress_sink("cross-copy", "copy", copied, None);
+    }
+    writer
+        .flush()
+        .await
+        .map_err(|e| format!("刷新目标文件失败：{e}"))?;
+    Ok(serde_json::json!({
+        "source": source_path,
+        "target": target_path,
+        "copied_bytes": copied,
+    }))
+}
 #[test]
 fn cancel_transfer_registers_and_cancels() {
     let id = "t5-cancel-test";
@@ -794,4 +878,49 @@ fn progress_buffer_records() {
     assert_eq!(records.len(), 2);
     assert_eq!(records[1].loaded_bytes, 200);
     assert_eq!(records[1].total_bytes, Some(200));
+}
+
+#[tokio::test]
+async fn copy_stream_roundtrip() {
+    let src = std::env::temp_dir().join(format!("onehub-copy-src-{}", std::process::id()));
+    let dst = std::env::temp_dir().join(format!("onehub-copy-dst-{}", std::process::id()));
+    tokio::fs::write(&src, b"onehub cross-server copy")
+        .await
+        .expect("write src");
+    let mut reader = tokio::fs::File::open(&src).await.expect("open src");
+    let mut writer = tokio::fs::File::create(&dst).await.expect("create dst");
+    let copied = copy_stream(&mut reader, &mut writer).await.expect("copy");
+    assert_eq!(copied, b"onehub cross-server copy".len() as u64);
+    let data = tokio::fs::read(&dst).await.expect("read dst");
+    assert_eq!(data, b"onehub cross-server copy");
+    let _ = tokio::fs::remove_file(&src).await;
+    let _ = tokio::fs::remove_file(&dst).await;
+}
+
+#[tokio::test]
+async fn copy_stream_empty_and_error() {
+    let src = std::env::temp_dir().join(format!("onehub-copy-empty-{}", std::process::id()));
+    let dst = std::env::temp_dir().join(format!("onehub-copy-empty-dst-{}", std::process::id()));
+    tokio::fs::write(&src, b"").await.expect("write src");
+    let mut reader = tokio::fs::File::open(&src).await.expect("open src");
+    let mut writer = tokio::fs::File::create(&dst).await.expect("create dst");
+    let copied = copy_stream(&mut reader, &mut writer)
+        .await
+        .expect("copy empty");
+    assert_eq!(copied, 0);
+    let data = tokio::fs::read(&dst).await.expect("read dst");
+    assert!(data.is_empty());
+    let _ = tokio::fs::remove_file(&src).await;
+    let _ = tokio::fs::remove_file(&dst).await;
+}
+
+#[tokio::test]
+async fn remote_file_copy_across_requires_credentials() {
+    let source = serde_json::json!({ "host": "", "username": "root" });
+    let target =
+        serde_json::json!({ "host": "example.invalid", "username": "root", "password": "x" });
+    let err = remote_file_copy_across(&source, "/a", &target, "/b")
+        .await
+        .expect_err("empty source host");
+    assert!(err.contains("主机地址"), "got {err:?}");
 }

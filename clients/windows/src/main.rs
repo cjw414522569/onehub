@@ -4131,6 +4131,7 @@ fn handle_sftp_commands(
             | "remote_file_download_to_local"
             | "remote_file_prepare_upload_temp"
             | "remote_file_append_upload_temp"
+            | "remote_file_copy_across"
             | "remote_file_delete_upload_temp"
             | "remote_file_cancel_transfer"
     );
@@ -4261,6 +4262,32 @@ fn handle_sftp_commands(
                     .and_then(serde_json::Value::as_str)
                     .unwrap_or("upload");
                 sftp::upload_content(&target, path, &content, conflict_policy, transfer_id).await
+            }
+            "remote_file_copy_across" => {
+                let source = request
+                    .get("source")
+                    .cloned()
+                    .unwrap_or(serde_json::Value::Null);
+                let source_path = request
+                    .get("source_path")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("")
+                    .to_string();
+                let target = request
+                    .get("target")
+                    .cloned()
+                    .unwrap_or(serde_json::Value::Null);
+                let target_path = request
+                    .get("target_path")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("")
+                    .to_string();
+                rt.block_on(sftp::remote_file_copy_across(
+                    &source,
+                    &source_path,
+                    &target,
+                    &target_path,
+                ))
             }
             "remote_file_upload_local_file" => {
                 let local_path = request

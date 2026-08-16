@@ -44,6 +44,7 @@ import {
   Pencil,
   Play,
   Plus,
+  Copy,
   Radio,
   RefreshCw,
   Search,
@@ -60,6 +61,7 @@ import { RedisPanel } from "../database/RedisPanel";
 import { MongoPanel } from "../database/MongoPanel";
 import { NotesPanel } from "../notes/NotesPanel";
 import { terminalBroadcast, terminalSetBroadcast } from "../../shared/tauri/commands";
+import { remoteFileCopyAcross } from "../../shared/tauri/commands";
 
 import { ConnectionPane } from "../connections/ConnectionPane";
 import { ConnectionSystemLogo } from "../connections/ConnectionSystemLogo";
@@ -11790,6 +11792,15 @@ function ConnectionHome({
   const [notesOpen, setNotesOpen] = useState(false);
   const [broadcastOn, setBroadcastOn] = useState(false);
   const [broadcastInput, setBroadcastInput] = useState("");
+  const [copyDialogOpen, setCopyDialogOpen] = useState(false);
+  const [copySourceId, setCopySourceId] = useState("");
+  const [copyTargetId, setCopyTargetId] = useState("");
+  const [copySourcePath, setCopySourcePath] = useState("");
+  const [copyTargetPath, setCopyTargetPath] = useState("");
+  const [copySourcePassword, setCopySourcePassword] = useState("");
+  const [copyTargetPassword, setCopyTargetPassword] = useState("");
+  const [copyMessage, setCopyMessage] = useState("");
+  const [copyBusy, setCopyBusy] = useState(false);
   const [latencyByConnectionId, setLatencyByConnectionId] = useState<Record<string, LatencyProbeState>>({});
   const latencyProbeRunRef = useRef(0);
   const rows = useMemo(() => {
@@ -11968,6 +11979,17 @@ function ConnectionHome({
               <span style={{ fontSize: 10 }}>笔记</span>
             </button>
           </Tooltip>
+          <Tooltip label="跨服务器复制">
+            <button
+              className="repository-icon-button"
+              type="button"
+              aria-label="跨服务器复制"
+              onClick={() => setCopyDialogOpen(true)}
+            >
+              <Copy className="ui-icon" aria-hidden="true" />
+              <span style={{ fontSize: 10 }}>跨服复制</span>
+            </button>
+          </Tooltip>
           <Tooltip label="终端广播模式：开启后输入会同步到所有终端标签">
             <button
               className="repository-icon-button"
@@ -12035,6 +12057,104 @@ function ConnectionHome({
         <RedisPanel open={redisOpen} onClose={() => setRedisOpen(false)} />
 
         <MongoPanel open={mongoOpen} onClose={() => setMongoOpen(false)} />
+
+          {copyDialogOpen ? (
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-label="跨服务器复制"
+              style={{
+                position: "fixed",
+                inset: 0,
+                zIndex: 2200,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                background: "rgba(0,0,0,0.35)",
+              }}
+            >
+              <div
+                style={{
+                  width: 560,
+                  maxWidth: "94vw",
+                  maxHeight: "88vh",
+                  overflow: "auto",
+                  background: "#f5f6f8",
+                  color: "#1f2328",
+                  borderRadius: 8,
+                  padding: 16,
+                  fontFamily: "system-ui, sans-serif",
+                  fontSize: 13,
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                  <h3 style={{ margin: 0, fontSize: 15 }}>跨服务器复制</h3>
+                  <button
+                    type="button"
+                    onClick={() => setCopyDialogOpen(false)}
+                    aria-label="关闭"
+                    style={{ border: "none", background: "transparent", fontSize: 18, cursor: "pointer", lineHeight: 1 }}
+                  >
+                    ×
+                  </button>
+                </div>
+                <div style={{ display: "grid", gap: 8 }}>
+                  <label style={{ display: "grid", gap: 2 }}>
+                    源服务器
+                    <select value={copySourceId} onChange={(event) => setCopySourceId(event.target.value)}>
+                      <option value="">选择源连接...</option>
+                      {connections.map((connection) => (
+                        <option key={connection.id} value={connection.id}>
+                          {connection.name || connection.host}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label style={{ display: "grid", gap: 2 }}>
+                    源路径
+                    <input value={copySourcePath} onChange={(event) => setCopySourcePath(event.target.value)} placeholder="/home/user/file.txt" style={{ fontFamily: "monospace" }} />
+                  </label>
+                  <label style={{ display: "grid", gap: 2 }}>
+                    源密码（可选，未内联保存时）
+                    <input type="password" value={copySourcePassword} onChange={(event) => setCopySourcePassword(event.target.value)} />
+                  </label>
+                  <label style={{ display: "grid", gap: 2 }}>
+                    目标服务器
+                    <select value={copyTargetId} onChange={(event) => setCopyTargetId(event.target.value)}>
+                      <option value="">选择目标连接...</option>
+                      {connections.map((connection) => (
+                        <option key={connection.id} value={connection.id}>
+                          {connection.name || connection.host}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label style={{ display: "grid", gap: 2 }}>
+                    目标路径
+                    <input value={copyTargetPath} onChange={(event) => setCopyTargetPath(event.target.value)} placeholder="/home/user/file.txt" style={{ fontFamily: "monospace" }} />
+                  </label>
+                  <label style={{ display: "grid", gap: 2 }}>
+                    目标密码（可选）
+                    <input type="password" value={copyTargetPassword} onChange={(event) => setCopyTargetPassword(event.target.value)} />
+                  </label>
+                </div>
+                <div style={{ display: "flex", gap: 8, marginTop: 12, alignItems: "center" }}>
+                  <button
+                    type="button"
+                    onClick={() => void runCopyAcross()}
+                    disabled={copyBusy || !copySourceId || !copyTargetId || !copySourcePath.trim() || !copyTargetPath.trim()}
+                  >
+                    开始复制
+                  </button>
+                  {copyMessage ? (
+                    <span style={{ fontSize: 12, color: copyMessage.startsWith("复制完成") ? "#16a34a" : "#b91c1c" }}>
+                      {copyMessage}
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          ) : null}
 
         <NotesPanel open={notesOpen} onClose={() => setNotesOpen(false)} />
 
@@ -12237,6 +12357,42 @@ function ConnectionHome({
       setBroadcastInput("");
     } catch {
       // bridge unavailable (browser preview)
+    }
+  };
+
+  const runCopyAcross = async () => {
+    const sourceConn = connections.find((connection) => connection.id === copySourceId);
+    const targetConn = connections.find((connection) => connection.id === copyTargetId);
+    if (!sourceConn || !targetConn) {
+      setCopyMessage("请选择源与目标连接。");
+      return;
+    }
+    setCopyBusy(true);
+    setCopyMessage("");
+    try {
+      const source = {
+        host: sourceConn.host,
+        port: sourceConn.port || 22,
+        username: sourceConn.username,
+        password: copySourcePassword || sourceConn.inline_password || undefined,
+      };
+      const target = {
+        host: targetConn.host,
+        port: targetConn.port || 22,
+        username: targetConn.username,
+        password: copyTargetPassword || targetConn.inline_password || undefined,
+      };
+      const result = await remoteFileCopyAcross(
+        source,
+        copySourcePath.trim(),
+        target,
+        copyTargetPath.trim(),
+      );
+      setCopyMessage(`复制完成：${result.copied_bytes} 字节（${result.source} → ${result.target}）`);
+    } catch (error) {
+      setCopyMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setCopyBusy(false);
     }
   };
 
