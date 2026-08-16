@@ -216,6 +216,10 @@ fn main() {
         webdav_check();
         return;
     }
+    if std::env::args().any(|argument| argument == "--ssh-cred-check") {
+        ssh_cred_check();
+        return;
+    }
     if std::env::args().any(|argument| argument == "--theme-check") {
         theme_check();
         return;
@@ -1784,6 +1788,67 @@ fn task_check() {
     });
     println!("{}", serde_json::to_string(&result).expect("json"));
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// End-to-end SSH credential check (--ssh-cred-check): a connection saved
+/// with inline_* credentials must resolve through the store + terminal_connect
+/// merge so ssh_terminal::open no longer fails with "缺少认证凭据".
+fn ssh_cred_check() {
+    use clients_windows::store::Store;
+    let dir = std::env::temp_dir().join(format!(
+        "ssh-cred-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    ));
+    let _ = std::fs::create_dir_all(&dir);
+    let mut store = Store::open(&dir.join("cred.db")).expect("store");
+    store
+        .upsert_connection(&serde_json::json!({
+            "id": "cred-conn",
+            "name": "cred",
+            "host": "127.0.0.1",
+            "port": 1,
+            "username": "root",
+            "credential_mode": "inline",
+            "inline_auth_kind": "password",
+            "inline_password": "resolved-pw",
+        }))
+        .expect("save");
+    let stored = store
+        .get_connection("cred-conn")
+        .expect("get")
+        .expect("exists");
+    let (password, _key, _passphrase) = resolve_stored_credentials(&store, &stored);
+    assert_eq!(password.as_deref(), Some("resolved-pw"));
+
+    // Mirror the terminal_connect merge then open(): must not reject with the
+    // missing-credential error (a network refusal is the expected outcome).
+    let mut profile = serde_json::json!({
+        "host": "127.0.0.1",
+        "port": 1,
+        "username": "root",
+        "connection_id": "cred-conn",
+    });
+    let (password, key, passphrase) = resolve_stored_credentials(&store, &stored);
+    if let Some(password) = password {
+        profile["password"] = serde_json::Value::String(password);
+    }
+    if let Some(key) = key {
+        profile["private_key_path"] = serde_json::Value::String(key);
+    }
+    if let Some(passphrase) = passphrase {
+        profile["private_key_passphrase"] = serde_json::Value::String(passphrase);
+    }
+    let err = ssh_terminal::open(&profile, None, 80, 24).expect_err("network refusal expected");
+    assert!(
+        !err.contains("缺少认证凭据"),
+        "credential resolution failed: {err:?}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+    println!("[ssh-cred-check] PASS");
 }
 
 /// End-to-end theme check (--theme-check): import/normalize, list, apply,
@@ -4445,6 +4510,19 @@ fn handle_sftp_commands(
                         .and_then(serde_json::Value::as_str)
                         .map(|s| s.to_string());
                 }
+                if target.password.is_none() && target.private_key_path.is_none() {
+                    let (password, private_key_path, private_key_passphrase) =
+                        resolve_stored_credentials(store, &profile);
+                    if target.password.is_none() {
+                        target.password = password;
+                    }
+                    if target.private_key_path.is_none() {
+                        target.private_key_path = private_key_path;
+                    }
+                    if target.private_key_passphrase.is_none() {
+                        target.private_key_passphrase = private_key_passphrase;
+                    }
+                }
             }
         }
     }
@@ -4842,6 +4920,58 @@ fn send_command_to_terminal(
         "sent": sent,
         "recorded": recorded,
     })
+}
+
+/// Resolves SSH credentials for a stored connection profile: legacy
+/// password/private_key fields, the inline_* UI fields (credential_mode =
+/// inline), and the referenced vault credential (credential_id). Returns
+/// (password, private_key_path, private_key_passphrase).
+fn resolve_stored_credentials(
+    store: &store::Store,
+    profile: &serde_json::Value,
+) -> (Option<String>, Option<String>, Option<String>) {
+    let get = |key: &str| {
+        profile
+            .get(key)
+            .and_then(serde_json::Value::as_str)
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+    };
+    let mut password = get("password");
+    let mut private_key_path = get("private_key_path");
+    let mut private_key_passphrase = get("private_key_passphrase");
+    if password.is_none() {
+        password = get("inline_password");
+    }
+    if private_key_path.is_none() {
+        private_key_path = get("inline_private_key_path");
+    }
+    if private_key_passphrase.is_none() {
+        private_key_passphrase = get("inline_private_key_passphrase");
+    }
+    if password.is_none() && private_key_path.is_none() {
+        if let Some(credential_id) = get("credential_id") {
+            if let Ok(Some(credential)) = store.get_credential(&credential_id) {
+                let cred_get = |key: &str| {
+                    credential
+                        .get(key)
+                        .and_then(serde_json::Value::as_str)
+                        .map(|s| s.trim().to_string())
+                        .filter(|s| !s.is_empty())
+                };
+                if password.is_none() {
+                    password = cred_get("password");
+                }
+                if private_key_path.is_none() {
+                    private_key_path = cred_get("private_key_path");
+                }
+                if private_key_passphrase.is_none() {
+                    private_key_passphrase = cred_get("private_key_passphrase");
+                }
+            }
+        }
+    }
+    (password, private_key_path, private_key_passphrase)
 }
 
 fn handle_persisted_commands(
@@ -5321,6 +5451,41 @@ fn on_web_message(hwnd: HWND, message: &str) -> Option<String> {
                         if let Some(value) = stored.get(key) {
                             profile[key] = value.clone();
                         }
+                    }
+                }
+            }
+        }
+        // Resolve credentials from inline_* fields and the vault credential.
+        if let Some(store) = &state.store {
+            if let Ok(Some(stored)) = store.get_connection(connection_id) {
+                let (password, private_key_path, private_key_passphrase) =
+                    resolve_stored_credentials(store, &stored);
+                if profile
+                    .get("password")
+                    .map(serde_json::Value::is_null)
+                    .unwrap_or(true)
+                {
+                    if let Some(password) = password {
+                        profile["password"] = serde_json::Value::String(password);
+                    }
+                }
+                if profile
+                    .get("private_key_path")
+                    .map(serde_json::Value::is_null)
+                    .unwrap_or(true)
+                {
+                    if let Some(private_key_path) = private_key_path {
+                        profile["private_key_path"] = serde_json::Value::String(private_key_path);
+                    }
+                }
+                if profile
+                    .get("private_key_passphrase")
+                    .map(serde_json::Value::is_null)
+                    .unwrap_or(true)
+                {
+                    if let Some(private_key_passphrase) = private_key_passphrase {
+                        profile["private_key_passphrase"] =
+                            serde_json::Value::String(private_key_passphrase);
                     }
                 }
             }

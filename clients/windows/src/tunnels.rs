@@ -206,6 +206,28 @@ pub async fn start_rule(
         .ok_or_else(|| "关联的连接不存在。".to_string())?;
 
     let mut target = SshTarget::from_request(&profile);
+    // Resolve inline_* UI credential fields stored on the connection.
+    if target.password.is_none() {
+        target.password = profile
+            .get("inline_password")
+            .and_then(serde_json::Value::as_str)
+            .map(|s| s.to_string())
+            .filter(|s| !s.is_empty());
+    }
+    if target.private_key_path.is_none() {
+        target.private_key_path = profile
+            .get("inline_private_key_path")
+            .and_then(serde_json::Value::as_str)
+            .map(|s| s.to_string())
+            .filter(|s| !s.is_empty());
+    }
+    if target.private_key_passphrase.is_none() {
+        target.private_key_passphrase = profile
+            .get("inline_private_key_passphrase")
+            .and_then(serde_json::Value::as_str)
+            .map(|s| s.to_string())
+            .filter(|s| !s.is_empty());
+    }
     if let Some(cred) = runtime_credential {
         if let Some(pw) = cred.get("password").and_then(serde_json::Value::as_str) {
             target.password = Some(pw.to_string());

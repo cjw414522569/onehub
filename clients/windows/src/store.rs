@@ -69,6 +69,16 @@ fn connection_json(
         "password": request.get("password").cloned().unwrap_or(Value::Null),
         "private_key_path": request.get("private_key_path").cloned().unwrap_or(Value::Null),
         "private_key_passphrase": request.get("private_key_passphrase").cloned().unwrap_or(Value::Null),
+        "inline_auth_kind": request.get("inline_auth_kind").cloned().unwrap_or(Value::Null),
+        "inline_password": request.get("inline_password").cloned().unwrap_or(Value::Null),
+        "inline_password_touched": request.get("inline_password_touched").cloned().unwrap_or(Value::Null),
+        "inline_private_key_path": request.get("inline_private_key_path").cloned().unwrap_or(Value::Null),
+        "inline_private_key_passphrase": request.get("inline_private_key_passphrase").cloned().unwrap_or(Value::Null),
+        "inline_private_key_passphrase_touched": request
+            .get("inline_private_key_passphrase_touched")
+            .cloned()
+            .unwrap_or(Value::Null),
+        "prompt_auth_kind": request.get("prompt_auth_kind").cloned().unwrap_or(Value::Null),
     })
 }
 
@@ -636,6 +646,31 @@ mod tests {
         assert_eq!(list[0]["id"], id);
         assert!(s.delete_connection(&id).expect("delete"));
         assert_eq!(s.list_connections().expect("list").len(), 0);
+    }
+
+    #[test]
+    fn connection_inline_credentials_persist() {
+        let mut s = store();
+        let p = s
+            .upsert_connection(&json!({
+                "id": "c-inline",
+                "name": "inline",
+                "host": "h1",
+                "port": 22,
+                "username": "root",
+                "credential_mode": "inline",
+                "inline_auth_kind": "password",
+                "inline_password": "secret-pw",
+                "inline_private_key_path": "C:/keys/id_ed25519",
+                "inline_private_key_passphrase": "pp",
+            }))
+            .expect("upsert");
+        assert_eq!(p["inline_password"], "secret-pw");
+        assert_eq!(p["inline_private_key_path"], "C:/keys/id_ed25519");
+        let loaded = s.get_connection("c-inline").expect("get").expect("exists");
+        assert_eq!(loaded["inline_password"], "secret-pw");
+        assert_eq!(loaded["inline_private_key_path"], "C:/keys/id_ed25519");
+        assert_eq!(loaded["inline_private_key_passphrase"], "pp");
     }
 
     #[test]
