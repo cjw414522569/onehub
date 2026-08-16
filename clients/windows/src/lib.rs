@@ -29,6 +29,7 @@ pub mod scheduled_tasks;
 pub mod sftp;
 pub mod ssh_terminal;
 pub mod store;
+pub mod themes;
 pub mod transfer_bundle;
 pub mod tunnels;
 pub mod vnc_tools;

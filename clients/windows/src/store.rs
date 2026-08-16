@@ -347,6 +347,23 @@ impl Store {
     pub fn put_app_setting(&mut self, key: &str, value: &Value) -> rusqlite::Result<()> {
         self.put("app_setting", key, value)
     }
+
+    // ---- themes (T054) ----
+
+    /// Persists an imported theme.
+    pub fn put_theme(&mut self, id: &str, value: &Value) -> rusqlite::Result<()> {
+        self.put("theme", id, value)
+    }
+
+    /// Lists imported themes.
+    pub fn list_themes(&self) -> rusqlite::Result<Vec<Value>> {
+        self.list("theme")
+    }
+
+    /// Deletes an imported theme.
+    pub fn delete_theme(&mut self, id: &str) -> rusqlite::Result<bool> {
+        self.delete("theme", id)
+    }
     // ---- AI assistant ----
 
     /// Lists AI provider configs.

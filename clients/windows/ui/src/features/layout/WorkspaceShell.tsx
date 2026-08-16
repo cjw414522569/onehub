@@ -41,6 +41,7 @@ import {
   PanelsTopLeft,
   PanelRightClose,
   PanelRightOpen,
+  Palette,
   Pencil,
   Play,
   Plus,
@@ -69,6 +70,7 @@ import { GitPanel } from "../git/GitPanel";
 import { AcpPanel } from "../acp/AcpPanel";
 import { useI18n } from "../i18n/i18n";
 import { ExtensionsPanel } from "../extensions/ExtensionsPanel";
+import { ThemesPanel } from "../themes/ThemesPanel";
 import { terminalBroadcast, terminalSetBroadcast } from "../../shared/tauri/commands";
 import { remoteFileCopyAcross } from "../../shared/tauri/commands";
 import { commandSendToTerminal } from "../../shared/tauri/commands";
@@ -11814,6 +11816,7 @@ function ConnectionHome({
   const [gitOpen, setGitOpen] = useState(false);
   const [acpOpen, setAcpOpen] = useState(false);
   const [extensionsOpen, setExtensionsOpen] = useState(false);
+  const [themesOpen, setThemesOpen] = useState(false);
   const { language, setLanguageAndPersist, t, languages } = useI18n();
   const [copyBusy, setCopyBusy] = useState(false);
   const [latencyByConnectionId, setLatencyByConnectionId] = useState<Record<string, LatencyProbeState>>({});
@@ -12049,6 +12052,17 @@ function ConnectionHome({
               <span style={{ fontSize: 10 }}>{t("extensions")}</span>
             </button>
           </Tooltip>
+          <Tooltip label="主题与外观">
+            <button
+              className="repository-icon-button"
+              type="button"
+              aria-label="主题与外观"
+              onClick={() => setThemesOpen(true)}
+            >
+              <Palette className="ui-icon" aria-hidden="true" />
+              <span style={{ fontSize: 10 }}>主题</span>
+            </button>
+          </Tooltip>
           <Tooltip label="终端广播模式：开启后输入会同步到所有终端标签">
             <button
               className="repository-icon-button"
@@ -12236,6 +12250,8 @@ function ConnectionHome({
         <AcpPanel open={acpOpen} onClose={() => setAcpOpen(false)} />
 
         <ExtensionsPanel open={extensionsOpen} onClose={() => setExtensionsOpen(false)} />
+
+        <ThemesPanel open={themesOpen} onClose={() => setThemesOpen(false)} />
 
       <div className="connection-home-body">
         <section className="connection-board" aria-label="连接表格">

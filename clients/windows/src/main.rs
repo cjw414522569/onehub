@@ -44,6 +44,7 @@ use clients_windows::scheduled_tasks;
 use clients_windows::sftp;
 use clients_windows::ssh_terminal;
 use clients_windows::store;
+use clients_windows::themes;
 use clients_windows::transfer_bundle;
 use clients_windows::tunnels;
 use clients_windows::vnc_tools;
@@ -213,6 +214,10 @@ fn main() {
     }
     if std::env::args().any(|argument| argument == "--webdav-check") {
         webdav_check();
+        return;
+    }
+    if std::env::args().any(|argument| argument == "--theme-check") {
+        theme_check();
         return;
     }
     if std::env::args().any(|argument| argument == "--wasm-check") {
@@ -1779,6 +1784,32 @@ fn task_check() {
     });
     println!("{}", serde_json::to_string(&result).expect("json"));
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// End-to-end theme check (--theme-check): import/normalize, list, apply,
+/// accent + alpha validation round-trip (T054).
+fn theme_check() {
+    use clients_windows::store::Store;
+    use clients_windows::themes as th;
+    let dir = std::env::temp_dir().join(format!(
+        "theme-check-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    ));
+    let _ = std::fs::create_dir_all(&dir);
+    let mut store = Store::open(&dir.join("theme.db")).expect("store");
+    let imported = th::theme_import(&mut store, r##"{ "name": "Check", "accent": "#123456" }"##)
+        .expect("import");
+    assert_eq!(imported["accent"], "#123456");
+    th::theme_apply(&mut store, "builtin-dark").expect("apply");
+    th::theme_set_accent(&mut store, "#38bdf8").expect("accent");
+    th::window_set_alpha(&mut store, 80).expect("alpha");
+    assert_eq!(th::window_get_alpha(&store)["alpha"], 80);
+    let _ = std::fs::remove_dir_all(&dir);
+    println!("[theme-check] PASS");
 }
 
 /// End-to-end WASM runtime check (--wasm-check): loads a hand-encoded
@@ -5004,6 +5035,42 @@ fn handle_persisted_commands(
                 .unwrap_or(i18n::DEFAULT_LANGUAGE);
             i18n::i18n_validate(language).ok()?
         }
+        "theme_list" => themes::theme_list(store).ok()?,
+        "theme_import" => {
+            let request = payload.get("request").cloned().unwrap_or(payload.clone());
+            let content = request
+                .get("content")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            themes::theme_import(store, content).ok()?
+        }
+        "theme_apply" => {
+            let request = payload.get("request").cloned().unwrap_or(payload.clone());
+            let id = request
+                .get("id")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            themes::theme_apply(store, id).ok()?
+        }
+        "theme_set_accent" => {
+            let request = payload.get("request").cloned().unwrap_or(payload.clone());
+            let color = request
+                .get("color")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            themes::theme_set_accent(store, color).ok()?
+        }
+        "theme_get_accent" => themes::theme_get_accent(store),
+        "window_set_alpha" => {
+            let request = payload.get("request").cloned().unwrap_or(payload.clone());
+            let alpha = request
+                .get("alpha")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(100)
+                .min(100) as u8;
+            themes::window_set_alpha(store, alpha).ok()?
+        }
+        "window_get_alpha" => themes::window_get_alpha(store),
         "ext_wasm_load" => {
             let request = payload.get("request").cloned().unwrap_or(payload.clone());
             let wasm_base64 = request

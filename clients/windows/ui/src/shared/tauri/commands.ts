@@ -51,6 +51,13 @@ import type {
   AcpRunToolResult,
 } from "../../features/acp/acpTypes";
 import type {
+  ThemeAccentResult,
+  ThemeApplyResult,
+  ThemeInfo,
+  ThemeListResult,
+  WindowAlphaResult,
+} from "../../features/themes/themesTypes";
+import type {
   ExtInstallResult,
   ExtMarketplaceResult,
   ExtUninstallResult,
@@ -1648,6 +1655,34 @@ export function i18nSetLanguage(language: string) {
 
 export function i18nValidate(language: string) {
   return invoke<I18nValidateResult>("i18n_validate", { request: { language } });
+}
+
+export function themeList() {
+  return invoke<ThemeListResult>("theme_list");
+}
+
+export function themeImport(content: string) {
+  return invoke<ThemeInfo>("theme_import", { request: { content } });
+}
+
+export function themeApply(id: string) {
+  return invoke<ThemeApplyResult>("theme_apply", { request: { id } });
+}
+
+export function themeSetAccent(color: string) {
+  return invoke<ThemeAccentResult>("theme_set_accent", { request: { color } });
+}
+
+export function themeGetAccent() {
+  return invoke<ThemeAccentResult>("theme_get_accent");
+}
+
+export function windowSetAlpha(alpha: number) {
+  return invoke<WindowAlphaResult>("window_set_alpha", { request: { alpha } });
+}
+
+export function windowGetAlpha() {
+  return invoke<WindowAlphaResult>("window_get_alpha");
 }
 
 export function dbObjectList(sessionId: string, kind?: string) {
