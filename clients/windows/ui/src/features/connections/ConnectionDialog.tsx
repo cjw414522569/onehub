@@ -35,6 +35,7 @@ import type {
   ConnectionProtocol,
   ConnectionProfile,
   ConnectionProfileInput,
+  ConnectionStepResult,
   ConnectionProxyKind,
   ConnectionTerminalEncoding,
   CredentialProfile,
@@ -97,7 +98,7 @@ interface ConnectionDialogProps {
   onDelete: (connection: ConnectionProfile) => Promise<void>;
   onManageCredentials: () => void;
   onSave: (input: ConnectionProfileInput) => Promise<void>;
-  onTest: (input: ConnectionProfileInput) => Promise<void>;
+  onTest: (input: ConnectionProfileInput) => Promise<ConnectionStepResult>;
   onTrustHostKey: (hostKey: HostKeyInfo) => Promise<void>;
 }
 
@@ -608,7 +609,25 @@ export function ConnectionDialog({
     setTestState("running");
 
     try {
-      await onTest(input);
+      const result = await onTest(input);
+      if (!result?.ok) {
+        setTestState("error");
+        setFeedback({
+          detail: result?.message || "连接测试未通过，请检查主机、端口与网络配置。",
+          title: "连接测试未通过",
+        });
+        return;
+      }
+      if (!isRdp && !isVnc && !isCharacterProtocol && result.ssh_verified === false) {
+        setTestState("error");
+        setFeedback({
+          detail:
+            result.message ||
+            "TCP 可达但未检测到 SSH 服务——请检查端口是否为 SSH、sshd 是否运行、防火墙/安全组是否放行。",
+          title: "未检测到 SSH 服务",
+        });
+        return;
+      }
       setTestState("success");
       setFeedback({
         detail: "当前配置可以继续保存。",

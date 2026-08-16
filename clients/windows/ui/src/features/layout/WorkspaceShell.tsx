@@ -82,6 +82,7 @@ import type {
   ConnectionProfile,
   ConnectionProfileInput,
   ConnectionRuntimeCredentialRequest,
+  ConnectionStepResult,
   CredentialProfile,
   CredentialProfileInput,
   RdpEmbeddedBounds,
@@ -8036,12 +8037,14 @@ export function WorkspaceShell() {
     await saveConnection(input);
   }
 
-  async function testConnectionFromDialog(input: ConnectionProfileInput) {
+  async function testConnectionFromDialog(
+    input: ConnectionProfileInput,
+  ): Promise<ConnectionStepResult> {
     if (!hasTauriRuntime()) {
       await wait(260);
-      return;
+      return { ok: true, message: "预览模式：连接测试通过" };
     }
-    await connectionTestProfile(input);
+    return connectionTestProfile(input);
   }
 
   async function saveCredentialFromSettings(input: CredentialProfileInput) {

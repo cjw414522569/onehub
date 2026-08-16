@@ -68,7 +68,13 @@ window.__TAURI_INTERNALS__ = {
       } else if (cmd === 'plugin:event|unlisten' || cmd === 'plugin:event|emit') {
         resolve(null);
       } else if (cmd === 'connection_test' || cmd === 'connection_test_profile') {
-        resolve({ ok: true, message: 'mock host shell' });
+        var req = (payload && payload.request) || payload || {};
+        var host = (req && req.host) || '';
+        if (host === 'bad-host') {
+          resolve({ ok: false, ssh_verified: false, message: '无法连接 bad-host:22（TCP 不可达）。' });
+        } else {
+          resolve({ ok: true, ssh_verified: true, message: 'mock host shell' });
+        }
       } else if (cmd === 'connection_probe_latency') {
         resolve({ latency_ms: null, reachable: true });
       } else if (cmd === 'secret_vault_status' || cmd === 'secret_vault_unlock' || cmd === 'secret_vault_unlock_local') {
@@ -147,6 +153,23 @@ try {
   const tabText = await page.evaluate(() => document.body.innerText.replace(/\s+/g, ' ').slice(0, 400));
   console.log('BODY:', tabText.slice(0, 200));
   if (consoleErrors.length > 0) errors.push('console errors: ' + consoleErrors.slice(0, 4).join(' | '));
+
+  // T057 regression: a failing test connection must surface an error, never
+  // an unconditional "连接测试通过".
+  await page.click('[aria-label="新增连接"]', { timeout: 15000 });
+  await page.waitForTimeout(800);
+  await page.fill('input[placeholder="请输入主机地址"]', 'bad-host');
+  await page.click('button:has-text("测试连接")', { timeout: 15000 });
+  await page.waitForTimeout(1500);
+  const testFeedback = await page.evaluate(() => document.body.innerText.replace(/\s+/g, ' '));
+  console.log('TEST_FEEDBACK:', testFeedback.slice(0, 300));
+  if (testFeedback.includes('连接测试通过')) {
+    errors.push('failing test connection still showed 连接测试通过');
+  }
+  if (!testFeedback.includes('无法连接 bad-host')) {
+    errors.push('failing test connection did not surface the backend error message');
+  }
+  await page.screenshot({ path: join(ROOT, 'artifacts/tmp/mxterm-ui-test-failure.png') });
 
   await browser.close();
 } catch (err) {
