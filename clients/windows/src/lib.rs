@@ -15,6 +15,7 @@ pub mod db;
 pub mod docker_tools;
 pub mod extensions;
 pub mod git;
+pub mod i18n;
 pub mod local_sessions;
 pub mod mcp_tools;
 pub mod misc_tools;

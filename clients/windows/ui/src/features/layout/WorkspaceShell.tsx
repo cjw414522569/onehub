@@ -67,6 +67,7 @@ import { NotesPanel } from "../notes/NotesPanel";
 import { AgentHubPanel } from "../agent/AgentHubPanel";
 import { GitPanel } from "../git/GitPanel";
 import { AcpPanel } from "../acp/AcpPanel";
+import { useI18n } from "../i18n/i18n";
 import { ExtensionsPanel } from "../extensions/ExtensionsPanel";
 import { terminalBroadcast, terminalSetBroadcast } from "../../shared/tauri/commands";
 import { remoteFileCopyAcross } from "../../shared/tauri/commands";
@@ -11813,6 +11814,7 @@ function ConnectionHome({
   const [gitOpen, setGitOpen] = useState(false);
   const [acpOpen, setAcpOpen] = useState(false);
   const [extensionsOpen, setExtensionsOpen] = useState(false);
+  const { language, setLanguageAndPersist, t, languages } = useI18n();
   const [copyBusy, setCopyBusy] = useState(false);
   const [latencyByConnectionId, setLatencyByConnectionId] = useState<Record<string, LatencyProbeState>>({});
   const latencyProbeRunRef = useRef(0);
@@ -11967,7 +11969,7 @@ function ConnectionHome({
               onClick={() => setRedisOpen(true)}
             >
               <Database className="ui-icon" aria-hidden="true" />
-              <span style={{ fontSize: 10 }}>Redis</span>
+              <span style={{ fontSize: 10 }}>{t("redis")}</span>
             </button>
           </Tooltip>
           <Tooltip label="打开 MongoDB 控制台">
@@ -11978,7 +11980,7 @@ function ConnectionHome({
               onClick={() => setMongoOpen(true)}
             >
               <Database className="ui-icon" aria-hidden="true" />
-              <span style={{ fontSize: 10 }}>Mongo</span>
+              <span style={{ fontSize: 10 }}>{t("mongo")}</span>
             </button>
           </Tooltip>
           <Tooltip label="打开 Markdown 笔记">
@@ -11989,7 +11991,7 @@ function ConnectionHome({
               onClick={() => setNotesOpen(true)}
             >
               <FileText className="ui-icon" aria-hidden="true" />
-              <span style={{ fontSize: 10 }}>笔记</span>
+              <span style={{ fontSize: 10 }}>{t("notes")}</span>
             </button>
           </Tooltip>
           <Tooltip label="跨服务器复制">
@@ -12000,7 +12002,7 @@ function ConnectionHome({
               onClick={() => setCopyDialogOpen(true)}
             >
               <Copy className="ui-icon" aria-hidden="true" />
-              <span style={{ fontSize: 10 }}>跨服复制</span>
+              <span style={{ fontSize: 10 }}>{t("copy_across")}</span>
             </button>
           </Tooltip>
           <Tooltip label="Agent Hub">
@@ -12011,7 +12013,7 @@ function ConnectionHome({
               onClick={() => setAgentHubOpen(true)}
             >
               <Bot className="ui-icon" aria-hidden="true" />
-              <span style={{ fontSize: 10 }}>Agent</span>
+              <span style={{ fontSize: 10 }}>{t("agent")}</span>
             </button>
           </Tooltip>
           <Tooltip label="Git 分支与 Diff">
@@ -12022,7 +12024,7 @@ function ConnectionHome({
               onClick={() => setGitOpen(true)}
             >
               <GitBranch className="ui-icon" aria-hidden="true" />
-              <span style={{ fontSize: 10 }}>Git</span>
+              <span style={{ fontSize: 10 }}>{t("git")}</span>
             </button>
           </Tooltip>
           <Tooltip label="ACP 外部 Agent">
@@ -12033,7 +12035,7 @@ function ConnectionHome({
               onClick={() => setAcpOpen(true)}
             >
               <Terminal className="ui-icon" aria-hidden="true" />
-              <span style={{ fontSize: 10 }}>ACP</span>
+              <span style={{ fontSize: 10 }}>{t("acp")}</span>
             </button>
           </Tooltip>
           <Tooltip label="扩展市场">
@@ -12044,7 +12046,7 @@ function ConnectionHome({
               onClick={() => setExtensionsOpen(true)}
             >
               <Blocks className="ui-icon" aria-hidden="true" />
-              <span style={{ fontSize: 10 }}>扩展</span>
+              <span style={{ fontSize: 10 }}>{t("extensions")}</span>
             </button>
           </Tooltip>
           <Tooltip label="终端广播模式：开启后输入会同步到所有终端标签">
@@ -12057,7 +12059,7 @@ function ConnectionHome({
               style={broadcastOn ? { color: "#ffffff", background: "#2374c6" } : undefined}
             >
               <Radio className="ui-icon" aria-hidden="true" />
-              <span style={{ fontSize: 10 }}>广播</span>
+              <span style={{ fontSize: 10 }}>{t("broadcast")}</span>
             </button>
           </Tooltip>
           {broadcastOn ? (
@@ -12095,6 +12097,18 @@ function ConnectionHome({
               <RefreshCw className={`ui-icon ${loading || isProbingLatency ? "spin" : ""}`} aria-hidden="true" />
             </button>
           </Tooltip>
+          <select
+            aria-label="界面语言"
+            value={language}
+            onChange={(event) => void setLanguageAndPersist(event.target.value as "zh-CN" | "zh-TW" | "en")}
+            style={{ fontSize: 11, marginRight: 4 }}
+          >
+            {languages.map((lang) => (
+              <option key={lang.code} value={lang.code}>
+                {lang.label}
+              </option>
+            ))}
+          </select>
           <button
             className="repository-primary-button"
             type="button"
@@ -12104,7 +12118,7 @@ function ConnectionHome({
             onPointerEnter={onPreloadCreateConnection}
           >
             <Plus className="ui-icon" aria-hidden="true" />
-            <span>新建连接</span>
+            <span>{t("new_connection")}</span>
           </button>
         </div>
       </header>

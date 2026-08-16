@@ -27,6 +27,7 @@ use clients_windows::db;
 use clients_windows::docker_tools;
 use clients_windows::extensions;
 use clients_windows::git;
+use clients_windows::i18n;
 use clients_windows::local_sessions;
 use clients_windows::mcp_tools;
 use clients_windows::misc_tools;
@@ -4985,6 +4986,24 @@ fn handle_persisted_commands(
             extensions::ext_uninstall(store, id).ok()?
         }
         "ext_wasm_list" => extensions::ext_wasm_list(),
+        "i18n_languages" => i18n::i18n_languages(),
+        "i18n_get_language" => i18n::i18n_get_language(store),
+        "i18n_set_language" => {
+            let request = payload.get("request").cloned().unwrap_or(payload.clone());
+            let language = request
+                .get("language")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or(i18n::DEFAULT_LANGUAGE);
+            i18n::i18n_set_language(store, language).ok()?
+        }
+        "i18n_validate" => {
+            let request = payload.get("request").cloned().unwrap_or(payload.clone());
+            let language = request
+                .get("language")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or(i18n::DEFAULT_LANGUAGE);
+            i18n::i18n_validate(language).ok()?
+        }
         "ext_wasm_load" => {
             let request = payload.get("request").cloned().unwrap_or(payload.clone());
             let wasm_base64 = request

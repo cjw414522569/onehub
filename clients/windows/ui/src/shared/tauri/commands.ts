@@ -1619,6 +1619,37 @@ export function extWasmList() {
   return invoke<{ id: string; exports: string[] }[]>("ext_wasm_list");
 }
 
+export interface I18nLanguageResult {
+  language: string;
+}
+
+export interface I18nLanguageInfo {
+  code: string;
+  label: string;
+}
+
+export interface I18nValidateResult {
+  language: string;
+  keys: number;
+  valid: boolean;
+}
+
+export function i18nLanguages() {
+  return invoke<I18nLanguageInfo[]>("i18n_languages");
+}
+
+export function i18nGetLanguage() {
+  return invoke<I18nLanguageResult>("i18n_get_language");
+}
+
+export function i18nSetLanguage(language: string) {
+  return invoke<I18nLanguageResult>("i18n_set_language", { request: { language } });
+}
+
+export function i18nValidate(language: string) {
+  return invoke<I18nValidateResult>("i18n_validate", { request: { language } });
+}
+
 export function dbObjectList(sessionId: string, kind?: string) {
   return invoke<DbObjectInfo[]>("db_object_list", { request: { session_id: sessionId, kind } });
 }
